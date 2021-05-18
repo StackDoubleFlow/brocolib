@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::ops::Index;
 
 #[derive(Deserialize, Serialize, Debug)]
 pub enum TypeEnum {
@@ -145,4 +146,12 @@ pub struct Property {
 #[serde(rename_all = "PascalCase")]
 pub struct DllData {
     pub types: Vec<TypeData>,
+}
+
+impl Index<TypeRef> for DllData {
+    type Output = TypeData;
+
+    fn index(&self, type_ref: TypeRef) -> &Self::Output {
+        &self.types[type_ref.type_id as usize]
+    }
 }

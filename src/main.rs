@@ -3,13 +3,13 @@ mod decompiler;
 
 use anyhow::{Context, Result};
 use codegen_data::{DllData, Method as CodegenMethodData, TypeData as CodegenTypeData, TypeEnum};
+use decompiler::decompile;
 use object::endian::Endianness;
 use object::read::elf::ElfFile64;
 use object::{Object, ObjectSection};
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
-use decompiler::decompile;
 
 fn read_dll_data() -> Result<DllData> {
     Ok(if Path::new("codegen.bc").exists() {
@@ -37,8 +37,6 @@ pub struct MethodInfo<'a> {
     offset: u64,
     size: u64,
 }
-
-
 
 fn main() -> Result<()> {
     println!("Reading codegen data");
@@ -96,9 +94,12 @@ fn main() -> Result<()> {
 
     // BeatmapDataLoader.GetBeatmapDataFromBeatmapSaveData
     let offset = 17490572;
-    let mi = method_infos.into_iter().find(|mi| mi.offset == offset).unwrap();
+    let mi = method_infos
+        .into_iter()
+        .find(|mi| mi.offset == offset)
+        .unwrap();
     let size = mi.size;
-    decompile(mi, section.data_range(offset, size)?.unwrap());
+    decompile(&dll_data, mi, section.data_range(offset, size)?.unwrap());
 
     Ok(())
 }
