@@ -1,3 +1,5 @@
 /target
+
 codegen.json
 codegen.bc
+libil2cpp.so
