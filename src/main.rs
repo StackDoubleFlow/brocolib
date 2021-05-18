@@ -1,7 +1,7 @@
 mod codegen_data;
+mod decompiler;
 
 use anyhow::{Context, Result};
-use bad64::{disasm, Instruction};
 use codegen_data::{DllData, Method as CodegenMethodData, TypeData as CodegenTypeData, TypeEnum};
 use object::endian::Endianness;
 use object::read::elf::ElfFile64;
@@ -9,6 +9,7 @@ use object::{Object, ObjectSection};
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+use decompiler::decompile;
 
 fn read_dll_data() -> Result<DllData> {
     Ok(if Path::new("codegen.bc").exists() {
@@ -27,7 +28,7 @@ fn read_dll_data() -> Result<DllData> {
 }
 
 #[derive(Debug)]
-struct MethodInfo<'a> {
+pub struct MethodInfo<'a> {
     type_data: &'a CodegenTypeData,
     codegen_data: &'a CodegenMethodData,
     namespace: &'a str,
@@ -37,10 +38,7 @@ struct MethodInfo<'a> {
     size: u64,
 }
 
-// struct DisassembledMethod {
-//     info: MethodInfo,
-//     instrs: Vec<Instruction>,
-// }
+
 
 fn main() -> Result<()> {
     println!("Reading codegen data");
@@ -58,8 +56,8 @@ fn main() -> Result<()> {
                 let offset = method.offset as u64;
                 method_infos.push(MethodInfo {
                     type_data: &ty,
-                    name: &method.name,
                     codegen_data: &method,
+                    name: &method.name,
                     namespace: &ty.this.namespace,
                     class: &ty.this.name,
                     offset,
@@ -72,7 +70,7 @@ fn main() -> Result<()> {
     method_infos.sort_by_key(|mi| mi.offset);
     offsets.sort_unstable();
 
-    let mut file = File::open("libil2cpp.so")?;
+    let mut file = File::open("libil2cpp.so").context("Failed to open libil2cpp.so")?;
     let mut data = Vec::new();
     file.read_to_end(&mut data)?;
     let elf = ElfFile64::<Endianness>::parse(data.as_slice())?;
@@ -96,7 +94,11 @@ fn main() -> Result<()> {
         info.size = *size;
     }
 
-    println!("{:#?}", method_infos);
+    // BeatmapDataLoader.GetBeatmapDataFromBeatmapSaveData
+    let offset = 17490572;
+    let mi = method_infos.into_iter().find(|mi| mi.offset == offset).unwrap();
+    let size = mi.size;
+    decompile(mi, section.data_range(offset, size)?.unwrap());
 
     Ok(())
 }
