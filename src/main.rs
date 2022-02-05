@@ -53,8 +53,8 @@ fn main() -> Result<()> {
                 }
                 let offset = method.offset as u64;
                 method_infos.push(MethodInfo {
-                    type_data: &ty,
-                    codegen_data: &method,
+                    type_data: ty,
+                    codegen_data: method,
                     name: &method.name,
                     namespace: &ty.this.namespace,
                     class: &ty.this.name,
