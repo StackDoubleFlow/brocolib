@@ -92,8 +92,8 @@ fn main() -> Result<()> {
         info.size = *size;
     }
 
-    // BeatmapDataLoader.GetBeatmapDataFromBeatmapSaveData
-    let offset = 17490572;
+    // BombCutSoundEffect.Init
+    let offset = 18356880;
     let mi = method_infos
         .into_iter()
         .find(|mi| mi.offset == offset)
