@@ -26,11 +26,19 @@ struct ValueSource {
     define: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum SpecialParam {
+    This,
+    MethodInfo,
+}
+
 #[derive(Debug)]
 enum RawNode<'a> {
     EntryToken,
     Param(usize),
+    SpecialParam(SpecialParam),
     CalleeSaved,
+    Imm(u64),
     Op { op: Op, num_defines: usize },
     Operand(&'a Operand),
 }
@@ -63,28 +71,35 @@ fn decode_vreg(reg: u32) -> (u32, u32) {
         (4, reg - Reg::B0 as u32)
     } else if (Reg::D0 as u32..=Reg::D31 as u32).contains(&reg) {
         (8, reg - Reg::B0 as u32)
-    } else if (Reg::Q0 as u32..=Reg::Q31 as u32).contains(&reg)
-        || (Reg::V0 as u32..=Reg::V31 as u32).contains(&reg)
-    {
-        (16, reg - Reg::B0 as u32)
+    } else if (Reg::Q0 as u32..=Reg::Q31 as u32).contains(&reg) {
+        (16, reg - Reg::Q0 as u32)
+    } else if (Reg::V0 as u32..=Reg::V31 as u32).contains(&reg) {
+        (16, reg - Reg::V0 as u32)
     } else {
-        unreachable!()
+        unreachable!(reg)
     }
 }
 
 impl ValueContext {
-    fn read_reg(&self, reg: Reg) -> &ValueSource {
+    fn read_reg(&self, graph: &mut RawGraph, reg: Reg) -> ValueSource {
+        if reg == Reg::XZR || reg == Reg::WZR {
+            let imm = graph.add_node(RawNode::Imm(0));
+            return ValueSource {
+                idx: imm,
+                define: 0,
+            };
+        }
+
         let reg = reg as u32;
-        // TODO: Zero registers
         if (Reg::X0 as u32..=Reg::X30 as u32).contains(&reg) {
             dbg!((reg - Reg::X0 as u32) as usize);
-            return self.r[(reg - Reg::X0 as u32) as usize].as_ref().unwrap();
+            return self.r[(reg - Reg::X0 as u32) as usize].clone().unwrap();
         } else if (Reg::W0 as u32..=Reg::W30 as u32).contains(&reg) {
-            return self.r[(reg - Reg::W0 as u32) as usize].as_ref().unwrap();
+            return self.r[(reg - Reg::W0 as u32) as usize].clone().unwrap();
         }
         let (size, n) = decode_vreg(reg);
         // TODO: Reading partial
-        return &self.v[n as usize].first().unwrap().source;
+        return self.v[n as usize].first().unwrap().source.clone();
     }
 
     fn write_reg(&mut self, reg: Reg, val: ValueSource) {
@@ -121,6 +136,17 @@ fn load_params(
 
     let mut cur_v = 0;
     let mut cur_r = 0;
+
+    let is_instance = !mi.codegen_data.specifiers.iter().any(|s| s == "static");
+    if is_instance {
+        let this = graph.add_node(RawNode::SpecialParam(SpecialParam::This));
+        ctx.r[cur_r] = Some(ValueSource {
+            idx: this,
+            define: 0,
+        });
+        cur_r += 1;
+    }
+
     for (i, param) in mi.codegen_data.parameters.iter().enumerate() {
         let ty_id = param.parameter_type.type_id;
         let ty = &codegen_data.types[ty_id as usize];
@@ -147,6 +173,12 @@ fn load_params(
         });
         cur_r += 1;
     }
+
+    let method_info = graph.add_node(RawNode::SpecialParam(SpecialParam::MethodInfo));
+    ctx.r[cur_r] = Some(ValueSource {
+        idx: method_info,
+        define: 0,
+    });
 
     let calee_saved = graph.add_node(RawNode::CalleeSaved);
     for i in 19..=29 {
@@ -216,7 +248,7 @@ pub fn decompile(codegen_data: &DllData, mi: MethodInfo, data: &[u8]) {
                         ctx.s.push(StackValue {
                             offset: addr.1,
                             size: 8,
-                            source: ctx.read_reg(reg).clone(),
+                            source: ctx.read_reg(&mut graph, reg),
                         })
                     }
 
@@ -229,7 +261,7 @@ pub fn decompile(codegen_data: &DllData, mi: MethodInfo, data: &[u8]) {
                 let dest = unwrap_reg(&operands[0]);
                 let src = unwrap_reg(&operands[1]);
                 dbg!(&ctx);
-                ctx.write_reg(dest, ctx.read_reg(src).clone());
+                ctx.write_reg(dest, ctx.read_reg(&mut graph, src));
             }
             _ => {}
         }
