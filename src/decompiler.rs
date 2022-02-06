@@ -54,32 +54,54 @@ struct ValueContext {
     s: Vec<StackValue>,
 }
 
+fn decode_vreg(reg: u32) -> (u32, u32) {
+    if (Reg::B0 as u32..=Reg::B31 as u32).contains(&reg) {
+        (1, reg - Reg::B0 as u32)
+    } else if (Reg::H0 as u32..=Reg::H31 as u32).contains(&reg) {
+        (2, reg - Reg::B0 as u32)
+    } else if (Reg::S0 as u32..=Reg::S31 as u32).contains(&reg) {
+        (4, reg - Reg::B0 as u32)
+    } else if (Reg::D0 as u32..=Reg::D31 as u32).contains(&reg) {
+        (8, reg - Reg::B0 as u32)
+    } else if (Reg::Q0 as u32..=Reg::Q31 as u32).contains(&reg)
+        || (Reg::V0 as u32..=Reg::V31 as u32).contains(&reg)
+    {
+        (16, reg - Reg::B0 as u32)
+    } else {
+        unreachable!()
+    }
+}
+
 impl ValueContext {
     fn read_reg(&self, reg: Reg) -> &ValueSource {
         let reg = reg as u32;
         // TODO: Zero registers
         if (Reg::X0 as u32..=Reg::X30 as u32).contains(&reg) {
+            dbg!((reg - Reg::X0 as u32) as usize);
             return self.r[(reg - Reg::X0 as u32) as usize].as_ref().unwrap();
         } else if (Reg::W0 as u32..=Reg::W30 as u32).contains(&reg) {
             return self.r[(reg - Reg::W0 as u32) as usize].as_ref().unwrap();
         }
-        let (size, n) = if (Reg::B0 as u32..=Reg::B31 as u32).contains(&reg) {
-            (1, reg - Reg::B0 as u32)
-        } else if (Reg::H0 as u32..=Reg::H31 as u32).contains(&reg) {
-            (2, reg - Reg::B0 as u32)
-        } else if (Reg::S0 as u32..=Reg::S31 as u32).contains(&reg) {
-            (4, reg - Reg::B0 as u32)
-        } else if (Reg::D0 as u32..=Reg::D31 as u32).contains(&reg) {
-            (8, reg - Reg::B0 as u32)
-        } else if (Reg::Q0 as u32..=Reg::Q31 as u32).contains(&reg)
-            || (Reg::V0 as u32..=Reg::V31 as u32).contains(&reg)
-        {
-            (16, reg - Reg::B0 as u32)
-        } else {
-            unreachable!()
-        };
+        let (size, n) = decode_vreg(reg);
         // TODO: Reading partial
         return &self.v[n as usize].first().unwrap().source;
+    }
+
+    fn write_reg(&mut self, reg: Reg, val: ValueSource) {
+        let reg = reg as u32;
+        if (Reg::X0 as u32..=Reg::X30 as u32).contains(&reg) {
+            self.r[(reg - Reg::X0 as u32) as usize] = Some(val);
+            return;
+        } else if (Reg::W0 as u32..=Reg::W30 as u32).contains(&reg) {
+            self.r[(reg - Reg::W0 as u32) as usize] = Some(val);
+            return;
+        }
+        let (size, n) = decode_vreg(reg);
+        self.v[n as usize].push(VectorValue {
+            offset: 0, // TOOD
+            size,
+            source: val,
+        })
     }
 }
 
@@ -135,6 +157,13 @@ fn load_params(
     }
 }
 
+fn unwrap_reg(operand: &Operand) -> Reg {
+    match operand {
+        Operand::Reg { reg, .. } => *reg,
+        _ => unreachable!(),
+    }
+} 
+
 pub fn decompile(codegen_data: &DllData, mi: MethodInfo, data: &[u8]) {
     let instrs = disasm(data, mi.offset).map(Result::unwrap).collect();
     let dis_method = DisassembledMethod { info: mi, instrs };
@@ -155,7 +184,7 @@ pub fn decompile(codegen_data: &DllData, mi: MethodInfo, data: &[u8]) {
 
         match op {
             Op::STR | Op::STP => {
-                let (size, mem_operand) = if op == Op::STR { (8, 1) } else { (16, 2) };
+                let mem_operand = if op == Op::STR { 1 } else { 2 };
                 let addr = match operands[mem_operand] {
                     Operand::MemPreIdx {
                         reg,
@@ -183,24 +212,24 @@ pub fn decompile(codegen_data: &DllData, mi: MethodInfo, data: &[u8]) {
                 // dbg!(operands[1]);
                 if addr.0 == Reg::SP {
                     for reg in regs {
-                        let reg = match reg {
-                            Operand::Reg { reg, .. } => reg,
-                            _ => unreachable!(),
-                        };
+                        let reg = unwrap_reg(reg);
                         ctx.s.push(StackValue {
                             offset: addr.1,
-                            size,
-                            source: ctx.read_reg(*reg).clone(),
+                            size: 8,
+                            source: ctx.read_reg(reg).clone(),
                         })
                     }
 
-                    println!(
-                        "Adding to stack space with size {} and offset {}",
-                        size, addr.1
-                    );
+                    println!("Adding to stack space with size 8 and offset {}", addr.1);
                 } else {
                     // unimplemented!()
                 }
+            }
+            Op::MOV => {
+                let dest = unwrap_reg(&operands[0]);
+                let src = unwrap_reg(&operands[1]);
+                dbg!(&ctx);
+                ctx.write_reg(dest, ctx.read_reg(src).clone());
             }
             _ => {}
         }
