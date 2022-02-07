@@ -7,6 +7,7 @@ use decompiler::decompile;
 use object::endian::Endianness;
 use object::read::elf::ElfFile64;
 use object::{Object, ObjectSection};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -92,6 +93,12 @@ fn main() -> Result<()> {
         info.size = *size;
     }
 
+    let methods_map: HashMap<u64, &CodegenMethodData> = offsets
+        .iter()
+        .cloned()
+        .zip(method_infos.iter().map(|mi| mi.codegen_data))
+        .collect();
+
     // BombCutSoundEffect.Init
     let offset = 18356880;
     let mi = method_infos
@@ -99,7 +106,12 @@ fn main() -> Result<()> {
         .find(|mi| mi.offset == offset)
         .unwrap();
     let size = mi.size;
-    decompile(&dll_data, mi, section.data_range(offset, size)?.unwrap());
+    decompile(
+        &dll_data,
+        methods_map,
+        mi,
+        section.data_range(offset, size)?.unwrap(),
+    );
 
     Ok(())
 }

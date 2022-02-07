@@ -1,10 +1,13 @@
+use std::collections::HashMap;
+use std::fmt;
+
 use super::MethodInfo;
-use crate::codegen_data::DllData;
+use crate::codegen_data::{DllData, Method, TypeData};
 use bad64::{disasm, Imm, Instruction, Op, Operand, Reg};
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{Graph, NodeIndex};
 
-type RawGraph = Graph<RawNode, RawEdge>;
+type RawGraph<'a> = Graph<RawNode<'a>, RawEdge>;
 
 #[derive(Debug)]
 struct StackValue {
@@ -41,14 +44,23 @@ enum SpecialParam {
     MethodInfo,
 }
 
+struct CallTarget<'a>(&'a Method);
+
+impl<'a> fmt::Debug for CallTarget<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0.il2cpp_name)
+    }
+}
+
 #[derive(Debug)]
-enum RawNode {
+enum RawNode<'a> {
     EntryToken,
     Param(usize),
     SpecialParam(SpecialParam),
     CalleeSaved,
     Imm(u64),
     Op { op: Op, num_defines: usize },
+    Call { to: CallTarget<'a> },
     MemOffset,
     Operand(Operand),
 }
@@ -155,6 +167,34 @@ impl ValueContext {
     }
 }
 
+fn is_instance(mi: &Method) -> bool {
+    !mi.specifiers.iter().any(|s| s == "static")
+}
+
+fn is_fp_type(ty: &TypeData) -> bool {
+    ty.this.namespace == "System" && (ty.this.name == "Single" || ty.this.name == "Double")
+}
+
+/// Find the number of register and vector paramters of a method
+fn num_params(codegen_data: &DllData, mi: &Method) -> (usize, usize) {
+    let mut num_r = 0;
+    let mut num_v = 0;
+    if is_instance(mi) {
+        num_r += 1;
+    }
+
+    for param in &mi.parameters {
+        let ty = &codegen_data.types[param.parameter_type.type_id as usize];
+        if is_fp_type(ty) {
+            num_v += 1;
+        } else {
+            num_r += 1;
+        }
+    }
+
+    (num_r, num_v)
+}
+
 fn load_params(
     codegen_data: &DllData,
     mi: &MethodInfo,
@@ -172,8 +212,7 @@ fn load_params(
     let mut cur_v = 0;
     let mut cur_r = 0;
 
-    let is_instance = !mi.codegen_data.specifiers.iter().any(|s| s == "static");
-    if is_instance {
+    if is_instance(mi.codegen_data) {
         let this = graph.add_node(RawNode::SpecialParam(SpecialParam::This));
         ctx.r[cur_r] = Some(ValueSource {
             idx: this,
@@ -186,7 +225,7 @@ fn load_params(
         let ty_id = param.parameter_type.type_id;
         let ty = &codegen_data.types[ty_id as usize];
 
-        if ty.this.namespace == "System" && (ty.this.name == "Single" || ty.this.name == "Double") {
+        if is_fp_type(ty) {
             let val = VectorValue {
                 offset: 0,
                 // I think the size here should always be 8? not sure
@@ -241,7 +280,12 @@ fn unwrap_reg(operand: &Operand) -> Reg {
     }
 }
 
-pub fn decompile(codegen_data: &DllData, mi: MethodInfo, data: &[u8]) {
+pub fn decompile(
+    codegen_data: &DllData,
+    methods: HashMap<u64, &Method>,
+    mi: MethodInfo,
+    data: &[u8],
+) {
     let instrs: Vec<_> = disasm(data, mi.offset).map(Result::unwrap).collect();
 
     let mut graph = RawGraph::new();
@@ -259,6 +303,33 @@ pub fn decompile(codegen_data: &DllData, mi: MethodInfo, data: &[u8]) {
         let operands = inst.operands();
 
         match op {
+            Op::BL => {
+                let addr = match operands[0] {
+                    Operand::Label(Imm::Unsigned(addr)) => addr,
+                    _ => unreachable!(),
+                };
+                let to = match methods.get(&addr) {
+                    Some(&mi) => mi,
+                    None => continue,
+                };
+                let node = graph.add_node(RawNode::Call { to: CallTarget(to) });
+                let (num_r, num_v) = num_params(codegen_data, to);
+
+                // TODO: Fix operand index
+                for i in 0..num_r {
+                    use Reg::*;
+                    let arg_regs = [X0, X1, X2, X3, X4, X5, X6, X7];
+                    let reg = ctx.read_reg(&mut graph, arg_regs[i]);
+                    graph.add_edge(reg.idx, node, reg.create_edge(i));
+                }
+                for i in 0..num_v {
+                    let reg = &ctx.v[i].first().unwrap().source;
+                    graph.add_edge(reg.idx, node, reg.create_edge(num_r + i));
+                }
+
+                graph.add_edge(chain, node, RawEdge::Chain);
+                chain = node;
+            }
             Op::STR | Op::STP => {
                 let (regs, mem_operand) = if op == Op::STR {
                     (&operands[..1], operands[1])
@@ -289,7 +360,6 @@ pub fn decompile(codegen_data: &DllData, mi: MethodInfo, data: &[u8]) {
                         let reg = unwrap_reg(reg);
                         let offset = addr.1 + i as i64 * 8;
                         ctx.write_stack(offset, 8, ctx.read_reg(&mut graph, reg));
-                        println!("Adding to stack space with size 8 and offset {}", offset);
                     }
                 } else {
                     let node = graph.add_node(RawNode::Op { op, num_defines: 0 });
@@ -364,26 +434,7 @@ pub fn decompile(codegen_data: &DllData, mi: MethodInfo, data: &[u8]) {
             }
             _ => {}
         }
-
-        // let node = graph.add_node(RawNode::Op { op, num_defines: 0 });
-        // for operand in operands {
-        //     let operand_node = graph.add_node(RawNode::Operand(operand));
-        //     graph.add_edge(
-        //         node,
-        //         operand_node,
-        //         RawEdge::Value {
-        //             define: 0,
-        //             operand: 0,
-        //         },
-        //     );
-        // }
-        // graph.add_edge(node, chain, RawEdge::Chain);
-        // chain = node;
-
-        // let addr = (inst.address() - dis_method.info.offset) as usize;
-        // println!("{:02x}{:02x}{:02x}{:02x}  {:?}  {}", data[addr + 3], data[addr + 2], data[addr + 1], data[addr], inst.op(), inst);
     }
-    dbg!(stack_frame_size);
 
     println!("{:?}", Dot::with_config(&graph, &[]));
 }
