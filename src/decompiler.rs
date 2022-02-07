@@ -4,7 +4,7 @@ use bad64::{disasm, Imm, Instruction, Op, Operand, Reg};
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{Graph, NodeIndex};
 
-type RawGraph<'a> = Graph<RawNode<'a>, RawEdge>;
+type RawGraph = Graph<RawNode, RawEdge>;
 
 #[derive(Debug)]
 struct StackValue {
@@ -42,14 +42,15 @@ enum SpecialParam {
 }
 
 #[derive(Debug)]
-enum RawNode<'a> {
+enum RawNode {
     EntryToken,
     Param(usize),
     SpecialParam(SpecialParam),
     CalleeSaved,
     Imm(u64),
     Op { op: Op, num_defines: usize },
-    Operand(&'a Operand),
+    MemOffset,
+    Operand(Operand),
 }
 
 // next instruction analysis
@@ -259,7 +260,7 @@ pub fn decompile(codegen_data: &DllData, mi: MethodInfo, data: &[u8]) {
 
         match op {
             Op::STR | Op::STP => {
-                let (regs, mem_operand) = if op == Op::STR { 
+                let (regs, mem_operand) = if op == Op::STR {
                     (&operands[..1], operands[1])
                 } else {
                     (&operands[..2], operands[2])
@@ -290,13 +291,33 @@ pub fn decompile(codegen_data: &DllData, mi: MethodInfo, data: &[u8]) {
                         ctx.write_stack(offset, 8, ctx.read_reg(&mut graph, reg));
                         println!("Adding to stack space with size 8 and offset {}", offset);
                     }
-
                 } else {
                     let node = graph.add_node(RawNode::Op { op, num_defines: 0 });
                     for (i, reg) in regs.iter().enumerate() {
                         let reg = ctx.read_reg(&mut graph, unwrap_reg(reg));
                         graph.add_edge(reg.idx, node, reg.create_edge(i));
                     }
+
+                    let base = ctx.read_reg(&mut graph, addr.0);
+                    let offset = graph.add_node(RawNode::Imm(addr.1 as u64));
+                    let mem_operand_node = graph.add_node(RawNode::MemOffset);
+                    graph.add_edge(base.idx, mem_operand_node, base.create_edge(0));
+                    graph.add_edge(
+                        offset,
+                        mem_operand_node,
+                        RawEdge::Value {
+                            define: 0,
+                            operand: 1,
+                        },
+                    );
+                    graph.add_edge(
+                        mem_operand_node,
+                        node,
+                        RawEdge::Value {
+                            define: 0,
+                            operand: regs.len(),
+                        },
+                    );
                     graph.add_edge(chain, node, RawEdge::Chain);
                     chain = node;
                 }
