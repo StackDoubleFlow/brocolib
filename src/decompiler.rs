@@ -215,11 +215,21 @@ fn load_params(
     });
 
     let calee_saved = graph.add_node(RawNode::CalleeSaved);
-    for i in 19..=29 {
+    for i in 19..=30 {
         ctx.r[i] = Some(ValueSource {
             idx: calee_saved,
             define: 0,
         })
+    }
+    for i in 0..=8 {
+        ctx.v[i].push(VectorValue {
+            source: ValueSource {
+                idx: calee_saved,
+                define: 0,
+            },
+            offset: 0,
+            size: 8,
+        });
     }
 }
 
@@ -276,17 +286,18 @@ pub fn decompile(codegen_data: &DllData, mi: MethodInfo, data: &[u8]) {
                 if addr.0 == Reg::SP {
                     for (i, reg) in regs.iter().enumerate() {
                         let reg = unwrap_reg(reg);
-                        ctx.write_stack(addr.1 + i as i64 * 8, 8, ctx.read_reg(&mut graph, reg));
+                        let offset = addr.1 + i as i64 * 8;
+                        ctx.write_stack(offset, 8, ctx.read_reg(&mut graph, reg));
+                        println!("Adding to stack space with size 8 and offset {}", offset);
                     }
 
-                    println!("Adding to stack space with size 8 and offset {}", addr.1);
                 } else {
                     let node = graph.add_node(RawNode::Op { op, num_defines: 0 });
                     for (i, reg) in regs.iter().enumerate() {
                         let reg = ctx.read_reg(&mut graph, unwrap_reg(reg));
                         graph.add_edge(reg.idx, node, reg.create_edge(i));
                     }
-                    graph.add_edge(node, chain, RawEdge::Chain);
+                    graph.add_edge(chain, node, RawEdge::Chain);
                     chain = node;
                 }
             }
