@@ -249,8 +249,12 @@ pub fn decompile(codegen_data: &DllData, mi: MethodInfo, data: &[u8]) {
 
         match op {
             Op::STR | Op::STP => {
-                let mem_operand = if op == Op::STR { 1 } else { 2 };
-                let addr = match operands[mem_operand] {
+                let (regs, mem_operand) = if op == Op::STR { 
+                    (&operands[..0], operands[1])
+                } else {
+                    (&operands[..1], operands[2])
+                };
+                let addr = match mem_operand {
                     Operand::MemPreIdx {
                         reg,
                         imm: Imm::Signed(imm),
@@ -268,11 +272,6 @@ pub fn decompile(codegen_data: &DllData, mi: MethodInfo, data: &[u8]) {
                         ..
                     } => (reg, imm),
                     o => unreachable!("{:?}", o),
-                };
-                let regs = if op == Op::STR {
-                    &operands[..0]
-                } else {
-                    &operands[..1]
                 };
                 if addr.0 == Reg::SP {
                     for reg in regs {
