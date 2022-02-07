@@ -120,11 +120,37 @@ impl ValueContext {
             return;
         }
         let (size, n) = decode_vreg(reg);
-        self.v[n as usize].push(VectorValue {
-            offset: 0, // TOOD
+        self.write_vector(n as usize, 0, size, val);
+    }
+
+    fn write_stack(&mut self, offset: i64, size: u32, val: ValueSource) {
+        // TODO: Overlapping writes to stack
+        for entry in &mut self.s {
+            if entry.offset == offset && entry.size == size {
+                entry.source = val;
+                return;
+            }
+        }
+        self.s.push(StackValue {
+            offset,
             size,
             source: val,
-        })
+        });
+    }
+
+    fn write_vector(&mut self, n: usize, offset: i32, size: u32, val: ValueSource) {
+        // TODO: Overlapping writes to v space
+        for entry in &mut self.v[n] {
+            if entry.offset == offset && entry.size == size {
+                entry.source = val;
+                return;
+            }
+        }
+        self.v[n].push(VectorValue {
+            offset,
+            size,
+            source: val,
+        });
     }
 }
 
@@ -251,11 +277,7 @@ pub fn decompile(codegen_data: &DllData, mi: MethodInfo, data: &[u8]) {
                 if addr.0 == Reg::SP {
                     for reg in regs {
                         let reg = unwrap_reg(reg);
-                        ctx.s.push(StackValue {
-                            offset: addr.1,
-                            size: 8,
-                            source: ctx.read_reg(&mut graph, reg),
-                        })
+                        ctx.write_stack(addr.1, 8, ctx.read_reg(&mut graph, reg));
                     }
 
                     println!("Adding to stack space with size 8 and offset {}", addr.1);
