@@ -26,6 +26,15 @@ struct ValueSource {
     define: usize,
 }
 
+impl ValueSource {
+    fn create_edge(&self, operand: usize) -> RawEdge {
+        RawEdge::Value {
+            define: self.define,
+            operand,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 enum SpecialParam {
     This,
@@ -92,7 +101,6 @@ impl ValueContext {
 
         let reg = reg as u32;
         if (Reg::X0 as u32..=Reg::X30 as u32).contains(&reg) {
-            dbg!((reg - Reg::X0 as u32) as usize);
             return self.r[(reg - Reg::X0 as u32) as usize].clone().unwrap();
         } else if (Reg::W0 as u32..=Reg::W30 as u32).contains(&reg) {
             return self.r[(reg - Reg::W0 as u32) as usize].clone().unwrap();
@@ -192,24 +200,23 @@ fn load_params(
 fn unwrap_reg(operand: &Operand) -> Reg {
     match operand {
         Operand::Reg { reg, .. } => *reg,
-        _ => unreachable!(),
+        _ => unreachable!("{:?}", operand),
     }
-} 
+}
 
 pub fn decompile(codegen_data: &DllData, mi: MethodInfo, data: &[u8]) {
-    let instrs = disasm(data, mi.offset).map(Result::unwrap).collect();
-    let dis_method = DisassembledMethod { info: mi, instrs };
+    let instrs: Vec<_> = disasm(data, mi.offset).map(Result::unwrap).collect();
 
     let mut graph = RawGraph::new();
     let entry = graph.add_node(RawNode::EntryToken);
 
     let mut ctx = Default::default();
-    load_params(codegen_data, &dis_method.info, &mut graph, &mut ctx);
+    load_params(codegen_data, &mi, &mut graph, &mut ctx);
     // dbg!(ctx);
 
     let mut stack_frame_size = 0;
     let mut chain = entry;
-    for inst in &dis_method.instrs {
+    for inst in &instrs {
         println!("{}", inst);
         let op = inst.op();
         let operands = inst.operands();
@@ -241,7 +248,6 @@ pub fn decompile(codegen_data: &DllData, mi: MethodInfo, data: &[u8]) {
                 } else {
                     &operands[..1]
                 };
-                // dbg!(operands[1]);
                 if addr.0 == Reg::SP {
                     for reg in regs {
                         let reg = unwrap_reg(reg);
@@ -260,8 +266,42 @@ pub fn decompile(codegen_data: &DllData, mi: MethodInfo, data: &[u8]) {
             Op::MOV => {
                 let dest = unwrap_reg(&operands[0]);
                 let src = unwrap_reg(&operands[1]);
-                dbg!(&ctx);
                 ctx.write_reg(dest, ctx.read_reg(&mut graph, src));
+            }
+            Op::ORR | Op::ADD => {
+                let dest = unwrap_reg(&operands[0]);
+                if dest == Reg::X29 {
+                    // ignore writes to frame pointer
+                    continue;
+                }
+
+                let a = unwrap_reg(&operands[1]);
+                let b = match &operands[2] {
+                    Operand::Imm32 {
+                        imm: Imm::Unsigned(imm),
+                        ..
+                    }
+                    | Operand::Imm64 {
+                        imm: Imm::Unsigned(imm),
+                        ..
+                    } => {
+                        let imm = graph.add_node(RawNode::Imm(*imm));
+                        ValueSource {
+                            idx: imm,
+                            define: 0,
+                        }
+                    }
+                    _ => ctx.read_reg(&mut graph, unwrap_reg(&operands[2])),
+                };
+                if a == Reg::XZR || a == Reg::WZR {
+                    ctx.write_reg(dest, b);
+                    continue;
+                }
+
+                let a = ctx.read_reg(&mut graph, a);
+                let node = graph.add_node(RawNode::Op { op, num_defines: 1 });
+                graph.add_edge(a.idx, node, a.create_edge(1));
+                graph.add_edge(b.idx, node, b.create_edge(2));
             }
             _ => {}
         }
@@ -286,7 +326,7 @@ pub fn decompile(codegen_data: &DllData, mi: MethodInfo, data: &[u8]) {
     }
     dbg!(stack_frame_size);
 
-    // println!("{:?}", Dot::with_config(&graph, &[]));
+    println!("{:?}", Dot::with_config(&graph, &[]));
 }
 
 #[derive(Debug)]
