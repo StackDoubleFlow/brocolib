@@ -61,6 +61,7 @@ enum RawNode<'a> {
     Imm(u64),
     Op { op: Op, num_defines: usize },
     Call { to: CallTarget<'a> },
+    Ret,
     MemOffset,
     Operand(Operand),
 }
@@ -303,7 +304,7 @@ pub fn decompile(
         let operands = inst.operands();
 
         match op {
-            Op::BL => {
+            Op::BL | Op::B => {
                 let addr = match operands[0] {
                     Operand::Label(Imm::Unsigned(addr)) => addr,
                     _ => unreachable!(),
@@ -329,6 +330,12 @@ pub fn decompile(
 
                 graph.add_edge(chain, node, RawEdge::Chain);
                 chain = node;
+
+                if op == Op::B {
+                    let node = graph.add_node(RawNode::Ret);
+                    graph.add_edge(chain, node, RawEdge::Chain);
+                    chain = node;
+                }
             }
             Op::STR | Op::STP => {
                 let (regs, mem_operand) = if op == Op::STR {
