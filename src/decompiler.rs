@@ -350,9 +350,3 @@ pub fn decompile(codegen_data: &DllData, mi: MethodInfo, data: &[u8]) {
 
     println!("{:?}", Dot::with_config(&graph, &[]));
 }
-
-#[derive(Debug)]
-struct DisassembledMethod<'a> {
-    info: MethodInfo<'a>,
-    instrs: Vec<Instruction>,
-}
