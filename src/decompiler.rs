@@ -75,11 +75,11 @@ fn decode_vreg(reg: u32) -> (u32, u32) {
     if (Reg::B0 as u32..=Reg::B31 as u32).contains(&reg) {
         (1, reg - Reg::B0 as u32)
     } else if (Reg::H0 as u32..=Reg::H31 as u32).contains(&reg) {
-        (2, reg - Reg::B0 as u32)
+        (2, reg - Reg::H0 as u32)
     } else if (Reg::S0 as u32..=Reg::S31 as u32).contains(&reg) {
-        (4, reg - Reg::B0 as u32)
+        (4, reg - Reg::S0 as u32)
     } else if (Reg::D0 as u32..=Reg::D31 as u32).contains(&reg) {
-        (8, reg - Reg::B0 as u32)
+        (8, reg - Reg::D0 as u32)
     } else if (Reg::Q0 as u32..=Reg::Q31 as u32).contains(&reg) {
         (16, reg - Reg::Q0 as u32)
     } else if (Reg::V0 as u32..=Reg::V31 as u32).contains(&reg) {
@@ -250,9 +250,9 @@ pub fn decompile(codegen_data: &DllData, mi: MethodInfo, data: &[u8]) {
         match op {
             Op::STR | Op::STP => {
                 let (regs, mem_operand) = if op == Op::STR { 
-                    (&operands[..0], operands[1])
+                    (&operands[..1], operands[1])
                 } else {
-                    (&operands[..1], operands[2])
+                    (&operands[..2], operands[2])
                 };
                 let addr = match mem_operand {
                     Operand::MemPreIdx {
@@ -274,14 +274,20 @@ pub fn decompile(codegen_data: &DllData, mi: MethodInfo, data: &[u8]) {
                     o => unreachable!("{:?}", o),
                 };
                 if addr.0 == Reg::SP {
-                    for reg in regs {
+                    for (i, reg) in regs.iter().enumerate() {
                         let reg = unwrap_reg(reg);
-                        ctx.write_stack(addr.1, 8, ctx.read_reg(&mut graph, reg));
+                        ctx.write_stack(addr.1 + i as i64 * 8, 8, ctx.read_reg(&mut graph, reg));
                     }
 
                     println!("Adding to stack space with size 8 and offset {}", addr.1);
                 } else {
-                    // unimplemented!()
+                    let node = graph.add_node(RawNode::Op { op, num_defines: 0 });
+                    for (i, reg) in regs.iter().enumerate() {
+                        let reg = ctx.read_reg(&mut graph, unwrap_reg(reg));
+                        graph.add_edge(reg.idx, node, reg.create_edge(i));
+                    }
+                    graph.add_edge(node, chain, RawEdge::Chain);
+                    chain = node;
                 }
             }
             Op::MOV => {
