@@ -337,6 +337,58 @@ pub fn decompile(
                     chain = node;
                 }
             }
+            Op::LDR | Op::LDP => {
+                let num_regs = if op == Op::LDR {
+                    1
+                } else {
+                    2
+                };
+                let regs = &operands[..num_regs];
+                let mem_operand = operands[num_regs];
+                let addr = match mem_operand {
+                    Operand::MemOffset {
+                        reg,
+                        offset: Imm::Signed(imm),
+                        ..
+                    } => (reg, imm),
+                    // TODO: Other addressing modes
+                    // o => unreachable!("{:?}", o),
+                    _ => continue,
+                };
+                if addr.0 != Reg::SP {
+                    let node = graph.add_node(RawNode::Op { op, num_defines: num_regs });
+                    for (i, reg) in regs.iter().enumerate() {
+                        let reg = unwrap_reg(reg);
+                        ctx.write_reg(reg, ValueSource {
+                            idx: node,
+                            define: i,
+                        });
+                    }
+
+                    let base = ctx.read_reg(&mut graph, addr.0);
+                    let offset = graph.add_node(RawNode::Imm(addr.1 as u64));
+                    let mem_operand_node = graph.add_node(RawNode::MemOffset);
+                    graph.add_edge(base.idx, mem_operand_node, base.create_edge(0));
+                    graph.add_edge(
+                        offset,
+                        mem_operand_node,
+                        RawEdge::Value {
+                            define: 0,
+                            operand: 1,
+                        },
+                    );
+                    graph.add_edge(
+                        mem_operand_node,
+                        node,
+                        RawEdge::Value {
+                            define: 0,
+                            operand: regs.len(),
+                        },
+                    );
+                    graph.add_edge(chain, node, RawEdge::Chain);
+                    chain = node;
+                }
+            }
             Op::STR | Op::STP => {
                 let (regs, mem_operand) = if op == Op::STR {
                     (&operands[..1], operands[1])
