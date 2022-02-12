@@ -24,16 +24,27 @@ struct VectorValue {
 }
 
 #[derive(Debug, Clone)]
-struct ValueSource {
-    idx: NodeIndex,
-    define: usize,
+enum ValueSource {
+    Node {
+        idx: NodeIndex,
+        define: usize,
+    },
+    SPOffset {
+        offset: i64,
+    }
 }
 
 impl ValueSource {
-    fn create_edge(&self, operand: usize) -> RawEdge {
-        RawEdge::Value {
-            define: self.define,
-            operand,
+    fn create_edge(&self, graph: &mut RawGraph, to: NodeIndex, operand: usize)  {
+        match *self {
+            ValueSource::Node { idx, define } => {
+                let edge = RawEdge::Value {
+                    define,
+                    operand,
+                };
+                graph.add_edge(idx, to, edge);
+            },
+            _ => panic!("Cannot create edge to non-node value source")
         }
     }
 }
@@ -107,7 +118,7 @@ impl ValueContext {
     fn read_reg(&self, graph: &mut RawGraph, reg: Reg) -> ValueSource {
         if reg == Reg::XZR || reg == Reg::WZR {
             let imm = graph.add_node(RawNode::Imm(0));
-            return ValueSource {
+            return ValueSource::Node {
                 idx: imm,
                 define: 0,
             };
@@ -215,7 +226,7 @@ fn load_params(
 
     if is_instance(mi.codegen_data) {
         let this = graph.add_node(RawNode::SpecialParam(SpecialParam::This));
-        ctx.r[cur_r] = Some(ValueSource {
+        ctx.r[cur_r] = Some(ValueSource::Node {
             idx: this,
             define: 0,
         });
@@ -232,7 +243,7 @@ fn load_params(
                 // I think the size here should always be 8? not sure
                 // size: if ty.this.name == "Single" { 4 } else { 8 },
                 size: 8,
-                source: ValueSource {
+                source: ValueSource::Node {
                     idx: param_nodes[i],
                     define: 0,
                 },
@@ -242,7 +253,7 @@ fn load_params(
             continue;
         }
 
-        ctx.r[cur_r] = Some(ValueSource {
+        ctx.r[cur_r] = Some(ValueSource::Node {
             idx: param_nodes[i],
             define: 0,
         });
@@ -250,21 +261,21 @@ fn load_params(
     }
 
     let method_info = graph.add_node(RawNode::SpecialParam(SpecialParam::MethodInfo));
-    ctx.r[cur_r] = Some(ValueSource {
+    ctx.r[cur_r] = Some(ValueSource::Node {
         idx: method_info,
         define: 0,
     });
 
     let calee_saved = graph.add_node(RawNode::CalleeSaved);
     for i in 19..=30 {
-        ctx.r[i] = Some(ValueSource {
+        ctx.r[i] = Some(ValueSource::Node {
             idx: calee_saved,
             define: 0,
         })
     }
     for i in 0..=8 {
         ctx.v[i].push(VectorValue {
-            source: ValueSource {
+            source: ValueSource::Node {
                 idx: calee_saved,
                 define: 0,
             },
@@ -321,11 +332,11 @@ pub fn decompile(
                     use Reg::*;
                     let arg_regs = [X0, X1, X2, X3, X4, X5, X6, X7];
                     let reg = ctx.read_reg(&mut graph, arg_regs[i]);
-                    graph.add_edge(reg.idx, node, reg.create_edge(i));
+                    reg.create_edge(&mut graph, node, i);
                 }
                 for i in 0..num_v {
                     let reg = &ctx.v[i].first().unwrap().source;
-                    graph.add_edge(reg.idx, node, reg.create_edge(num_r + i));
+                    reg.create_edge(&mut graph, node, num_r + i);
                 }
 
                 graph.add_edge(chain, node, RawEdge::Chain);
@@ -359,7 +370,7 @@ pub fn decompile(
                     let node = graph.add_node(RawNode::Op { op, num_defines: num_regs });
                     for (i, reg) in regs.iter().enumerate() {
                         let reg = unwrap_reg(reg);
-                        ctx.write_reg(reg, ValueSource {
+                        ctx.write_reg(reg, ValueSource::Node {
                             idx: node,
                             define: i,
                         });
@@ -368,7 +379,7 @@ pub fn decompile(
                     let base = ctx.read_reg(&mut graph, addr.0);
                     let offset = graph.add_node(RawNode::Imm(addr.1 as u64));
                     let mem_operand_node = graph.add_node(RawNode::MemOffset);
-                    graph.add_edge(base.idx, mem_operand_node, base.create_edge(0));
+                    base.create_edge(&mut graph, mem_operand_node, 0);
                     graph.add_edge(
                         offset,
                         mem_operand_node,
@@ -424,13 +435,13 @@ pub fn decompile(
                     let node = graph.add_node(RawNode::Op { op, num_defines: 0 });
                     for (i, reg) in regs.iter().enumerate() {
                         let reg = ctx.read_reg(&mut graph, unwrap_reg(reg));
-                        graph.add_edge(reg.idx, node, reg.create_edge(i));
+                        reg.create_edge(&mut graph, node, i);
                     }
 
                     let base = ctx.read_reg(&mut graph, addr.0);
                     let offset = graph.add_node(RawNode::Imm(addr.1 as u64));
                     let mem_operand_node = graph.add_node(RawNode::MemOffset);
-                    graph.add_edge(base.idx, mem_operand_node, base.create_edge(0));
+                    base.create_edge(&mut graph, mem_operand_node, 0);
                     graph.add_edge(
                         offset,
                         mem_operand_node,
@@ -474,7 +485,7 @@ pub fn decompile(
                         ..
                     } => {
                         let imm = graph.add_node(RawNode::Imm(*imm));
-                        ValueSource {
+                        ValueSource::Node {
                             idx: imm,
                             define: 0,
                         }
@@ -488,8 +499,8 @@ pub fn decompile(
 
                 let a = ctx.read_reg(&mut graph, a);
                 let node = graph.add_node(RawNode::Op { op, num_defines: 1 });
-                graph.add_edge(a.idx, node, a.create_edge(1));
-                graph.add_edge(b.idx, node, b.create_edge(2));
+                a.create_edge(&mut graph, node, 1);
+                b.create_edge(&mut graph, node, 2);
             }
             _ => {}
         }
