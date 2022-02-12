@@ -94,6 +94,7 @@ struct ValueContext {
     r: [Option<ValueSource>; 31],
     v: [Vec<VectorValue>; 32],
     s: Vec<StackValue>,
+    s_offset: i64,
 }
 
 fn decode_vreg(reg: u32) -> (u32, u32) {
@@ -149,6 +150,7 @@ impl ValueContext {
     }
 
     fn write_stack(&mut self, offset: i64, size: u32, val: ValueSource) {
+        let offset = self.s_offset + offset;
         // TODO: Overlapping writes to stack
         for entry in &mut self.s {
             if entry.offset == offset && entry.size == size {
@@ -307,7 +309,6 @@ pub fn decompile(
     load_params(codegen_data, &mi, &mut graph, &mut ctx);
     // dbg!(ctx);
 
-    let mut stack_frame_size = 0;
     let mut chain = entry;
     for inst in &instrs {
         println!("{}", inst);
@@ -412,11 +413,10 @@ pub fn decompile(
                         imm: Imm::Signed(imm),
                     } => {
                         if reg == Reg::SP {
-                            stack_frame_size -= imm;
-                            (reg, imm + stack_frame_size)
-                        } else {
-                            (reg, imm)
-                        }
+                            ctx.s_offset += imm;
+                        } 
+                        // TODO: pre-idx addressing writes
+                        (reg, 0)
                     }
                     Operand::MemOffset {
                         reg,
