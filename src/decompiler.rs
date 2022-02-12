@@ -2,8 +2,9 @@ use std::collections::HashMap;
 use std::fmt;
 
 use super::MethodInfo;
-use crate::codegen_data::{DllData, Method, TypeData};
+use crate::codegen_data::{DllData, Method, TypeData, Field};
 use bad64::{disasm, Imm, Instruction, Op, Operand, Reg};
+use petgraph::EdgeDirection;
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{Graph, NodeIndex};
 
@@ -61,6 +62,8 @@ enum RawNode<'a> {
     Imm(u64),
     Op { op: Op, num_defines: usize },
     Call { to: CallTarget<'a> },
+    LoadField(&'a Field),
+    StoreField(&'a Field),
     Ret,
     MemOffset,
     Operand(Operand),
@@ -72,7 +75,7 @@ enum RawNode<'a> {
 // 3. create link from node found in last step to current node with concat or split if necessary
 // 4. put new defines in map
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum RawEdge {
     Value { define: usize, operand: usize },
     Chain,
@@ -279,6 +282,40 @@ fn unwrap_reg(operand: &Operand) -> Reg {
         Operand::Reg { reg, .. } => *reg,
         _ => unreachable!("{:?}", operand),
     }
+}
+
+struct WalkChain {
+    cur: NodeIndex
+}
+
+impl WalkChain {
+    fn new(entry: NodeIndex) -> Self {
+        Self {
+            cur: entry,
+        }
+    }
+
+    fn next(&mut self, graph: &RawGraph) -> Option<NodeIndex> {
+        let mut neighbors = graph.neighbors_directed(self.cur, EdgeDirection::Outgoing).detach();
+        while let Some((e, n)) = neighbors.next(graph) {
+            if graph.edge_weight(e) == Some(&RawEdge::Chain) {
+                self.cur = n;
+                return Some(n);
+            }
+        }
+        None
+    }
+}
+
+fn dag_operand(graph: &RawGraph, node: NodeIndex, n: usize) -> Option<NodeIndex> {
+    let mut neighbors = graph.neighbors_directed(node, EdgeDirection::Incoming).detach();
+    while let Some((neighbor_e, neighbor_n)) = neighbors.next(graph) {
+        match graph[neighbor_e] {
+            RawEdge::Value { operand, .. } if operand == n => return Some(neighbor_n),
+            _ => {}
+        }
+    } 
+    None
 }
 
 pub fn decompile(
@@ -495,5 +532,13 @@ pub fn decompile(
         }
     }
 
+    let mut walk = WalkChain::new(entry);
+    // if let Some(n) = walk.next(&graph) {
+    //     match graph.node_weight(n) {
+
+    //     }
+    // }
+
     println!("{:?}", Dot::with_config(&graph, &[]));
 }
+
