@@ -25,16 +25,27 @@ struct VectorValue {
 }
 
 #[derive(Debug, Clone)]
-struct ValueSource {
-    idx: NodeIndex,
-    define: usize,
+enum ValueSource {
+    Node {
+        idx: NodeIndex,
+        define: usize,
+    },
+    SPOffset {
+        offset: i64,
+    }
 }
 
 impl ValueSource {
-    fn create_edge(&self, operand: usize) -> RawEdge {
-        RawEdge::Value {
-            define: self.define,
-            operand,
+    fn create_edge(&self, graph: &mut RawGraph, to: NodeIndex, operand: usize)  {
+        match *self {
+            ValueSource::Node { idx, define } => {
+                let edge = RawEdge::Value {
+                    define,
+                    operand,
+                };
+                graph.add_edge(idx, to, edge);
+            },
+            _ => panic!("Cannot create edge to non-node value source")
         }
     }
 }
@@ -86,6 +97,7 @@ struct ValueContext {
     r: [Option<ValueSource>; 31],
     v: [Vec<VectorValue>; 32],
     s: Vec<StackValue>,
+    s_offset: i64,
 }
 
 fn decode_vreg(reg: u32) -> (u32, u32) {
@@ -110,7 +122,7 @@ impl ValueContext {
     fn read_reg(&self, graph: &mut RawGraph, reg: Reg) -> ValueSource {
         if reg == Reg::XZR || reg == Reg::WZR {
             let imm = graph.add_node(RawNode::Imm(0));
-            return ValueSource {
+            return ValueSource::Node {
                 idx: imm,
                 define: 0,
             };
@@ -141,6 +153,7 @@ impl ValueContext {
     }
 
     fn write_stack(&mut self, offset: i64, size: u32, val: ValueSource) {
+        let offset = self.s_offset + offset;
         // TODO: Overlapping writes to stack
         for entry in &mut self.s {
             if entry.offset == offset && entry.size == size {
@@ -218,7 +231,7 @@ fn load_params(
 
     if is_instance(mi.codegen_data) {
         let this = graph.add_node(RawNode::SpecialParam(SpecialParam::This));
-        ctx.r[cur_r] = Some(ValueSource {
+        ctx.r[cur_r] = Some(ValueSource::Node {
             idx: this,
             define: 0,
         });
@@ -235,7 +248,7 @@ fn load_params(
                 // I think the size here should always be 8? not sure
                 // size: if ty.this.name == "Single" { 4 } else { 8 },
                 size: 8,
-                source: ValueSource {
+                source: ValueSource::Node {
                     idx: param_nodes[i],
                     define: 0,
                 },
@@ -245,7 +258,7 @@ fn load_params(
             continue;
         }
 
-        ctx.r[cur_r] = Some(ValueSource {
+        ctx.r[cur_r] = Some(ValueSource::Node {
             idx: param_nodes[i],
             define: 0,
         });
@@ -253,21 +266,21 @@ fn load_params(
     }
 
     let method_info = graph.add_node(RawNode::SpecialParam(SpecialParam::MethodInfo));
-    ctx.r[cur_r] = Some(ValueSource {
+    ctx.r[cur_r] = Some(ValueSource::Node {
         idx: method_info,
         define: 0,
     });
 
     let calee_saved = graph.add_node(RawNode::CalleeSaved);
     for i in 19..=30 {
-        ctx.r[i] = Some(ValueSource {
+        ctx.r[i] = Some(ValueSource::Node {
             idx: calee_saved,
             define: 0,
         })
     }
     for i in 0..=8 {
         ctx.v[i].push(VectorValue {
-            source: ValueSource {
+            source: ValueSource::Node {
                 idx: calee_saved,
                 define: 0,
             },
@@ -277,9 +290,9 @@ fn load_params(
     }
 }
 
-fn unwrap_reg(operand: &Operand) -> Reg {
+fn unwrap_reg(operand: Operand) -> Reg {
     match operand {
-        Operand::Reg { reg, .. } => *reg,
+        Operand::Reg { reg, .. } => reg,
         _ => unreachable!("{:?}", operand),
     }
 }
@@ -318,6 +331,38 @@ fn dag_operand(graph: &RawGraph, node: NodeIndex, n: usize) -> Option<NodeIndex>
     None
 }
 
+fn load(chain: &mut NodeIndex, ctx: &mut ValueContext, graph: &mut RawGraph, reg: Operand, addr: (Reg, i64)) {
+    let node = graph.add_node(RawNode::Op { op: Op::LDR, num_defines: 1 });
+    let reg = unwrap_reg(reg);
+    ctx.write_reg(reg, ValueSource::Node {
+        idx: node,
+        define: 0,
+    });
+
+    let base = ctx.read_reg(graph, addr.0);
+    let offset = graph.add_node(RawNode::Imm(addr.1 as u64));
+    let mem_operand_node = graph.add_node(RawNode::MemOffset);
+    base.create_edge(graph, mem_operand_node, 0);
+    graph.add_edge(
+        offset,
+        mem_operand_node,
+        RawEdge::Value {
+            define: 0,
+            operand: 1,
+        },
+    );
+    graph.add_edge(
+        mem_operand_node,
+        node,
+        RawEdge::Value {
+            define: 0,
+            operand: 1,
+        },
+    );
+    graph.add_edge(*chain, node, RawEdge::Chain);
+    *chain = node;
+}
+
 pub fn decompile(
     codegen_data: &DllData,
     methods: HashMap<u64, &Method>,
@@ -333,7 +378,6 @@ pub fn decompile(
     load_params(codegen_data, &mi, &mut graph, &mut ctx);
     // dbg!(ctx);
 
-    let mut stack_frame_size = 0;
     let mut chain = entry;
     for inst in &instrs {
         println!("{}", inst);
@@ -358,11 +402,11 @@ pub fn decompile(
                     use Reg::*;
                     let arg_regs = [X0, X1, X2, X3, X4, X5, X6, X7];
                     let reg = ctx.read_reg(&mut graph, arg_regs[i]);
-                    graph.add_edge(reg.idx, node, reg.create_edge(i));
+                    reg.create_edge(&mut graph, node, i);
                 }
                 for i in 0..num_v {
                     let reg = &ctx.v[i].first().unwrap().source;
-                    graph.add_edge(reg.idx, node, reg.create_edge(num_r + i));
+                    reg.create_edge(&mut graph, node, num_r + i);
                 }
 
                 graph.add_edge(chain, node, RawEdge::Chain);
@@ -393,37 +437,9 @@ pub fn decompile(
                     _ => continue,
                 };
                 if addr.0 != Reg::SP {
-                    let node = graph.add_node(RawNode::Op { op, num_defines: num_regs });
-                    for (i, reg) in regs.iter().enumerate() {
-                        let reg = unwrap_reg(reg);
-                        ctx.write_reg(reg, ValueSource {
-                            idx: node,
-                            define: i,
-                        });
+                    for &reg in regs {
+                        load(&mut chain, &mut ctx, &mut graph, reg, addr);
                     }
-
-                    let base = ctx.read_reg(&mut graph, addr.0);
-                    let offset = graph.add_node(RawNode::Imm(addr.1 as u64));
-                    let mem_operand_node = graph.add_node(RawNode::MemOffset);
-                    graph.add_edge(base.idx, mem_operand_node, base.create_edge(0));
-                    graph.add_edge(
-                        offset,
-                        mem_operand_node,
-                        RawEdge::Value {
-                            define: 0,
-                            operand: 1,
-                        },
-                    );
-                    graph.add_edge(
-                        mem_operand_node,
-                        node,
-                        RawEdge::Value {
-                            define: 0,
-                            operand: regs.len(),
-                        },
-                    );
-                    graph.add_edge(chain, node, RawEdge::Chain);
-                    chain = node;
                 }
             }
             Op::STR | Op::STP => {
@@ -438,11 +454,10 @@ pub fn decompile(
                         imm: Imm::Signed(imm),
                     } => {
                         if reg == Reg::SP {
-                            stack_frame_size -= imm;
-                            (reg, imm + stack_frame_size)
-                        } else {
-                            (reg, imm)
-                        }
+                            ctx.s_offset += imm;
+                        } 
+                        // TODO: pre-idx addressing writes
+                        (reg, 0)
                     }
                     Operand::MemOffset {
                         reg,
@@ -452,22 +467,22 @@ pub fn decompile(
                     o => unreachable!("{:?}", o),
                 };
                 if addr.0 == Reg::SP {
-                    for (i, reg) in regs.iter().enumerate() {
+                    for (i, &reg) in regs.iter().enumerate() {
                         let reg = unwrap_reg(reg);
                         let offset = addr.1 + i as i64 * 8;
                         ctx.write_stack(offset, 8, ctx.read_reg(&mut graph, reg));
                     }
                 } else {
                     let node = graph.add_node(RawNode::Op { op, num_defines: 0 });
-                    for (i, reg) in regs.iter().enumerate() {
+                    for (i, &reg) in regs.iter().enumerate() {
                         let reg = ctx.read_reg(&mut graph, unwrap_reg(reg));
-                        graph.add_edge(reg.idx, node, reg.create_edge(i));
+                        reg.create_edge(&mut graph, node, i);
                     }
 
                     let base = ctx.read_reg(&mut graph, addr.0);
                     let offset = graph.add_node(RawNode::Imm(addr.1 as u64));
                     let mem_operand_node = graph.add_node(RawNode::MemOffset);
-                    graph.add_edge(base.idx, mem_operand_node, base.create_edge(0));
+                    base.create_edge(&mut graph, mem_operand_node, 0);
                     graph.add_edge(
                         offset,
                         mem_operand_node,
@@ -489,18 +504,18 @@ pub fn decompile(
                 }
             }
             Op::MOV => {
-                let dest = unwrap_reg(&operands[0]);
-                let src = unwrap_reg(&operands[1]);
+                let dest = unwrap_reg(operands[0]);
+                let src = unwrap_reg(operands[1]);
                 ctx.write_reg(dest, ctx.read_reg(&mut graph, src));
             }
             Op::ORR | Op::ADD => {
-                let dest = unwrap_reg(&operands[0]);
+                let dest = unwrap_reg(operands[0]);
                 if dest == Reg::X29 {
                     // ignore writes to frame pointer
                     continue;
                 }
 
-                let a = unwrap_reg(&operands[1]);
+                let a = unwrap_reg(operands[1]);
                 let b = match &operands[2] {
                     Operand::Imm32 {
                         imm: Imm::Unsigned(imm),
@@ -511,12 +526,12 @@ pub fn decompile(
                         ..
                     } => {
                         let imm = graph.add_node(RawNode::Imm(*imm));
-                        ValueSource {
+                        ValueSource::Node {
                             idx: imm,
                             define: 0,
                         }
                     }
-                    _ => ctx.read_reg(&mut graph, unwrap_reg(&operands[2])),
+                    _ => ctx.read_reg(&mut graph, unwrap_reg(operands[2])),
                 };
                 if a == Reg::XZR || a == Reg::WZR {
                     ctx.write_reg(dest, b);
@@ -525,8 +540,8 @@ pub fn decompile(
 
                 let a = ctx.read_reg(&mut graph, a);
                 let node = graph.add_node(RawNode::Op { op, num_defines: 1 });
-                graph.add_edge(a.idx, node, a.create_edge(1));
-                graph.add_edge(b.idx, node, b.create_edge(2));
+                a.create_edge(&mut graph, node, 1);
+                b.create_edge(&mut graph, node, 2);
             }
             _ => {}
         }
