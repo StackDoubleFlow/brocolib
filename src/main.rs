@@ -1,6 +1,7 @@
+mod cil;
 mod codegen_data;
 mod decompiler;
-mod cil;
+mod ssa;
 
 use anyhow::{Context, Result};
 use codegen_data::{DllData, Method as CodegenMethodData, TypeData as CodegenTypeData, TypeEnum};
