@@ -47,7 +47,7 @@ fn main() -> Result<()> {
     let data = std::fs::read("libil2cpp.so").context("Failed to open libil2cpp.so")?;
     let elf = ElfFile64::<Endianness>::parse(data.as_slice())?;
     
-    let metadata = metadata::read(&metadata)?;
+    let metadata = metadata::read(&metadata, elf)?;
 
     println!("Reading codegen data");
     let dll_data = read_dll_data()?;
@@ -113,12 +113,12 @@ fn main() -> Result<()> {
         .find(|mi| mi.offset == offset)
         .unwrap();
     let size = mi.size;
-    decompile(
-        &dll_data,
-        methods_map,
-        mi,
-        section.data_range(offset, size)?.unwrap(),
-    );
+    // decompile(
+    //     &dll_data,
+    //     methods_map,
+    //     mi,
+    //     section.data_range(offset, size)?.unwrap(),
+    // );
 
     Ok(())
 }

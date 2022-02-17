@@ -1,7 +1,10 @@
-use byteorder::{LittleEndian, ReadBytesExt};
-use std::io::Cursor;
-use anyhow::Result;
+mod binary;
+
+use byteorder::{LittleEndian, BigEndian, ReadBytesExt};
+use std::{io::Cursor, collections::HashMap};
+use anyhow::{Result, Context, bail};
 use crate::Elf;
+use binary::find_registration;
 
 pub struct MethodIndex(usize);
 pub struct TypeIndex(usize);
@@ -36,7 +39,7 @@ pub struct Metadata {
 
 
 pub fn read(data: &[u8], elf: Elf) -> Result<Metadata> {
-
+    let (code_registration, metadata_registration) = find_registration(elf)?;
 
     let mut cur = Cursor::new(data);
     let mut header = [0; 66];
