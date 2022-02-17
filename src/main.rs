@@ -1,6 +1,7 @@
 mod codegen_data;
 mod decompiler;
 mod cil;
+mod metadata;
 
 use anyhow::{Context, Result};
 use codegen_data::{DllData, Method as CodegenMethodData, TypeData as CodegenTypeData, TypeEnum};
@@ -10,7 +11,6 @@ use object::read::elf::ElfFile64;
 use object::{Object, ObjectSection};
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::Read;
 use std::path::Path;
 
 fn read_dll_data() -> Result<DllData> {
@@ -40,7 +40,15 @@ pub struct MethodInfo<'a> {
     size: u64,
 }
 
+type Elf<'a> = ElfFile64<'a, Endianness>;
+
 fn main() -> Result<()> {
+    let metadata = std::fs::read("./global-metadata.dat")?;
+    let data = std::fs::read("libil2cpp.so").context("Failed to open libil2cpp.so")?;
+    let elf = ElfFile64::<Endianness>::parse(data.as_slice())?;
+    
+    let metadata = metadata::read(&metadata)?;
+
     println!("Reading codegen data");
     let dll_data = read_dll_data()?;
     println!("Done reading codegen data");
@@ -70,9 +78,7 @@ fn main() -> Result<()> {
     method_infos.sort_by_key(|mi| mi.offset);
     offsets.sort_unstable();
 
-    let mut file = File::open("libil2cpp.so").context("Failed to open libil2cpp.so")?;
-    let mut data = Vec::new();
-    file.read_to_end(&mut data)?;
+    let data = std::fs::read("libil2cpp.so").context("Failed to open libil2cpp.so")?;
     let elf = ElfFile64::<Endianness>::parse(data.as_slice())?;
     let section = elf.section_by_name("il2cpp").unwrap();
     let section_start = section.address();
