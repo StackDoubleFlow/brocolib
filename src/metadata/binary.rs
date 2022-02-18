@@ -5,7 +5,8 @@ use bad64::{Operand, Instruction, DecodeError, Imm, Op, disasm, Reg};
 use byteorder::{LittleEndian, ReadBytesExt};
 use object::{Object, ObjectSection};
 use thiserror::Error;
-use crate::Elf;
+use std::str;
+use crate::{utils, Elf};
 
 
 #[derive(Error, Debug, Clone, Copy)]
@@ -32,7 +33,7 @@ fn analyze_reg_rel(instructions: &[Result<Instruction, DecodeError>]) -> Result<
 }
 
 /// Returns address to (g_CodeRegistration, g_MetadataRegistration)
-pub fn find_registration(elf: Elf) -> Result<(u64, u64)> {
+pub fn find_registration(elf: &Elf) -> Result<(u64, u64)> {
     let init_array = elf.section_by_name(".init_array").context("could not find .init_array section in elf")?;
     let mut init_array_cur = Cursor::new(init_array.data()?);
     for _ in 0..init_array.size() / 8 {
@@ -53,4 +54,53 @@ pub fn find_registration(elf: Elf) -> Result<(u64, u64)> {
         }
     }
     bail!("codegen registration not found");
+}
+
+struct CodeGenModule<'a> {
+    name: &'a str,
+    method_pointers: Vec<u64>,
+}
+
+pub struct CodeRegistration<'a> {
+    modules: Vec<CodeGenModule<'a>>,
+}
+
+impl<'a> CodeRegistration<'a> {
+    pub fn read(elf: &'a Elf, addr: u64) -> Result<Self> {
+        let mut cur = Cursor::new(elf.data());
+        let addr = utils::vaddr_conv(elf, addr);
+        cur.set_position(addr + 8 * 15);
+        let modules_len = cur.read_u64::<LittleEndian>()?;
+        let modules_addr = cur.read_u64::<LittleEndian>()?;
+
+        cur.set_position(utils::vaddr_conv(elf, modules_addr));
+        let module_addrs: Vec<_> = (0..modules_len).map(|_| cur.read_u64::<LittleEndian>()).collect();
+        let mut modules = Vec::with_capacity(modules_len as usize);
+        for module_addr in module_addrs {
+            cur.set_position(utils::vaddr_conv(elf, module_addr?));
+            let name_ptr = utils::vaddr_conv(elf, cur.read_u64::<LittleEndian>()?);
+            let mut name_len = 0;
+            while elf.data()[name_ptr as usize + name_len] != 0 {
+                name_len += 1;
+            }
+            let name = str::from_utf8(&elf.data()[name_ptr as usize..name_ptr as usize + name_len])?;
+
+            let method_ptrs_len = cur.read_u64::<LittleEndian>()?;
+            let method_ptrs_ptr = utils::vaddr_conv(elf, cur.read_u64::<LittleEndian>()?);
+            let mut method_pointers = Vec::with_capacity(method_ptrs_len as usize);
+            cur.set_position(method_ptrs_ptr);
+            for _ in 0..method_ptrs_len {
+                method_pointers.push(utils::vaddr_conv(elf, cur.read_u64::<LittleEndian>()?));
+            }
+
+            modules.push(CodeGenModule {
+                name,
+                method_pointers
+            });
+        }
+
+        Ok(Self {
+            modules
+        })
+    }
 }

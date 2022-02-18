@@ -3,7 +3,7 @@ mod binary;
 use byteorder::{LittleEndian, BigEndian, ReadBytesExt};
 use std::{io::Cursor, collections::HashMap};
 use anyhow::{Result, Context, bail};
-use crate::Elf;
+use crate::{Elf, metadata::binary::CodeRegistration};
 use binary::find_registration;
 
 pub struct MethodIndex(usize);
@@ -38,8 +38,10 @@ pub struct Metadata {
 
 
 
-pub fn read(data: &[u8], elf: Elf) -> Result<Metadata> {
+
+pub fn read(data: &[u8], elf: &Elf) -> Result<Metadata> {
     let (code_registration, metadata_registration) = find_registration(elf)?;
+    CodeRegistration::read(elf, code_registration)?;
 
     let mut cur = Cursor::new(data);
     let mut header = [0; 66];
