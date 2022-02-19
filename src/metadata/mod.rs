@@ -62,13 +62,11 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
     }
     assert!(header[0] == 0xFAB11BAF, "metadata sanity check failed");
     assert!(header[1] == 24, "only il2cpp version 24 is supported");
-    dbg!(&header);
     let str_offset = header[6] as usize;
 
     let methods_offset = header[12];
-    let methods_len = header[13] as usize;
+    let methods_len = header[13] as usize / 32;
     let mut methods = Vec::with_capacity(methods_len);
-    dbg!(methods_offset, methods_len);
     cur.set_position(methods_offset as u64);
     for i in 0..methods_len {
         let mut long_fields = [0; 6];
@@ -96,7 +94,6 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
             offset: 0
         })
     }
-    dbg!(&methods);
 
     Ok(Metadata {
         methods,
