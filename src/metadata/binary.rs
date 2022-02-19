@@ -8,12 +8,14 @@ use thiserror::Error;
 use std::str;
 use crate::{utils, Elf};
 
+use super::Type;
+
 
 #[derive(Error, Debug, Clone, Copy)]
 #[error("error disassembling code")]
 struct DisassembleError;
 
-fn analyze_reg_rel(instructions: &[Result<Instruction, DecodeError>]) -> Result<HashMap<Reg, u64>> {
+fn analyze_reg_rel(elf: &Elf, instructions: &[Result<Instruction, DecodeError>]) -> Result<HashMap<Reg, u64>> {
     let mut map = HashMap::new();
     for ins in instructions {
         let ins = ins.as_ref().map_err(|_| DisassembleError)?;
@@ -24,6 +26,14 @@ fn analyze_reg_rel(instructions: &[Result<Instruction, DecodeError>]) -> Result<
             (Op::ADD, [Operand::Reg { reg: a, .. }, Operand::Reg { reg: b, .. }, Operand::Imm64 { imm: Imm::Unsigned(imm), .. }]) => {
                 ensure!(a == b);
                 map.entry(*a).and_modify(|v| *v += imm);
+            }
+            (Op::LDR, [Operand::Reg { reg: a, .. }, Operand::MemOffset { reg: b, offset: Imm::Signed(imm), .. }]) => {
+                ensure!(a == b);
+                map.entry(*a).and_modify(|v| {
+                    let ptr = utils::vaddr_conv(elf, (*v as i64 + imm) as u64);
+                    // TODO: propogate error
+                    *v = (&elf.data()[ptr as usize..ptr as usize + 8]).read_u64::<LittleEndian>().unwrap(); 
+                });
             }
             _ => {}
         }
@@ -45,11 +55,11 @@ pub fn find_registration(elf: &Elf) -> Result<(u64, u64)> {
         if last_ins.op() != Op::B {
             continue;
         }
-        if let Ok(regs) = analyze_reg_rel(instructions.as_slice()) {
+        if let Ok(regs) = analyze_reg_rel(elf, instructions.as_slice()) {
             let fn_addr = regs[&Reg::X1];
             let code = &elf.data()[fn_addr as usize..fn_addr as usize + 7 * 4];
             let instructions: Vec<_> = disasm(code, fn_addr).collect();
-            let regs = analyze_reg_rel(instructions.as_slice())?;
+            let regs = analyze_reg_rel(elf, instructions.as_slice())?;
             return Ok((regs[&Reg::X0], regs[&Reg::X1]))
         }
     }
@@ -79,11 +89,7 @@ impl<'a> CodeRegistration<'a> {
         for module_addr in module_addrs {
             cur.set_position(utils::vaddr_conv(elf, module_addr?));
             let name_ptr = utils::vaddr_conv(elf, cur.read_u64::<LittleEndian>()?);
-            let mut name_len = 0;
-            while elf.data()[name_ptr as usize + name_len] != 0 {
-                name_len += 1;
-            }
-            let name = str::from_utf8(&elf.data()[name_ptr as usize..name_ptr as usize + name_len])?;
+            let name = utils::get_str(elf.data(), name_ptr as usize)?;
 
             let method_ptrs_len = cur.read_u64::<LittleEndian>()?;
             let method_ptrs_ptr = utils::vaddr_conv(elf, cur.read_u64::<LittleEndian>()?);
@@ -101,6 +107,37 @@ impl<'a> CodeRegistration<'a> {
 
         Ok(Self {
             modules
+        })
+    }
+}
+
+pub struct MetadataRegistration {
+    pub types: Vec<Type>,
+}
+
+impl MetadataRegistration {
+    pub fn read(elf: &Elf, addr: u64) -> Result<Self> {
+        let mut cur = Cursor::new(elf.data());
+        let addr = utils::vaddr_conv(elf, addr);
+        cur.set_position(addr + 8 * 6);
+        let types_len = cur.read_u64::<LittleEndian>()?;
+        let types_addr = cur.read_u64::<LittleEndian>()?;
+
+        cur.set_position(utils::vaddr_conv(elf, types_addr));
+        let type_addrs: Vec<_> = (0..types_len).map(|_| cur.read_u64::<LittleEndian>()).collect();
+        let mut types = Vec::with_capacity(types_len as usize);
+        for type_addr in type_addrs {
+            cur.set_position(utils::vaddr_conv(elf, type_addr?));
+            let data = cur.read_u64::<LittleEndian>()?;
+            let _attrs = cur.read_u16::<LittleEndian>()?;
+            let ty = cur.read_u8()?;
+            let bitfield = cur.read_u8()?;
+            let by_ref = (bitfield >> 7) != 0;
+            types.push(Type { data, ty, by_ref })
+        }
+
+        Ok(Self {
+            types,
         })
     }
 }
