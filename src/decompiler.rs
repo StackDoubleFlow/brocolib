@@ -2,11 +2,11 @@ use std::collections::HashMap;
 use std::fmt;
 
 use super::MethodInfo;
-use crate::codegen_data::{DllData, Method, TypeData, Field};
+use crate::codegen_data::{DllData, Field, Method, TypeData};
 use bad64::{disasm, Imm, Instruction, Op, Operand, Reg};
-use petgraph::EdgeDirection;
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{Graph, NodeIndex};
+use petgraph::EdgeDirection;
 
 type RawGraph<'a> = Graph<RawNode<'a>, RawEdge>;
 
@@ -26,26 +26,18 @@ struct VectorValue {
 
 #[derive(Debug, Clone)]
 enum ValueSource {
-    Node {
-        idx: NodeIndex,
-        define: usize,
-    },
-    SPOffset {
-        offset: i64,
-    }
+    Node { idx: NodeIndex, define: usize },
+    SPOffset { offset: i64 },
 }
 
 impl ValueSource {
-    fn create_edge(&self, graph: &mut RawGraph, to: NodeIndex, operand: usize)  {
+    fn create_edge(&self, graph: &mut RawGraph, to: NodeIndex, operand: usize) {
         match *self {
             ValueSource::Node { idx, define } => {
-                let edge = RawEdge::Value {
-                    define,
-                    operand,
-                };
+                let edge = RawEdge::Value { define, operand };
                 graph.add_edge(idx, to, edge);
-            },
-            _ => panic!("Cannot create edge to non-node value source")
+            }
+            _ => panic!("Cannot create edge to non-node value source"),
         }
     }
 }
@@ -298,18 +290,18 @@ fn unwrap_reg(operand: Operand) -> Reg {
 }
 
 struct WalkChain {
-    cur: NodeIndex
+    cur: NodeIndex,
 }
 
 impl WalkChain {
     fn new(entry: NodeIndex) -> Self {
-        Self {
-            cur: entry,
-        }
+        Self { cur: entry }
     }
 
     fn next(&mut self, graph: &RawGraph) -> Option<NodeIndex> {
-        let mut neighbors = graph.neighbors_directed(self.cur, EdgeDirection::Outgoing).detach();
+        let mut neighbors = graph
+            .neighbors_directed(self.cur, EdgeDirection::Outgoing)
+            .detach();
         while let Some((e, n)) = neighbors.next(graph) {
             if graph.edge_weight(e) == Some(&RawEdge::Chain) {
                 self.cur = n;
@@ -321,23 +313,37 @@ impl WalkChain {
 }
 
 fn dag_operand(graph: &RawGraph, node: NodeIndex, n: usize) -> Option<NodeIndex> {
-    let mut neighbors = graph.neighbors_directed(node, EdgeDirection::Incoming).detach();
+    let mut neighbors = graph
+        .neighbors_directed(node, EdgeDirection::Incoming)
+        .detach();
     while let Some((neighbor_e, neighbor_n)) = neighbors.next(graph) {
         match graph[neighbor_e] {
             RawEdge::Value { operand, .. } if operand == n => return Some(neighbor_n),
             _ => {}
         }
-    } 
+    }
     None
 }
 
-fn load(chain: &mut NodeIndex, ctx: &mut ValueContext, graph: &mut RawGraph, reg: Operand, addr: (Reg, i64)) {
-    let node = graph.add_node(RawNode::Op { op: Op::LDR, num_defines: 1 });
-    let reg = unwrap_reg(reg);
-    ctx.write_reg(reg, ValueSource::Node {
-        idx: node,
-        define: 0,
+fn load(
+    chain: &mut NodeIndex,
+    ctx: &mut ValueContext,
+    graph: &mut RawGraph,
+    reg: Operand,
+    addr: (Reg, i64),
+) {
+    let node = graph.add_node(RawNode::Op {
+        op: Op::LDR,
+        num_defines: 1,
     });
+    let reg = unwrap_reg(reg);
+    ctx.write_reg(
+        reg,
+        ValueSource::Node {
+            idx: node,
+            define: 0,
+        },
+    );
 
     let base = ctx.read_reg(graph, addr.0);
     let offset = graph.add_node(RawNode::Imm(addr.1 as u64));
@@ -419,11 +425,7 @@ pub fn decompile(
                 }
             }
             Op::LDR | Op::LDP => {
-                let num_regs = if op == Op::LDR {
-                    1
-                } else {
-                    2
-                };
+                let num_regs = if op == Op::LDR { 1 } else { 2 };
                 let regs = &operands[..num_regs];
                 let mem_operand = operands[num_regs];
                 let addr = match mem_operand {
@@ -455,7 +457,7 @@ pub fn decompile(
                     } => {
                         if reg == Reg::SP {
                             ctx.s_offset += imm;
-                        } 
+                        }
                         // TODO: pre-idx addressing writes
                         (reg, 0)
                     }
@@ -556,4 +558,3 @@ pub fn decompile(
 
     println!("{:?}", Dot::with_config(&graph, &[]));
 }
-

@@ -1,6 +1,7 @@
+mod binary_deserialize;
+mod cil;
 mod codegen_data;
 mod decompiler;
-mod cil;
 mod metadata;
 mod utils;
 
@@ -47,7 +48,7 @@ fn main() -> Result<()> {
     let metadata = std::fs::read("./global-metadata.dat")?;
     let data = std::fs::read("libil2cpp.so").context("Failed to open libil2cpp.so")?;
     let elf = ElfFile64::<Endianness>::parse(data.as_slice())?;
-    
+
     let metadata = metadata::read(&metadata, &elf)?;
 
     println!("Reading codegen data");

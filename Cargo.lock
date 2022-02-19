@@ -97,6 +97,7 @@ dependencies = [
  "bad64",
  "bad64-sys",
  "bincode",
+ "brocolib_proc_macros",
  "byteorder",
  "clap",
  "object",
@@ -104,6 +105,14 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "brocolib_proc_macros"
+version = "0.1.0"
+dependencies = [
+ "quote",
+ "syn",
 ]
 
 [[package]]

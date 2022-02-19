@@ -1,10 +1,14 @@
 mod binary;
+mod raw;
 
-use byteorder::{LittleEndian, BigEndian, ReadBytesExt};
-use std::{io::Cursor, collections::HashMap};
-use anyhow::{Result, Context, bail};
-use crate::{Elf, metadata::binary::{CodeRegistration, MetadataRegistration}, utils};
+use crate::binary_deserialize::BinaryDeserialize;
+use crate::metadata::binary::{CodeRegistration, MetadataRegistration};
+use crate::{utils, Elf};
+use anyhow::{bail, Context, Result};
 use binary::find_registration;
+use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
+use std::collections::HashMap;
+use std::io::Cursor;
 
 #[derive(Debug)]
 pub struct MethodIndex(usize);
@@ -21,20 +25,17 @@ pub struct Type {
 
 #[derive(Debug)]
 pub struct Method<'a> {
-    name: Option<&'a str>,
+    name: &'a str,
     return_type: TypeIndex,
     param_len: usize,
     param_start: ParamIndex,
     flags: u16,
     token: u32,
-    
+
     offset: u8,
 }
 
-
-pub struct Field {
-
-}
+pub struct Field {}
 
 pub struct TypeDefinition {
     pub name: String,
@@ -42,8 +43,6 @@ pub struct TypeDefinition {
 
     pub token: u32,
 }
-
-
 
 pub struct Metadata<'a> {
     types: Vec<Type>,
@@ -68,30 +67,17 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
     let methods_len = header[13] as usize / 32;
     let mut methods = Vec::with_capacity(methods_len);
     cur.set_position(methods_offset as u64);
-    for i in 0..methods_len {
-        let mut long_fields = [0; 6];
-        for field in &mut long_fields {
-            *field = cur.read_u32::<LittleEndian>()?;
-        }
-        let mut short_fields = [0; 4];
-        for field in &mut short_fields {
-            *field = cur.read_u16::<LittleEndian>()?;
-        }
-        dbg!(utils::get_str(data, str_offset + long_fields[0] as usize)?);
-        println!("{}: {:8x}", i, long_fields[5] as u32);
-        let name = if long_fields[0] as i32 > 0 {
-            Some(utils::get_str(data, str_offset + long_fields[0] as usize)?)
-        } else {
-            None
-        };
+    for _ in 0..methods_len {
+        let raw = raw::Il2CppMethodDefinition::read(&mut cur)?;
+        let name = utils::get_str(data, str_offset + raw.name_index as usize)?;
         methods.push(Method {
             name,
-            return_type: TypeIndex(long_fields[2] as usize),
-            param_len: short_fields[3] as usize,
-            param_start: ParamIndex(long_fields[3] as usize),
-            flags: short_fields[0] as u16,
-            token: long_fields[5] as u32,
-            offset: 0
+            return_type: TypeIndex(raw.return_type as usize),
+            param_len: raw.parameter_count as usize,
+            param_start: ParamIndex(raw.parameter_start as usize),
+            flags: raw.flags,
+            token: raw.token,
+            offset: 0,
         })
     }
 

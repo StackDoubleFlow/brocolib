@@ -1,3 +1,6 @@
+[workspace]
+members = ["proc_macros"]
+
 [package]
 name = "brocolib"
 version = "0.1.0"
@@ -23,3 +26,4 @@ petgraph = "0.6"
 byteorder = "1.4"
 # id-arena = "2.2"
 thiserror = "1"
+brocolib_proc_macros = { path = "./proc_macros"}
