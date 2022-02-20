@@ -31,11 +31,11 @@ pub struct Il2CppTypeDefinition {
     pub declaring_type_index: i32,
     pub parent_index: i32,
     pub element_type_index: i32,
- 
+
     pub generic_container_index: i32,
- 
+
     pub flags: u32,
- 
+
     pub field_start: i32,
     pub method_start: i32,
     pub event_start: i32,
@@ -44,7 +44,7 @@ pub struct Il2CppTypeDefinition {
     pub interfaces_start: i32,
     pub vtable_start: i32,
     pub interface_offsets_start: i32,
- 
+
     pub method_count: u16,
     pub property_count: u16,
     pub field_count: u16,
@@ -53,7 +53,7 @@ pub struct Il2CppTypeDefinition {
     pub vtable_count: u16,
     pub interfaces_count: u16,
     pub interface_offsets_count: u16,
- 
+
     pub bitfield: u32,
     pub token: u32,
 }

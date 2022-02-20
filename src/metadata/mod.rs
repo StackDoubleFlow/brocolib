@@ -16,7 +16,6 @@ pub struct TypeDefinitionIndex(usize);
 
 pub struct Image<'a> {
     name: &'a str,
-
 }
 
 pub struct Type {
@@ -65,7 +64,7 @@ impl<'a> std::ops::Index<TypeIndex> for Metadata<'a> {
 
     fn index(&self, index: TypeIndex) -> &Self::Output {
         &self.types[index.0]
-    }    
+    }
 }
 
 pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
@@ -106,13 +105,15 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
             let mut params = Vec::with_capacity(raw_method.parameter_count as usize);
             let mut params_cur = Cursor::new(data);
             if raw_method.parameter_count > 0 {
-                params_cur.set_position(parameters_offset as u64 + raw_method.parameter_start as u64 * 12);
+                params_cur.set_position(
+                    parameters_offset as u64 + raw_method.parameter_start as u64 * 12,
+                );
             }
             for _ in 0..raw_method.parameter_count {
                 let raw_param = raw::Il2CppParameterDefinition::read(&mut params_cur)?;
                 params.push(Parameter {
                     name: utils::get_str(data, str_offset + raw_param.name_index as usize)?,
-                    ty: TypeIndex(raw_param.type_index as usize)
+                    ty: TypeIndex(raw_param.type_index as usize),
                 })
             }
             methods.push(Method {
@@ -138,8 +139,11 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
         let raw = raw::Il2CppImageDefinition::read(&mut cur)?;
         let name = utils::get_str(data, str_offset + raw.name_index as usize)?;
         let module = code_registration.modules.iter().find(|m| m.name == name);
-        let module = module.with_context(|| format!("count not find code registration module '{}'", name))?;
-        for type_def in &mut type_definitions[raw.type_start as usize..raw.type_start as usize + raw.type_count as usize] {
+        let module = module
+            .with_context(|| format!("count not find code registration module '{}'", name))?;
+        for type_def in &mut type_definitions
+            [raw.type_start as usize..raw.type_start as usize + raw.type_count as usize]
+        {
             for method in &mut type_def.methods {
                 let rid = method.token & 0x00FFFFFF;
                 method.offset = module.method_pointers[rid as usize - 1];

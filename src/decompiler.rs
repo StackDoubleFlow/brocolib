@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 use super::MethodInfo;
-use crate::metadata::{Metadata, Method, Field, Type};
+use crate::metadata::{Field, Metadata, Method, Type};
 use bad64::{disasm, Imm, Instruction, Op, Operand, Reg};
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{Graph, NodeIndex};
@@ -377,7 +377,9 @@ pub fn decompile(
     mi: MethodInfo,
     data: &[u8],
 ) {
-    let instrs: Vec<_> = disasm(data, mi.metadata.offset).map(Result::unwrap).collect();
+    let instrs: Vec<_> = disasm(data, mi.metadata.offset)
+        .map(Result::unwrap)
+        .collect();
 
     let mut graph = RawGraph::new();
     let entry = graph.add_node(RawNode::EntryToken);
