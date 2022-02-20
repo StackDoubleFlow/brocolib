@@ -83,9 +83,8 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
     assert!(header[1] == 24, "only il2cpp version 24 is supported");
 
     let str_offset = header[6] as usize;
-    let parameters_offset = header[22] as usize;
     let methods_offset = header[12];
-    let methods_len = header[13] as usize / 32;
+    let parameters_offset = header[22] as usize;
     let type_defs_offset = header[40];
     let type_defs_len = header[41] as usize / 92;
     let images_offset = header[42];
@@ -97,17 +96,21 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
         let raw = raw::Il2CppTypeDefinition::read(&mut cur)?;
         let name = utils::get_str(data, str_offset + raw.name_index as usize)?;
         let namespace = utils::get_str(data, str_offset + raw.namespace_index as usize)?;
-        let mut methods = Vec::with_capacity(methods_len);
+        let mut methods = Vec::with_capacity(raw.method_count as usize);
+        let mut methods_cur = Cursor::new(data);
+        if raw.method_count > 0 {
+            methods_cur.set_position(methods_offset as u64 + raw.method_start as u64 * 32);
+        }
         for _ in 0..raw.method_count {
-            let mut cur = Cursor::new(data);
-            cur.set_position(methods_offset as u64 + raw.method_start as u64 * 32);
-            let raw_method = raw::Il2CppMethodDefinition::read(&mut cur)?;
+            let raw_method = raw::Il2CppMethodDefinition::read(&mut methods_cur)?;
             let name = utils::get_str(data, str_offset + raw_method.name_index as usize)?;
             let mut params = Vec::with_capacity(raw_method.parameter_count as usize);
+            let mut params_cur = Cursor::new(data);
+            if raw_method.parameter_count > 0 {
+                params_cur.set_position(parameters_offset as u64 + raw_method.parameter_start as u64 * 12);
+            }
             for _ in 0..raw_method.parameter_count {
-                let mut cur = Cursor::new(data);
-                cur.set_position(parameters_offset as u64 + raw_method.parameter_start as u64 * 12);
-                let raw_param = raw::Il2CppParameterDefinition::read(&mut cur)?;
+                let raw_param = raw::Il2CppParameterDefinition::read(&mut params_cur)?;
                 params.push(Parameter {
                     name: utils::get_str(data, str_offset + raw_param.name_index as usize)?,
                     ty: TypeIndex(raw_param.type_index as usize)
