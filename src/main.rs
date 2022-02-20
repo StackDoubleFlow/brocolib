@@ -1,4 +1,3 @@
-mod binary_deserialize;
 mod cil;
 mod decompiler;
 mod metadata;

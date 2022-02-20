@@ -1,4 +1,4 @@
-use crate::binary_deserialize::BinaryDeserialize;
+use binde::BinaryDeserialize;
 
 #[derive(BinaryDeserialize)]
 pub struct Il2CppMethodDefinition {

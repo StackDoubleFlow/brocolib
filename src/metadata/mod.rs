@@ -1,12 +1,13 @@
 mod binary;
 mod raw;
 
-use crate::binary_deserialize::BinaryDeserialize;
 use crate::metadata::binary::{CodeRegistration, MetadataRegistration};
+use crate::metadata::raw::Il2CppTypeDefinition;
 use crate::{utils, Elf};
 use anyhow::{Context, Result};
 use binary::find_registration;
-use byteorder::{LittleEndian, ReadBytesExt};
+use binde::BinaryDeserialize;
+use byteorder::{ReadBytesExt, LE};
 use std::io::Cursor;
 
 #[derive(Debug, Clone, Copy)]
@@ -75,13 +76,14 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
     let mut cur = Cursor::new(data);
     let mut header = [0; 66];
     for h in &mut header {
-        *h = cur.read_u32::<LittleEndian>()?;
+        *h = cur.read_u32::<LE>()?;
     }
     assert!(header[0] == 0xFAB11BAF, "metadata sanity check failed");
     assert!(header[1] == 24, "only il2cpp version 24 is supported");
 
     let str_offset = header[6] as usize;
     let methods_offset = header[12];
+    dbg!(methods_offset);
     let parameters_offset = header[22] as usize;
     let type_defs_offset = header[40];
     let type_defs_len = header[41] as usize / 92;
@@ -91,7 +93,7 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
     let mut type_definitions = Vec::with_capacity(type_defs_len);
     cur.set_position(type_defs_offset as u64);
     for type_idx in 0..type_defs_len {
-        let raw = raw::Il2CppTypeDefinition::read(&mut cur)?;
+        let raw = Il2CppTypeDefinition::deserialize::<LE, _>(&mut cur)?;
         let name = utils::get_str(data, str_offset + raw.name_index as usize)?;
         let namespace = utils::get_str(data, str_offset + raw.namespace_index as usize)?;
         let mut methods = Vec::with_capacity(raw.method_count as usize);
@@ -100,7 +102,7 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
             methods_cur.set_position(methods_offset as u64 + raw.method_start as u64 * 32);
         }
         for _ in 0..raw.method_count {
-            let raw_method = raw::Il2CppMethodDefinition::read(&mut methods_cur)?;
+            let raw_method = raw::Il2CppMethodDefinition::deserialize::<LE, _>(&mut methods_cur)?;
             let name = utils::get_str(data, str_offset + raw_method.name_index as usize)?;
             let mut params = Vec::with_capacity(raw_method.parameter_count as usize);
             let mut params_cur = Cursor::new(data);
@@ -110,7 +112,8 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
                 );
             }
             for _ in 0..raw_method.parameter_count {
-                let raw_param = raw::Il2CppParameterDefinition::read(&mut params_cur)?;
+                let raw_param =
+                    raw::Il2CppParameterDefinition::deserialize::<LE, _>(&mut params_cur)?;
                 params.push(Parameter {
                     name: utils::get_str(data, str_offset + raw_param.name_index as usize)?,
                     ty: TypeIndex(raw_param.type_index as usize),
@@ -136,7 +139,7 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
 
     cur.set_position(images_offset as u64);
     for _ in 0..images_len {
-        let raw = raw::Il2CppImageDefinition::read(&mut cur)?;
+        let raw = raw::Il2CppImageDefinition::deserialize::<LE, _>(&mut cur)?;
         let name = utils::get_str(data, str_offset + raw.name_index as usize)?;
         let module = code_registration.modules.iter().find(|m| m.name == name);
         let module = module

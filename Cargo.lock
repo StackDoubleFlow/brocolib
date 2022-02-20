@@ -56,6 +56,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "binde"
+version = "0.1.0"
+source = "git+https://github.com/StackDoubleFlow/binde#a0446ce289c6ff0ef386c6baa915a2997fa57c73"
+dependencies = [
+ "binde_derive",
+ "byteorder",
+]
+
+[[package]]
+name = "binde_derive"
+version = "0.1.0"
+source = "git+https://github.com/StackDoubleFlow/binde#a0446ce289c6ff0ef386c6baa915a2997fa57c73"
+dependencies = [
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "bindgen"
 version = "0.59.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -87,20 +105,12 @@ dependencies = [
  "anyhow",
  "bad64",
  "bad64-sys",
- "brocolib_proc_macros",
+ "binde",
  "byteorder",
  "clap",
  "object",
  "petgraph",
  "thiserror",
-]
-
-[[package]]
-name = "brocolib_proc_macros"
-version = "0.1.0"
-dependencies = [
- "quote",
- "syn",
 ]
 
 [[package]]
