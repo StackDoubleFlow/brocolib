@@ -4,10 +4,9 @@ mod raw;
 use crate::binary_deserialize::BinaryDeserialize;
 use crate::metadata::binary::{CodeRegistration, MetadataRegistration};
 use crate::{utils, Elf};
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use binary::find_registration;
-use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
-use std::collections::HashMap;
+use byteorder::{LittleEndian, ReadBytesExt};
 use std::io::Cursor;
 
 #[derive(Debug, Clone, Copy)]

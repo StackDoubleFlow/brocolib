@@ -212,7 +212,6 @@ fn load_params(
     graph: &mut RawGraph,
     ctx: &mut ValueContext,
 ) {
-    dbg!(mi.metadata.params.iter().map(|p| codegen_data[p.ty].ty).collect::<Vec<_>>());
     let param_nodes: Vec<_> = mi
         .metadata
         .params

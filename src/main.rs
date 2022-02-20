@@ -1,36 +1,16 @@
 mod binary_deserialize;
 mod cil;
-mod codegen_data;
 mod decompiler;
 mod metadata;
 mod utils;
 
 use anyhow::{Context, Result};
-use codegen_data::{DllData, Method as CodegenMethodData, TypeData as CodegenTypeData, TypeEnum};
 use decompiler::decompile;
 use metadata::Method;
 use object::endian::Endianness;
 use object::read::elf::ElfFile64;
 use object::{Object, ObjectSection};
 use std::collections::HashMap;
-use std::fs::File;
-use std::path::Path;
-
-fn read_dll_data() -> Result<DllData> {
-    Ok(if Path::new("codegen.bc").exists() {
-        let input = File::open("codegen.bc").context("Failed to open JSON dump cache")?;
-        bincode::deserialize_from(input).context("Failed to parse JSON dump cache")?
-    } else {
-        let input = File::open("codegen.json").context("Failed to open JSON dump")?;
-        println!("Codegen data cache has not been created yet, this may take a whie...");
-        let dll_data: DllData =
-            serde_json::from_reader(input).context("Failed to parse JSON dump")?;
-        let cache_file = File::create("codegen.bc").context("Failed to create JSON dump cache")?;
-        bincode::serialize_into(cache_file, &dll_data)
-            .context("Failed to serialize JSON dump cache")?;
-        dll_data
-    })
-}
 
 #[derive(Debug)]
 pub struct MethodInfo<'a> {
