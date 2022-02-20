@@ -8,6 +8,7 @@ mod utils;
 use anyhow::{Context, Result};
 use codegen_data::{DllData, Method as CodegenMethodData, TypeData as CodegenTypeData, TypeEnum};
 use decompiler::decompile;
+use metadata::Method;
 use object::endian::Endianness;
 use object::read::elf::ElfFile64;
 use object::{Object, ObjectSection};
@@ -33,12 +34,7 @@ fn read_dll_data() -> Result<DllData> {
 
 #[derive(Debug)]
 pub struct MethodInfo<'a> {
-    type_data: &'a CodegenTypeData,
-    codegen_data: &'a CodegenMethodData,
-    namespace: &'a str,
-    class: &'a str,
-    name: &'a str,
-    offset: u64,
+    metadata: &'a Method<'a>,
     size: u64,
 }
 
@@ -51,33 +47,22 @@ fn main() -> Result<()> {
 
     let metadata = metadata::read(&metadata, &elf)?;
 
-    println!("Reading codegen data");
-    let dll_data = read_dll_data()?;
-    println!("Done reading codegen data");
-
     let mut method_infos = Vec::new();
     let mut offsets = Vec::new();
-    for ty in &dll_data.types {
-        if matches!(ty.type_enum, TypeEnum::Class) {
-            for method in &ty.methods {
-                if method.offset < 0 {
-                    continue;
-                }
-                let offset = method.offset as u64;
-                method_infos.push(MethodInfo {
-                    type_data: ty,
-                    codegen_data: method,
-                    name: &method.name,
-                    namespace: &ty.this.namespace,
-                    class: &ty.this.name,
-                    offset,
-                    size: 0,
-                });
-                offsets.push(offset);
+    for ty in &metadata.type_definitions {
+        for method in &ty.methods {
+            println!("{}.{}::{} -> {:016x}", ty.namespace, ty.name, method.name, method.offset);
+            if method.offset == 0 {
+                continue;
             }
+            method_infos.push(MethodInfo {
+                metadata: method,
+                size: 0,
+            });
+            offsets.push(method.offset);
         }
     }
-    method_infos.sort_by_key(|mi| mi.offset);
+    method_infos.sort_by_key(|mi| mi.metadata.offset);
     offsets.sort_unstable();
 
     let data = std::fs::read("libil2cpp.so").context("Failed to open libil2cpp.so")?;
@@ -102,25 +87,25 @@ fn main() -> Result<()> {
         info.size = *size;
     }
 
-    let methods_map: HashMap<u64, &CodegenMethodData> = offsets
+    let methods_map: HashMap<u64, &Method> = offsets
         .iter()
         .cloned()
-        .zip(method_infos.iter().map(|mi| mi.codegen_data))
+        .zip(method_infos.iter().map(|mi| mi.metadata))
         .collect();
 
     // BombCutSoundEffect.Init
     let offset = 18356880;
     let mi = method_infos
         .into_iter()
-        .find(|mi| mi.offset == offset)
+        .find(|mi| mi.metadata.offset == offset)
         .unwrap();
     let size = mi.size;
-    // decompile(
-    //     &dll_data,
-    //     methods_map,
-    //     mi,
-    //     section.data_range(offset, size)?.unwrap(),
-    // );
+    decompile(
+        &metadata,
+        methods_map,
+        mi,
+        section.data_range(offset, size)?.unwrap(),
+    );
 
     Ok(())
 }

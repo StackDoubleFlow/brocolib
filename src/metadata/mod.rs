@@ -10,7 +10,7 @@ use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
 use std::collections::HashMap;
 use std::io::Cursor;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct TypeIndex(usize);
 #[derive(Debug)]
 pub struct TypeDefinitionIndex(usize);
@@ -21,28 +21,30 @@ pub struct Image<'a> {
 }
 
 pub struct Type {
-    data: u64,
-    ty: u8,
-    by_ref: bool,
+    pub data: u64,
+    pub ty: u8,
+    pub by_ref: bool,
 }
 
 #[derive(Debug)]
 pub struct Parameter<'a> {
-    name: &'a str,
+    pub name: &'a str,
+    pub ty: TypeIndex,
 }
 
 #[derive(Debug)]
 pub struct Method<'a> {
-    name: &'a str,
-    class: TypeDefinitionIndex,
-    return_type: TypeIndex,
-    params: Vec<Parameter<'a>>,
-    flags: u16,
-    token: u32,
+    pub name: &'a str,
+    pub class: TypeDefinitionIndex,
+    pub return_type: TypeIndex,
+    pub params: Vec<Parameter<'a>>,
+    pub flags: u16,
+    pub token: u32,
 
-    offset: u64,
+    pub offset: u64,
 }
 
+#[derive(Debug)]
 pub struct Field {}
 
 pub struct TypeDefinition<'a> {
@@ -55,8 +57,16 @@ pub struct TypeDefinition<'a> {
 }
 
 pub struct Metadata<'a> {
-    types: Vec<Type>,
-    type_definitions: Vec<TypeDefinition<'a>>,
+    pub types: Vec<Type>,
+    pub type_definitions: Vec<TypeDefinition<'a>>,
+}
+
+impl<'a> std::ops::Index<TypeIndex> for Metadata<'a> {
+    type Output = Type;
+
+    fn index(&self, index: TypeIndex) -> &Self::Output {
+        &self.types[index.0]
+    }    
 }
 
 pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
@@ -100,6 +110,7 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
                 let raw_param = raw::Il2CppParameterDefinition::read(&mut cur)?;
                 params.push(Parameter {
                     name: utils::get_str(data, str_offset + raw_param.name_index as usize)?,
+                    ty: TypeIndex(raw_param.type_index as usize)
                 })
             }
             methods.push(Method {

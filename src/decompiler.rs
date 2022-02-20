@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 use super::MethodInfo;
-use crate::codegen_data::{DllData, Field, Method, TypeData};
+use crate::metadata::{Metadata, Method, Field, Type};
 use bad64::{disasm, Imm, Instruction, Op, Operand, Reg};
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{Graph, NodeIndex};
@@ -48,11 +48,11 @@ enum SpecialParam {
     MethodInfo,
 }
 
-struct CallTarget<'a>(&'a Method);
+struct CallTarget<'a>(&'a Method<'a>);
 
 impl<'a> fmt::Debug for CallTarget<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0.il2cpp_name)
+        write!(f, "{}", self.0.name)
     }
 }
 
@@ -177,23 +177,27 @@ impl ValueContext {
 }
 
 fn is_instance(mi: &Method) -> bool {
-    !mi.specifiers.iter().any(|s| s == "static")
+    dbg!(mi.flags);
+    todo!()
+    // !mi.specifiers.iter().any(|s| s == "static")
 }
 
-fn is_fp_type(ty: &TypeData) -> bool {
-    ty.this.namespace == "System" && (ty.this.name == "Single" || ty.this.name == "Double")
+fn is_fp_type(ty: &Type) -> bool {
+    dbg!(ty.ty);
+    todo!()
+    // ty.this.namespace == "System" && (ty.this.name == "Single" || ty.this.name == "Double")
 }
 
 /// Find the number of register and vector paramters of a method
-fn num_params(codegen_data: &DllData, mi: &Method) -> (usize, usize) {
+fn num_params(codegen_data: &Metadata, mi: &Method) -> (usize, usize) {
     let mut num_r = 0;
     let mut num_v = 0;
     if is_instance(mi) {
         num_r += 1;
     }
 
-    for param in &mi.parameters {
-        let ty = &codegen_data.types[param.parameter_type.type_id as usize];
+    for param in &mi.params {
+        let ty = &codegen_data[param.ty];
         if is_fp_type(ty) {
             num_v += 1;
         } else {
@@ -205,14 +209,14 @@ fn num_params(codegen_data: &DllData, mi: &Method) -> (usize, usize) {
 }
 
 fn load_params(
-    codegen_data: &DllData,
+    codegen_data: &Metadata,
     mi: &MethodInfo,
     graph: &mut RawGraph,
     ctx: &mut ValueContext,
 ) {
     let param_nodes: Vec<_> = mi
-        .codegen_data
-        .parameters
+        .metadata
+        .params
         .iter()
         .enumerate()
         .map(|(i, _)| graph.add_node(RawNode::Param(i)))
@@ -221,7 +225,7 @@ fn load_params(
     let mut cur_v = 0;
     let mut cur_r = 0;
 
-    if is_instance(mi.codegen_data) {
+    if is_instance(mi.metadata) {
         let this = graph.add_node(RawNode::SpecialParam(SpecialParam::This));
         ctx.r[cur_r] = Some(ValueSource::Node {
             idx: this,
@@ -230,9 +234,9 @@ fn load_params(
         cur_r += 1;
     }
 
-    for (i, param) in mi.codegen_data.parameters.iter().enumerate() {
-        let ty_id = param.parameter_type.type_id;
-        let ty = &codegen_data.types[ty_id as usize];
+    for (i, param) in mi.metadata.params.iter().enumerate() {
+        let ty_id = param.ty;
+        let ty = &codegen_data[ty_id];
 
         if is_fp_type(ty) {
             let val = VectorValue {
@@ -370,12 +374,12 @@ fn load(
 }
 
 pub fn decompile(
-    codegen_data: &DllData,
+    codegen_data: &Metadata,
     methods: HashMap<u64, &Method>,
     mi: MethodInfo,
     data: &[u8],
 ) {
-    let instrs: Vec<_> = disasm(data, mi.offset).map(Result::unwrap).collect();
+    let instrs: Vec<_> = disasm(data, mi.metadata.offset).map(Result::unwrap).collect();
 
     let mut graph = RawGraph::new();
     let entry = graph.add_node(RawNode::EntryToken);
