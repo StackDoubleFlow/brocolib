@@ -84,13 +84,13 @@ pub fn find_registration(elf: &Elf) -> Result<(u64, u64)> {
     bail!("codegen registration not found");
 }
 
-struct CodeGenModule<'a> {
-    name: &'a str,
-    method_pointers: Vec<u64>,
+pub struct CodeGenModule<'a> {
+    pub name: &'a str,
+    pub method_pointers: Vec<u64>,
 }
 
 pub struct CodeRegistration<'a> {
-    modules: Vec<CodeGenModule<'a>>,
+    pub modules: Vec<CodeGenModule<'a>>,
 }
 
 impl<'a> CodeRegistration<'a> {
