@@ -177,15 +177,13 @@ impl ValueContext {
 }
 
 fn is_instance(mi: &Method) -> bool {
-    dbg!(mi.flags);
-    todo!()
-    // !mi.specifiers.iter().any(|s| s == "static")
+    // METHOD_ATTRIBUTE_STATIC
+    (mi.flags & 0x0010) != 0
 }
 
 fn is_fp_type(ty: &Type) -> bool {
-    dbg!(ty.ty);
-    todo!()
-    // ty.this.namespace == "System" && (ty.this.name == "Single" || ty.this.name == "Double")
+    // IL2CPP_TYPE_R4 or IL2CPP_TYPE_R8
+    ty.ty == 0xc || ty.ty == 0xd
 }
 
 /// Find the number of register and vector paramters of a method
@@ -214,6 +212,7 @@ fn load_params(
     graph: &mut RawGraph,
     ctx: &mut ValueContext,
 ) {
+    dbg!(mi.metadata.params.iter().map(|p| codegen_data[p.ty].ty).collect::<Vec<_>>());
     let param_nodes: Vec<_> = mi
         .metadata
         .params

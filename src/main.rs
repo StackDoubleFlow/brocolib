@@ -51,7 +51,7 @@ fn main() -> Result<()> {
     let mut offsets = Vec::new();
     for ty in &metadata.type_definitions {
         for method in &ty.methods {
-            println!("{}.{}::{} -> {:016x}", ty.namespace, ty.name, method.name, method.offset);
+            // println!("{}.{}::{} -> {:016x}", ty.namespace, ty.name, method.name, method.offset);
             if method.offset == 0 {
                 continue;
             }
