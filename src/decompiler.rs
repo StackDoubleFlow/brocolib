@@ -28,6 +28,9 @@ struct VectorValue {
 enum ValueSource {
     Node { idx: NodeIndex, define: usize },
     SPOffset { offset: i64 },
+    CalleeSaved,
+    Param(usize),
+    SpecialParam(SpecialParam),
 }
 
 impl ValueSource {
@@ -37,7 +40,17 @@ impl ValueSource {
                 let edge = RawEdge::Value { define, operand };
                 graph.add_edge(idx, to, edge);
             }
-            _ => panic!("Cannot create edge to non-node value source"),
+            ValueSource::Param(i) => {
+                let node = graph.add_node(RawNode::LoadParam(i));
+                let edge = RawEdge::Value { define: 0, operand };
+                graph.add_edge(node, to, edge);
+            }
+            ValueSource::SpecialParam(SpecialParam::This) => {
+                let node = graph.add_node(RawNode::LoadThis);
+                let edge = RawEdge::Value { define: 0, operand };
+                graph.add_edge(node, to, edge);
+            }
+            _ => panic!("Cannot create edge to non-node value source: {:?}", self),
         }
     }
 }
@@ -59,14 +72,13 @@ impl<'a> fmt::Debug for CallTarget<'a> {
 #[derive(Debug)]
 enum RawNode<'a> {
     EntryToken,
-    Param(usize),
-    SpecialParam(SpecialParam),
-    CalleeSaved,
     Imm(u64),
     Op { op: Op, num_defines: usize },
     Call { to: CallTarget<'a> },
     LoadField(&'a Field),
     StoreField(&'a Field),
+    LoadParam(usize),
+    LoadThis,
     Ret,
     MemOffset,
     Operand(Operand),
@@ -178,7 +190,7 @@ impl ValueContext {
 
 fn is_instance(mi: &Method) -> bool {
     // METHOD_ATTRIBUTE_STATIC
-    (mi.flags & 0x0010) != 0
+    (mi.flags & 0x0010) == 0
 }
 
 fn is_fp_type(ty: &Type) -> bool {
@@ -209,26 +221,13 @@ fn num_params(codegen_data: &Metadata, mi: &Method) -> (usize, usize) {
 fn load_params(
     codegen_data: &Metadata,
     mi: &MethodInfo,
-    graph: &mut RawGraph,
     ctx: &mut ValueContext,
 ) {
-    let param_nodes: Vec<_> = mi
-        .metadata
-        .params
-        .iter()
-        .enumerate()
-        .map(|(i, _)| graph.add_node(RawNode::Param(i)))
-        .collect();
-
     let mut cur_v = 0;
     let mut cur_r = 0;
 
     if is_instance(mi.metadata) {
-        let this = graph.add_node(RawNode::SpecialParam(SpecialParam::This));
-        ctx.r[cur_r] = Some(ValueSource::Node {
-            idx: this,
-            define: 0,
-        });
+        ctx.r[cur_r] = Some(ValueSource::SpecialParam(SpecialParam::This));
         cur_r += 1;
     }
 
@@ -242,42 +241,25 @@ fn load_params(
                 // I think the size here should always be 8? not sure
                 // size: if ty.this.name == "Single" { 4 } else { 8 },
                 size: 8,
-                source: ValueSource::Node {
-                    idx: param_nodes[i],
-                    define: 0,
-                },
+                source: ValueSource::Param(i)
             };
             ctx.v[cur_v].push(val);
             cur_v += 1;
             continue;
         }
 
-        ctx.r[cur_r] = Some(ValueSource::Node {
-            idx: param_nodes[i],
-            define: 0,
-        });
+        ctx.r[cur_r] = Some(ValueSource::Param(i));
         cur_r += 1;
     }
 
-    let method_info = graph.add_node(RawNode::SpecialParam(SpecialParam::MethodInfo));
-    ctx.r[cur_r] = Some(ValueSource::Node {
-        idx: method_info,
-        define: 0,
-    });
+    ctx.r[cur_r] = Some(ValueSource::SpecialParam(SpecialParam::MethodInfo));
 
-    let calee_saved = graph.add_node(RawNode::CalleeSaved);
     for i in 19..=30 {
-        ctx.r[i] = Some(ValueSource::Node {
-            idx: calee_saved,
-            define: 0,
-        })
+        ctx.r[i] = Some(ValueSource::CalleeSaved)
     }
     for i in 0..=8 {
         ctx.v[i].push(VectorValue {
-            source: ValueSource::Node {
-                idx: calee_saved,
-                define: 0,
-            },
+            source: ValueSource::CalleeSaved,
             offset: 0,
             size: 8,
         });
@@ -371,6 +353,20 @@ fn load(
     *chain = node;
 }
 
+pub fn decompile_fn(
+    codegen_data: &Metadata,
+    methods: HashMap<u64, &Method>,
+    mi: MethodInfo,
+    data: &[u8],
+) {
+    let instrs: Vec<_> = disasm(data, mi.metadata.offset)
+        .map(Result::unwrap)
+        .collect();
+    
+    let mut initial_ctx = ValueContext::default();
+    load_params(codegen_data, &mi, &mut initial_ctx);
+}
+
 pub fn decompile(
     codegen_data: &Metadata,
     methods: HashMap<u64, &Method>,
@@ -384,8 +380,8 @@ pub fn decompile(
     let mut graph = RawGraph::new();
     let entry = graph.add_node(RawNode::EntryToken);
 
-    let mut ctx = Default::default();
-    load_params(codegen_data, &mi, &mut graph, &mut ctx);
+    let mut ctx: ValueContext = Default::default();
+    load_params(codegen_data, &mi, &mut ctx);
     // dbg!(ctx);
 
     let mut chain = entry;
@@ -562,3 +558,30 @@ pub fn decompile(
 
     println!("{:?}", Dot::with_config(&graph, &[]));
 }
+
+// pub struct BasicBlock<'a> {
+//     instrs: &'a [Instruction],
+//     successors: Vec<usize>,
+// }
+
+// pub struct RawFunction<'a> {
+//     blocks: Vec<BasicBlock<'a>>,
+//     mi: MethodInfo<'a>,
+// }
+
+// impl<'a> RawFunction<'a> {
+//     pub fn new(mi: MethodInfo<'a>, data: &[u8]) -> Self {
+//         let mut blocks = Vec::new();
+
+//         let instrs: Vec<_> = disasm(data, mi.metadata.offset)
+//             .map(Result::unwrap)
+//             .collect();
+
+        
+        
+//         Self {
+//             blocks,
+//             mi,
+//         }
+//     }
+// }
