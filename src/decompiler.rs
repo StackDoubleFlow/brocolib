@@ -346,7 +346,7 @@ fn load(
         node,
         RawEdge::Value {
             define: 0,
-            operand: 1,
+            operand: 0,
         },
     );
     graph.add_edge(*chain, node, RawEdge::Chain);
