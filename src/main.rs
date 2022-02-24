@@ -4,7 +4,7 @@ mod metadata;
 mod utils;
 
 use anyhow::{Context, Result};
-use decompiler::decompile;
+use decompiler::decompile_fn;
 use metadata::Method;
 use object::endian::Endianness;
 use object::read::elf::ElfFile64;
@@ -79,7 +79,7 @@ fn main() -> Result<()> {
         .find(|mi| mi.metadata.offset == offset)
         .unwrap();
     let size = mi.size;
-    decompile(
+    decompile_fn(
         &metadata,
         methods_map,
         mi,

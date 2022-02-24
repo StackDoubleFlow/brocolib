@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 
 use super::MethodInfo;
@@ -10,14 +10,14 @@ use petgraph::EdgeDirection;
 
 type RawGraph<'a> = Graph<RawNode<'a>, RawEdge>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct StackValue {
     offset: i64,
     size: u32,
     source: ValueSource,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct VectorValue {
     offset: i32,
     size: u32,
@@ -96,7 +96,7 @@ enum RawEdge {
     Chain,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct ValueContext {
     r: [Option<ValueSource>; 31],
     v: [Vec<VectorValue>; 32],
@@ -218,11 +218,7 @@ fn num_params(codegen_data: &Metadata, mi: &Method) -> (usize, usize) {
     (num_r, num_v)
 }
 
-fn load_params(
-    codegen_data: &Metadata,
-    mi: &MethodInfo,
-    ctx: &mut ValueContext,
-) {
+fn load_params(codegen_data: &Metadata, mi: &MethodInfo, ctx: &mut ValueContext) {
     let mut cur_v = 0;
     let mut cur_r = 0;
 
@@ -241,7 +237,7 @@ fn load_params(
                 // I think the size here should always be 8? not sure
                 // size: if ty.this.name == "Single" { 4 } else { 8 },
                 size: 8,
-                source: ValueSource::Param(i)
+                source: ValueSource::Param(i),
             };
             ctx.v[cur_v].push(val);
             cur_v += 1;
@@ -353,6 +349,55 @@ fn load(
     *chain = node;
 }
 
+fn get_branch_label(ins: &Instruction) -> Option<u64> {
+    match ins.op() {
+        Op::CBZ | Op::CBNZ => {
+            let target = match ins.operands()[1] {
+                Operand::Label(Imm::Unsigned(addr)) => addr,
+                _ => unreachable!(),
+            };
+            Some(target)
+        }
+        _ => None,
+    }
+}
+
+// oh my god this is so bad
+fn split_ins_into_blocks<'a>(
+    branch_targets: &BTreeSet<u64>,
+    mut instrs: &'a [Instruction],
+) -> HashMap<u64, BasicBlock<'a>> {
+    let mut blocks = HashMap::new();
+    let mut iter = branch_targets.iter();
+    let mut a = match iter.next() {
+        Some(&a) => a,
+        None => {
+            blocks.insert(instrs[0].address(), BasicBlock::new(instrs));
+            return blocks;
+        }
+    };
+
+    while let Some(to) = instrs.iter().position(|ins| ins.address() == a) {
+        blocks.insert(
+            instrs[0].address(),
+            BasicBlock {
+                instrs: &instrs[..to],
+                predecessors: Vec::new(),
+                decompiled: None,
+            },
+        );
+        instrs = &instrs[to..];
+        a = match iter.next() {
+            Some(&a) => a,
+            None => {
+                blocks.insert(instrs[0].address(), BasicBlock::new(instrs));
+                return blocks;
+            }
+        };
+    }
+    blocks
+}
+
 pub fn decompile_fn(
     codegen_data: &Metadata,
     methods: HashMap<u64, &Method>,
@@ -362,30 +407,87 @@ pub fn decompile_fn(
     let instrs: Vec<_> = disasm(data, mi.metadata.offset)
         .map(Result::unwrap)
         .collect();
-    
+
     let mut initial_ctx = ValueContext::default();
     load_params(codegen_data, &mi, &mut initial_ctx);
+
+    // Find all local branches
+    let mut branch_targets = BTreeSet::new();
+    for ins in &instrs {
+        if let Some(target) = get_branch_label(ins) {
+            let fn_start = mi.metadata.offset;
+            let fn_end = fn_start + mi.size;
+            if (fn_start..fn_end).contains(&target) {
+                branch_targets.insert(target);
+            }
+        }
+    }
+
+    let mut blocks = split_ins_into_blocks(&branch_targets, &instrs);
+    let block_keys: Vec<_> = blocks.keys().cloned().collect();
+
+    // Find block predecessors
+    for &offset in &block_keys {
+        for ins in blocks[&offset].instrs {
+            if let Some(target) = get_branch_label(ins) {
+                blocks.entry(target).and_modify(|block| {
+                    if !block.predecessors.contains(&offset) {
+                        block.predecessors.push(offset)
+                    }
+                });
+            }
+        }
+    }
+
+    let entry_block = blocks.get_mut(&mi.metadata.offset).unwrap();
+    entry_block.decompiled = Some(decompile(
+        codegen_data,
+        &methods,
+        &mi,
+        initial_ctx,
+        entry_block.instrs,
+    ));
+
+    loop {
+        let mut did_something = false;
+        for &offset in &block_keys {
+            if blocks[&offset].decompiled.is_some() {
+                continue;
+            }
+            for predecessor in blocks[&offset].predecessors.clone() {
+                if let Some(predecessor_decompiled) = &blocks[&predecessor].decompiled {
+                    let ctx = predecessor_decompiled.context_after.clone();
+                    let block = blocks.get_mut(&offset).unwrap();
+                    block.decompiled =
+                        Some(decompile(codegen_data, &methods, &mi, ctx, block.instrs));
+                    did_something = true;
+                    break;
+                }
+            }
+        }
+        if !did_something {
+            break;
+        }
+    }
 }
 
-pub fn decompile(
-    codegen_data: &Metadata,
-    methods: HashMap<u64, &Method>,
-    mi: MethodInfo,
-    data: &[u8],
-) {
-    let instrs: Vec<_> = disasm(data, mi.metadata.offset)
-        .map(Result::unwrap)
-        .collect();
+struct DecompiledBlock<'a> {
+    graph: RawGraph<'a>,
+    context_after: ValueContext,
+}
 
+fn decompile<'a>(
+    codegen_data: &Metadata,
+    methods: &HashMap<u64, &'a Method>,
+    mi: &MethodInfo,
+    mut ctx: ValueContext,
+    instrs: &[Instruction],
+) -> DecompiledBlock<'a> {
     let mut graph = RawGraph::new();
     let entry = graph.add_node(RawNode::EntryToken);
 
-    let mut ctx: ValueContext = Default::default();
-    load_params(codegen_data, &mi, &mut ctx);
-    // dbg!(ctx);
-
     let mut chain = entry;
-    for inst in &instrs {
+    for inst in instrs {
         println!("{}", inst);
         let op = inst.op();
         let operands = inst.operands();
@@ -549,39 +651,25 @@ pub fn decompile(
         }
     }
 
-    let mut walk = WalkChain::new(entry);
-    // if let Some(n) = walk.next(&graph) {
-    //     match graph.node_weight(n) {
-
-    //     }
-    // }
-
     println!("{:?}", Dot::with_config(&graph, &[]));
+    DecompiledBlock {
+        graph,
+        context_after: ctx,
+    }
 }
 
-// pub struct BasicBlock<'a> {
-//     instrs: &'a [Instruction],
-//     successors: Vec<usize>,
-// }
+pub struct BasicBlock<'a> {
+    instrs: &'a [Instruction],
+    predecessors: Vec<u64>,
+    decompiled: Option<DecompiledBlock<'a>>,
+}
 
-// pub struct RawFunction<'a> {
-//     blocks: Vec<BasicBlock<'a>>,
-//     mi: MethodInfo<'a>,
-// }
-
-// impl<'a> RawFunction<'a> {
-//     pub fn new(mi: MethodInfo<'a>, data: &[u8]) -> Self {
-//         let mut blocks = Vec::new();
-
-//         let instrs: Vec<_> = disasm(data, mi.metadata.offset)
-//             .map(Result::unwrap)
-//             .collect();
-
-        
-        
-//         Self {
-//             blocks,
-//             mi,
-//         }
-//     }
-// }
+impl<'a> BasicBlock<'a> {
+    fn new(instrs: &'a [Instruction]) -> Self {
+        Self {
+            instrs,
+            predecessors: Vec::new(),
+            decompiled: None,
+        }
+    }
+}

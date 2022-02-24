@@ -83,7 +83,6 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
 
     let str_offset = header[6] as usize;
     let methods_offset = header[12];
-    dbg!(methods_offset);
     let parameters_offset = header[22] as usize;
     let type_defs_offset = header[40];
     let type_defs_len = header[41] as usize / 92;
