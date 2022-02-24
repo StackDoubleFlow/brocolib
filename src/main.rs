@@ -1,6 +1,7 @@
 mod cil;
 mod decompiler;
 mod metadata;
+mod split_before;
 mod utils;
 
 use anyhow::{Context, Result};

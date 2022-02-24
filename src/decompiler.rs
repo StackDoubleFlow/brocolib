@@ -3,6 +3,7 @@ use std::fmt;
 
 use super::MethodInfo;
 use crate::metadata::{Field, Metadata, Method, Type};
+use crate::split_before::SplitBefore;
 use bad64::{disasm, Imm, Instruction, Op, Operand, Reg};
 use petgraph::dot::{Config, Dot};
 use petgraph::graph::{Graph, NodeIndex};
@@ -362,42 +363,6 @@ fn get_branch_label(ins: &Instruction) -> Option<u64> {
     }
 }
 
-// oh my god this is so bad
-fn split_ins_into_blocks<'a>(
-    branch_targets: &BTreeSet<u64>,
-    mut instrs: &'a [Instruction],
-) -> HashMap<u64, BasicBlock<'a>> {
-    let mut blocks = HashMap::new();
-    let mut iter = branch_targets.iter();
-    let mut a = match iter.next() {
-        Some(&a) => a,
-        None => {
-            blocks.insert(instrs[0].address(), BasicBlock::new(instrs));
-            return blocks;
-        }
-    };
-
-    while let Some(to) = instrs.iter().position(|ins| ins.address() == a) {
-        blocks.insert(
-            instrs[0].address(),
-            BasicBlock {
-                instrs: &instrs[..to],
-                predecessors: Vec::new(),
-                decompiled: None,
-            },
-        );
-        instrs = &instrs[to..];
-        a = match iter.next() {
-            Some(&a) => a,
-            None => {
-                blocks.insert(instrs[0].address(), BasicBlock::new(instrs));
-                return blocks;
-            }
-        };
-    }
-    blocks
-}
-
 pub fn decompile_fn(
     codegen_data: &Metadata,
     methods: HashMap<u64, &Method>,
@@ -423,7 +388,10 @@ pub fn decompile_fn(
         }
     }
 
-    let mut blocks = split_ins_into_blocks(&branch_targets, &instrs);
+    let mut blocks: HashMap<_, _> =
+        SplitBefore::new(&instrs, |x| branch_targets.contains(&x.address()))
+            .map(|instrs| (instrs[0].address(), BasicBlock::new(instrs)))
+            .collect();
     let block_keys: Vec<_> = blocks.keys().cloned().collect();
 
     // Find block predecessors
