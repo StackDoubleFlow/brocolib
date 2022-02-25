@@ -267,6 +267,9 @@ fn num_params(codegen_data: &Metadata, mi: &Method) -> (usize, usize) {
         }
     }
 
+    // MethodInfo param
+    num_r += 1;
+
     (num_r, num_v)
 }
 
