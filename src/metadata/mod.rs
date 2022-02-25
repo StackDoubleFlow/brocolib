@@ -153,7 +153,8 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
             let raw_field = raw::Il2CppFieldDefinition::deserialize::<LE, _>(&mut fields_cur)?;
             let name = utils::get_str(data, str_offset + raw_field.name_index as usize)?;
             let field_offset_addr = metadata_registration.field_offset_addrs[type_idx];
-            let mut field_offset_data = &elf.data()[field_offset_addr as usize + field_idx as usize * 4..];
+            let mut field_offset_data =
+                &elf.data()[field_offset_addr as usize + field_idx as usize * 4..];
             fields.push(Field {
                 name,
                 ty: TypeIndex(raw_field.type_index as usize),

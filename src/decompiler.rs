@@ -69,9 +69,17 @@ impl ValueSource {
         }
     }
 
-    fn load_offset<'md>(&self, offset: i32, graph: &mut RawGraph<'md>, metadata: &'md Metadata, mi: &Method) -> NodeIndex {
+    fn load_offset<'md>(
+        &self,
+        offset: i32,
+        graph: &mut RawGraph<'md>,
+        metadata: &'md Metadata,
+        mi: &Method,
+    ) -> NodeIndex {
         let ty = self.ty(metadata, mi);
-        if ty.ty == 0x12 /* IL2CPP_TYPE_CLASS */ {
+        if ty.ty == 0x12
+        /* IL2CPP_TYPE_CLASS */
+        {
             let def_index = ty.data as usize;
             let def = &metadata.type_definitions[def_index];
             let field = field_at_offset(def, offset);
@@ -83,9 +91,18 @@ impl ValueSource {
         }
     }
 
-    fn store_offset<'md>(&self, val: ValueSource, offset: i32, graph: &mut RawGraph<'md>, metadata: &'md Metadata, mi: &Method) -> NodeIndex {
+    fn store_offset<'md>(
+        &self,
+        val: ValueSource,
+        offset: i32,
+        graph: &mut RawGraph<'md>,
+        metadata: &'md Metadata,
+        mi: &Method,
+    ) -> NodeIndex {
         let ty = self.ty(metadata, mi);
-        if ty.ty == 0x12 /* IL2CPP_TYPE_CLASS */ {
+        if ty.ty == 0x12
+        /* IL2CPP_TYPE_CLASS */
+        {
             let def_index = ty.data as usize;
             let def = &metadata.type_definitions[def_index];
             let field = field_at_offset(def, offset);
@@ -129,17 +146,12 @@ enum RawNode<'a> {
 }
 
 fn field_at_offset<'a>(def: &'a TypeDefinition, offset: i32) -> &'a Field<'a> {
-    dbg!(&def.fields, offset);
     for i in 0..def.fields.len() - 1 {
         if def.fields[i].offset <= offset && def.fields[i + 1].offset > offset {
             return &def.fields[i];
         }
     }
     def.fields.last().unwrap()
-}
-
-impl<'a> RawNode<'a> {
-    
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -367,14 +379,20 @@ fn load<'md>(
     reg: Operand,
     addr: (Reg, i64),
     metadata: &'md Metadata,
-    mi: &Method
+    mi: &Method,
 ) {
     let base = ctx.read_reg(graph, addr.0);
     let offset = addr.1 as i32;
     let node = base.load_offset(offset, graph, metadata, mi);
     let reg = unwrap_reg(reg);
-    ctx.write_reg(reg, ValueSource::Node { idx: node, define: 0 });
-    
+    ctx.write_reg(
+        reg,
+        ValueSource::Node {
+            idx: node,
+            define: 0,
+        },
+    );
+
     // let node = graph.add_node(RawNode::Op {
     //     op: Op::LDR,
     //     num_defines: 1,
@@ -388,7 +406,6 @@ fn load<'md>(
     //     },
     // );
 
-    
     // let mem_operand_node = graph.add_node(RawNode::MemOffset);
     // base.create_edge(graph, mem_operand_node, 0);
     // graph.add_edge(
@@ -418,7 +435,7 @@ fn store<'md>(
     reg: Operand,
     addr: (Reg, i64),
     metadata: &'md Metadata,
-    mi: &Method
+    mi: &Method,
 ) {
     let base = ctx.read_reg(graph, addr.0);
     let offset = addr.1 as i32;
@@ -588,7 +605,15 @@ fn decompile<'a>(
                 };
                 if addr.0 != Reg::SP {
                     for &reg in regs {
-                        load(&mut chain, &mut ctx, &mut graph, reg, addr, codegen_data, &mi.metadata);
+                        load(
+                            &mut chain,
+                            &mut ctx,
+                            &mut graph,
+                            reg,
+                            addr,
+                            codegen_data,
+                            &mi.metadata,
+                        );
                     }
                 }
             }
@@ -625,7 +650,15 @@ fn decompile<'a>(
                 } else {
                     // let node = graph.add_node(RawNode::Op { op, num_defines: 0 });
                     for (i, &reg) in regs.iter().enumerate() {
-                        store(&mut chain, &mut ctx, &mut graph, reg, addr, codegen_data, mi.metadata);
+                        store(
+                            &mut chain,
+                            &mut ctx,
+                            &mut graph,
+                            reg,
+                            addr,
+                            codegen_data,
+                            mi.metadata,
+                        );
                         // let reg = ctx.read_reg(&mut graph, unwrap_reg(reg));
                         // reg.create_edge(&mut graph, node, i);
                     }

@@ -20,8 +20,9 @@ where
             return None;
         }
         let ret = Some(self.n);
-        
-        let idx = self.v
+
+        let idx = self
+            .v
             .iter()
             .skip(1)
             .position(|x| (self.pred)(x))
@@ -37,12 +38,8 @@ where
     P: FnMut(&T) -> bool,
 {
     pub fn new(slice: &'a [T], mut pred: P) -> Self {
-        let idx =
-            slice
-            .iter()
-            .position(|x| pred(x))
-            .unwrap_or(slice.len());
-        
+        let idx = slice.iter().position(|x| pred(x)).unwrap_or(slice.len());
+
         SplitBefore {
             v: &slice[idx..],
             n: &slice[..idx],

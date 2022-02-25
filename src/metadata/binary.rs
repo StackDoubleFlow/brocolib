@@ -157,7 +157,6 @@ impl MetadataRegistration {
             types.push(Type { data, ty, by_ref })
         }
 
-
         cur.set_position(addr + 8 * 10);
         let offsets_len = cur.read_u64::<LittleEndian>()?;
         let offsets_addr = cur.read_u64::<LittleEndian>()?;
@@ -166,6 +165,9 @@ impl MetadataRegistration {
             .map(|_| cur.read_u64::<LittleEndian>())
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
-        Ok(Self { types, field_offset_addrs })
+        Ok(Self {
+            types,
+            field_offset_addrs,
+        })
     }
 }
