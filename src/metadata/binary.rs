@@ -131,6 +131,7 @@ impl<'a> CodeRegistration<'a> {
 
 pub struct MetadataRegistration {
     pub types: Vec<Type>,
+    pub field_offset_addrs: Vec<u64>,
 }
 
 impl MetadataRegistration {
@@ -156,6 +157,15 @@ impl MetadataRegistration {
             types.push(Type { data, ty, by_ref })
         }
 
-        Ok(Self { types })
+
+        cur.set_position(addr + 8 * 10);
+        let offsets_len = cur.read_u64::<LittleEndian>()?;
+        let offsets_addr = cur.read_u64::<LittleEndian>()?;
+        cur.set_position(utils::vaddr_conv(elf, offsets_addr));
+        let field_offset_addrs = (0..offsets_len)
+            .map(|_| cur.read_u64::<LittleEndian>())
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        Ok(Self { types, field_offset_addrs })
     }
 }

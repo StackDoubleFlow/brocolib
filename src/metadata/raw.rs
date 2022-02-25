@@ -75,3 +75,10 @@ pub struct Il2CppImageDefinition {
     pub custom_attribute_start: i32,
     pub custom_attribute_count: u32,
 }
+
+#[derive(BinaryDeserialize)]
+pub struct Il2CppFieldDefinition {
+    pub name_index: i32,
+    pub type_index: i32,
+    pub token: u32,
+}

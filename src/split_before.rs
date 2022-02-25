@@ -1,3 +1,5 @@
+/// Iterator which splits a slice inclusively keeping the matched item at the start of the next returned slice.
+/// The current implementation fails if the first item is matched
 pub struct SplitBefore<'a, T, P>
 where
     P: FnMut(&T) -> bool,

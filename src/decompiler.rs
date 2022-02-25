@@ -2,7 +2,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 
 use super::MethodInfo;
-use crate::metadata::{Field, Metadata, Method, Type};
+use crate::metadata::{Field, Metadata, Method, Type, TypeDefinition};
 use crate::split_before::SplitBefore;
 use bad64::{disasm, Imm, Instruction, Op, Operand, Reg};
 use petgraph::dot::{Config, Dot};
@@ -54,6 +54,49 @@ impl ValueSource {
             _ => panic!("Cannot create edge to non-node value source: {:?}", self),
         }
     }
+
+    fn ty<'md>(&self, metadata: &'md Metadata, mi: &Method) -> &'md Type {
+        match self {
+            ValueSource::Param(param_idx) => {
+                let param = &mi.params[*param_idx];
+                &metadata[param.ty]
+            }
+            ValueSource::SpecialParam(SpecialParam::This) => {
+                let def = &metadata[mi.class];
+                &metadata[def.byval_ty]
+            }
+            _ => todo!("{:?}", self),
+        }
+    }
+
+    fn load_offset<'md>(&self, offset: i32, graph: &mut RawGraph<'md>, metadata: &'md Metadata, mi: &Method) -> NodeIndex {
+        let ty = self.ty(metadata, mi);
+        if ty.ty == 0x12 /* IL2CPP_TYPE_CLASS */ {
+            let def_index = ty.data as usize;
+            let def = &metadata.type_definitions[def_index];
+            let field = field_at_offset(def, offset);
+            let node = graph.add_node(RawNode::LoadField(field));
+            self.create_edge(graph, node, 0);
+            node
+        } else {
+            todo!();
+        }
+    }
+
+    fn store_offset<'md>(&self, val: ValueSource, offset: i32, graph: &mut RawGraph<'md>, metadata: &'md Metadata, mi: &Method) -> NodeIndex {
+        let ty = self.ty(metadata, mi);
+        if ty.ty == 0x12 /* IL2CPP_TYPE_CLASS */ {
+            let def_index = ty.data as usize;
+            let def = &metadata.type_definitions[def_index];
+            let field = field_at_offset(def, offset);
+            let node = graph.add_node(RawNode::StoreField(field));
+            self.create_edge(graph, node, 0);
+            val.create_edge(graph, node, 1);
+            node
+        } else {
+            todo!();
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -76,8 +119,8 @@ enum RawNode<'a> {
     Imm(u64),
     Op { op: Op, num_defines: usize },
     Call { to: CallTarget<'a> },
-    LoadField(&'a Field),
-    StoreField(&'a Field),
+    LoadField(&'a Field<'a>),
+    StoreField(&'a Field<'a>),
     LoadParam(usize),
     LoadThis,
     Ret,
@@ -85,11 +128,19 @@ enum RawNode<'a> {
     Operand(Operand),
 }
 
-// next instruction analysis
-// 1. loop through each input operand
-// 2. check to see which node the value was defined in
-// 3. create link from node found in last step to current node with concat or split if necessary
-// 4. put new defines in map
+fn field_at_offset<'a>(def: &'a TypeDefinition, offset: i32) -> &'a Field<'a> {
+    dbg!(&def.fields, offset);
+    for i in 0..def.fields.len() - 1 {
+        if def.fields[i].offset <= offset && def.fields[i + 1].offset > offset {
+            return &def.fields[i];
+        }
+    }
+    def.fields.last().unwrap()
+}
+
+impl<'a> RawNode<'a> {
+    
+}
 
 #[derive(Debug, PartialEq, Eq)]
 enum RawEdge {
@@ -306,46 +357,70 @@ fn dag_operand(graph: &RawGraph, node: NodeIndex, n: usize) -> Option<NodeIndex>
     None
 }
 
-fn load(
+fn load<'md>(
     chain: &mut NodeIndex,
     ctx: &mut ValueContext,
-    graph: &mut RawGraph,
+    graph: &mut RawGraph<'md>,
     reg: Operand,
     addr: (Reg, i64),
+    metadata: &'md Metadata,
+    mi: &Method
 ) {
-    let node = graph.add_node(RawNode::Op {
-        op: Op::LDR,
-        num_defines: 1,
-    });
-    let reg = unwrap_reg(reg);
-    ctx.write_reg(
-        reg,
-        ValueSource::Node {
-            idx: node,
-            define: 0,
-        },
-    );
-
     let base = ctx.read_reg(graph, addr.0);
-    let offset = graph.add_node(RawNode::Imm(addr.1 as u64));
-    let mem_operand_node = graph.add_node(RawNode::MemOffset);
-    base.create_edge(graph, mem_operand_node, 0);
-    graph.add_edge(
-        offset,
-        mem_operand_node,
-        RawEdge::Value {
-            define: 0,
-            operand: 1,
-        },
-    );
-    graph.add_edge(
-        mem_operand_node,
-        node,
-        RawEdge::Value {
-            define: 0,
-            operand: 0,
-        },
-    );
+    let offset = addr.1 as i32;
+    let node = base.load_offset(offset, graph, metadata, mi);
+    let reg = unwrap_reg(reg);
+    ctx.write_reg(reg, ValueSource::Node { idx: node, define: 0 });
+    
+    // let node = graph.add_node(RawNode::Op {
+    //     op: Op::LDR,
+    //     num_defines: 1,
+    // });
+    // let reg = unwrap_reg(reg);
+    // ctx.write_reg(
+    //     reg,
+    //     ValueSource::Node {
+    //         idx: node,
+    //         define: 0,
+    //     },
+    // );
+
+    
+    // let mem_operand_node = graph.add_node(RawNode::MemOffset);
+    // base.create_edge(graph, mem_operand_node, 0);
+    // graph.add_edge(
+    //     offset,
+    //     mem_operand_node,
+    //     RawEdge::Value {
+    //         define: 0,
+    //         operand: 1,
+    //     },
+    // );
+    // graph.add_edge(
+    //     mem_operand_node,
+    //     node,
+    //     RawEdge::Value {
+    //         define: 0,
+    //         operand: 0,
+    //     },
+    // );
+    graph.add_edge(*chain, node, RawEdge::Chain);
+    *chain = node;
+}
+
+fn store<'md>(
+    chain: &mut NodeIndex,
+    ctx: &mut ValueContext,
+    graph: &mut RawGraph<'md>,
+    reg: Operand,
+    addr: (Reg, i64),
+    metadata: &'md Metadata,
+    mi: &Method
+) {
+    let base = ctx.read_reg(graph, addr.0);
+    let offset = addr.1 as i32;
+    let val = ctx.read_reg(graph, unwrap_reg(reg));
+    let node = base.store_offset(val, offset, graph, metadata, mi);
     graph.add_edge(*chain, node, RawEdge::Chain);
     *chain = node;
 }
@@ -445,7 +520,7 @@ struct DecompiledBlock<'a> {
 }
 
 fn decompile<'a>(
-    codegen_data: &Metadata,
+    codegen_data: &'a Metadata,
     methods: &HashMap<u64, &'a Method>,
     mi: &MethodInfo,
     mut ctx: ValueContext,
@@ -510,7 +585,7 @@ fn decompile<'a>(
                 };
                 if addr.0 != Reg::SP {
                     for &reg in regs {
-                        load(&mut chain, &mut ctx, &mut graph, reg, addr);
+                        load(&mut chain, &mut ctx, &mut graph, reg, addr, codegen_data, &mi.metadata);
                     }
                 }
             }
@@ -545,34 +620,35 @@ fn decompile<'a>(
                         ctx.write_stack(offset, 8, ctx.read_reg(&mut graph, reg));
                     }
                 } else {
-                    let node = graph.add_node(RawNode::Op { op, num_defines: 0 });
+                    // let node = graph.add_node(RawNode::Op { op, num_defines: 0 });
                     for (i, &reg) in regs.iter().enumerate() {
-                        let reg = ctx.read_reg(&mut graph, unwrap_reg(reg));
-                        reg.create_edge(&mut graph, node, i);
+                        store(&mut chain, &mut ctx, &mut graph, reg, addr, codegen_data, mi.metadata);
+                        // let reg = ctx.read_reg(&mut graph, unwrap_reg(reg));
+                        // reg.create_edge(&mut graph, node, i);
                     }
 
-                    let base = ctx.read_reg(&mut graph, addr.0);
-                    let offset = graph.add_node(RawNode::Imm(addr.1 as u64));
-                    let mem_operand_node = graph.add_node(RawNode::MemOffset);
-                    base.create_edge(&mut graph, mem_operand_node, 0);
-                    graph.add_edge(
-                        offset,
-                        mem_operand_node,
-                        RawEdge::Value {
-                            define: 0,
-                            operand: 1,
-                        },
-                    );
-                    graph.add_edge(
-                        mem_operand_node,
-                        node,
-                        RawEdge::Value {
-                            define: 0,
-                            operand: regs.len(),
-                        },
-                    );
-                    graph.add_edge(chain, node, RawEdge::Chain);
-                    chain = node;
+                    // let base = ctx.read_reg(&mut graph, addr.0);
+                    // let offset = graph.add_node(RawNode::Imm(addr.1 as u64));
+                    // let mem_operand_node = graph.add_node(RawNode::MemOffset);
+                    // base.create_edge(&mut graph, mem_operand_node, 0);
+                    // graph.add_edge(
+                    //     offset,
+                    //     mem_operand_node,
+                    //     RawEdge::Value {
+                    //         define: 0,
+                    //         operand: 1,
+                    //     },
+                    // );
+                    // graph.add_edge(
+                    //     mem_operand_node,
+                    //     node,
+                    //     RawEdge::Value {
+                    //         define: 0,
+                    //         operand: regs.len(),
+                    //     },
+                    // );
+                    // graph.add_edge(chain, node, RawEdge::Chain);
+                    // chain = node;
                 }
             }
             Op::MOV => {

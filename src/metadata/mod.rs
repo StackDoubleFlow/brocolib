@@ -12,7 +12,7 @@ use std::io::Cursor;
 
 #[derive(Debug, Clone, Copy)]
 pub struct TypeIndex(usize);
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct TypeDefinitionIndex(usize);
 
 pub struct Image<'a> {
@@ -44,13 +44,20 @@ pub struct Method<'a> {
 }
 
 #[derive(Debug)]
-pub struct Field {}
+pub struct Field<'a> {
+    pub name: &'a str,
+    pub ty: TypeIndex,
+    pub token: u32,
+    pub offset: i32,
+}
 
 pub struct TypeDefinition<'a> {
     pub name: &'a str,
     pub namespace: &'a str,
+    pub byval_ty: TypeIndex,
 
     pub methods: Vec<Method<'a>>,
+    pub fields: Vec<Field<'a>>,
 
     pub token: u32,
 }
@@ -65,6 +72,14 @@ impl<'a> std::ops::Index<TypeIndex> for Metadata<'a> {
 
     fn index(&self, index: TypeIndex) -> &Self::Output {
         &self.types[index.0]
+    }
+}
+
+impl<'a> std::ops::Index<TypeDefinitionIndex> for Metadata<'a> {
+    type Output = TypeDefinition<'a>;
+
+    fn index(&self, index: TypeDefinitionIndex) -> &Self::Output {
+        &self.type_definitions[index.0]
     }
 }
 
@@ -84,6 +99,7 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
     let str_offset = header[6] as usize;
     let methods_offset = header[12];
     let parameters_offset = header[22] as usize;
+    let fields_offset = header[24] as usize;
     let type_defs_offset = header[40];
     let type_defs_len = header[41] as usize / 92;
     let images_offset = header[42];
@@ -128,10 +144,29 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
                 offset: 0,
             })
         }
+        let mut fields = Vec::with_capacity(raw.field_count as usize);
+        let mut fields_cur = Cursor::new(data);
+        if raw.field_count > 0 {
+            fields_cur.set_position(fields_offset as u64 + raw.field_start as u64 * 12);
+        }
+        for field_idx in 0..raw.field_count {
+            let raw_field = raw::Il2CppFieldDefinition::deserialize::<LE, _>(&mut fields_cur)?;
+            let name = utils::get_str(data, str_offset + raw_field.name_index as usize)?;
+            let field_offset_addr = metadata_registration.field_offset_addrs[type_idx];
+            let mut field_offset_data = &elf.data()[field_offset_addr as usize + field_idx as usize * 4..];
+            fields.push(Field {
+                name,
+                ty: TypeIndex(raw_field.type_index as usize),
+                token: raw_field.token,
+                offset: field_offset_data.read_i32::<LE>()?,
+            });
+        }
         type_definitions.push(TypeDefinition {
             name,
             namespace,
+            byval_ty: TypeIndex(raw.byval_type_index as usize),
             methods,
+            fields,
             token: raw.token,
         })
     }
