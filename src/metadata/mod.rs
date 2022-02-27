@@ -19,6 +19,7 @@ pub struct Image<'a> {
     name: &'a str,
 }
 
+#[derive(Debug)]
 pub struct Type {
     pub data: u64,
     pub ty: u8,

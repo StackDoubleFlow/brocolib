@@ -85,7 +85,15 @@ impl ValueSource {
             let field = field_at_offset(def, offset);
             let node = graph.add_node(RawNode::LoadField(field));
             self.create_edge(graph, node, 0);
-            node
+            if field.offset != offset {
+                let field_val = ValueSource::Node {
+                    idx: node,
+                    define: 0,
+                };
+                field_val.load_offset(offset - field.offset, graph, metadata, mi)
+            } else {
+                node
+            }
         } else {
             todo!();
         }
@@ -106,6 +114,15 @@ impl ValueSource {
             let def_index = ty.data as usize;
             let def = &metadata.type_definitions[def_index];
             let field = field_at_offset(def, offset);
+            // let src = if field.offset != offset {
+            //     let field_val = ValueSource::Node {
+            //         idx: node,
+            //         define: 0,
+            //     };
+            //     field_val.load_offset(offset - field.offset, graph, metadata, mi)
+            // } else {
+            //     node
+            // };
             let node = graph.add_node(RawNode::StoreField(field));
             self.create_edge(graph, node, 0);
             val.create_edge(graph, node, 1);
@@ -262,6 +279,11 @@ fn is_fp_type(ty: &Type) -> bool {
     ty.ty == 0xc || ty.ty == 0xd
 }
 
+fn is_value_type(ty: &Type) -> bool {
+    // IL2CPP_TYPE_VALUETYPE
+    ty.ty == 0x11
+}
+
 /// Find the number of register and vector paramters of a method
 fn num_params(codegen_data: &Metadata, mi: &Method) -> (usize, usize) {
     let mut num_r = 0;
@@ -288,6 +310,7 @@ fn num_params(codegen_data: &Metadata, mi: &Method) -> (usize, usize) {
 fn load_params(codegen_data: &Metadata, mi: &MethodInfo, ctx: &mut ValueContext) {
     let mut cur_v = 0;
     let mut cur_r = 0;
+    let mut cur_s = 0;
 
     if is_instance(mi.metadata) {
         ctx.r[cur_r] = Some(ValueSource::SpecialParam(SpecialParam::This));
@@ -309,10 +332,19 @@ fn load_params(codegen_data: &Metadata, mi: &MethodInfo, ctx: &mut ValueContext)
             ctx.v[cur_v].push(val);
             cur_v += 1;
             continue;
+        } else if is_value_type(ty) {
+            // TODO: Size calculations. This is just the size for Vector3.
+            let size = 12;
+            ctx.s.push(StackValue {
+                offset: cur_s,
+                size,
+                source: ValueSource::Param(i),
+            });
+            cur_s += size as i64;
+        } else {
+            ctx.r[cur_r] = Some(ValueSource::Param(i));
+            cur_r += 1;
         }
-
-        ctx.r[cur_r] = Some(ValueSource::Param(i));
-        cur_r += 1;
     }
 
     ctx.r[cur_r] = Some(ValueSource::SpecialParam(SpecialParam::MethodInfo));
@@ -320,7 +352,7 @@ fn load_params(codegen_data: &Metadata, mi: &MethodInfo, ctx: &mut ValueContext)
     for i in 19..=30 {
         ctx.r[i] = Some(ValueSource::CalleeSaved)
     }
-    for i in 0..=8 {
+    for i in 8..=15 {
         ctx.v[i].push(VectorValue {
             source: ValueSource::CalleeSaved,
             offset: 0,
