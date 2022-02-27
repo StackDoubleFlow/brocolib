@@ -8,16 +8,13 @@ use anyhow::{Context, Result};
 use binary::find_registration;
 use binde::BinaryDeserialize;
 use byteorder::{ReadBytesExt, LE};
+use std::collections::HashMap;
 use std::io::Cursor;
 
 #[derive(Debug, Clone, Copy)]
 pub struct TypeIndex(usize);
 #[derive(Debug, Clone, Copy)]
 pub struct TypeDefinitionIndex(usize);
-
-pub struct Image<'a> {
-    name: &'a str,
-}
 
 #[derive(Debug)]
 pub struct Type {
@@ -66,6 +63,8 @@ pub struct TypeDefinition<'a> {
 pub struct Metadata<'a> {
     pub types: Vec<Type>,
     pub type_definitions: Vec<TypeDefinition<'a>>,
+
+    pub type_map: HashMap<(&'a str, &'a str), TypeDefinitionIndex>,
 }
 
 impl<'a> std::ops::Index<TypeIndex> for Metadata<'a> {
@@ -163,6 +162,7 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
                 offset: field_offset_data.read_i32::<LE>()?,
             });
         }
+
         type_definitions.push(TypeDefinition {
             name,
             namespace,
@@ -190,8 +190,16 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
         }
     }
 
+    let type_map = type_definitions
+        .iter()
+        .enumerate()
+        .map(|(i, def)| ((def.namespace, def.name), TypeDefinitionIndex(i)))
+        .collect();
+
     Ok(Metadata {
         type_definitions,
         types: metadata_registration.types,
+
+        type_map,
     })
 }

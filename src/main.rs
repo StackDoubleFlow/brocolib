@@ -1,16 +1,23 @@
 mod cil;
+mod codegen_api;
 mod decompiler;
 mod metadata;
 mod split_before;
 mod utils;
 
 use anyhow::{Context, Result};
+use codegen_api::CodegenAddrs;
 use decompiler::decompile_fn;
 use metadata::Method;
 use object::endian::Endianness;
 use object::read::elf::ElfFile64;
 use object::{Object, ObjectSection};
 use std::collections::HashMap;
+use thiserror::Error;
+
+#[derive(Error, Debug, Clone, Copy)]
+#[error("error disassembling code")]
+struct DisassembleError;
 
 #[derive(Debug)]
 pub struct MethodInfo<'a> {
@@ -67,21 +74,20 @@ fn main() -> Result<()> {
         info.size = *size;
     }
 
-    let methods_map: HashMap<u64, &Method> = offsets
-        .iter()
-        .cloned()
-        .zip(method_infos.iter().map(|mi| mi.metadata))
-        .collect();
+    let methods_map: HashMap<u64, &MethodInfo> =
+        offsets.iter().cloned().zip(method_infos.iter()).collect();
+    let codegen_addrs = CodegenAddrs::find(&elf, &metadata, &methods_map)?;
 
     // BombCutSoundEffect.Init
     let offset = 18356880;
     let mi = method_infos
-        .into_iter()
+        .iter()
         .find(|mi| mi.metadata.offset == offset)
         .unwrap();
     let size = mi.size;
     decompile_fn(
         &metadata,
+        codegen_addrs,
         methods_map,
         mi,
         section.data_range(offset, size)?.unwrap(),

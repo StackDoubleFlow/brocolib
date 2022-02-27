@@ -2,6 +2,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt;
 
 use super::MethodInfo;
+use crate::codegen_api::CodegenAddrs;
 use crate::metadata::{Field, Metadata, Method, Type, TypeDefinition};
 use crate::split_before::SplitBefore;
 use bad64::{disasm, Imm, Instruction, Op, Operand, Reg};
@@ -199,7 +200,7 @@ fn decode_vreg(reg: u32) -> (u32, u32) {
     } else if (Reg::V0 as u32..=Reg::V31 as u32).contains(&reg) {
         (16, reg - Reg::V0 as u32)
     } else {
-        unreachable!(reg)
+        unreachable!("{:?}", reg)
     }
 }
 
@@ -492,8 +493,9 @@ fn get_branch_label(ins: &Instruction) -> Option<u64> {
 
 pub fn decompile_fn(
     codegen_data: &Metadata,
-    methods: HashMap<u64, &Method>,
-    mi: MethodInfo,
+    codegen_addrs: CodegenAddrs,
+    methods: HashMap<u64, &MethodInfo>,
+    mi: &MethodInfo,
     data: &[u8],
 ) {
     let instrs: Vec<_> = disasm(data, mi.metadata.offset)
@@ -501,7 +503,7 @@ pub fn decompile_fn(
         .collect();
 
     let mut initial_ctx = ValueContext::default();
-    load_params(codegen_data, &mi, &mut initial_ctx);
+    load_params(codegen_data, mi, &mut initial_ctx);
 
     // Find all local branches
     let mut branch_targets = BTreeSet::new();
@@ -538,7 +540,7 @@ pub fn decompile_fn(
     entry_block.decompiled = Some(decompile(
         codegen_data,
         &methods,
-        &mi,
+        mi,
         initial_ctx,
         entry_block.instrs,
     ));
@@ -554,7 +556,7 @@ pub fn decompile_fn(
                     let ctx = predecessor_decompiled.context_after.clone();
                     let block = blocks.get_mut(&offset).unwrap();
                     block.decompiled =
-                        Some(decompile(codegen_data, &methods, &mi, ctx, block.instrs));
+                        Some(decompile(codegen_data, &methods, mi, ctx, block.instrs));
                     did_something = true;
                     break;
                 }
@@ -573,7 +575,7 @@ struct DecompiledBlock<'a> {
 
 fn decompile<'a>(
     codegen_data: &'a Metadata,
-    methods: &HashMap<u64, &'a Method>,
+    methods: &HashMap<u64, &'a MethodInfo>,
     mi: &MethodInfo,
     mut ctx: ValueContext,
     instrs: &[Instruction],
@@ -594,7 +596,7 @@ fn decompile<'a>(
                     _ => unreachable!(),
                 };
                 let to = match methods.get(&addr) {
-                    Some(&mi) => mi,
+                    Some(&mi) => mi.metadata,
                     None => continue,
                 };
                 let node = graph.add_node(RawNode::Call { to: CallTarget(to) });
@@ -644,7 +646,7 @@ fn decompile<'a>(
                             reg,
                             addr,
                             codegen_data,
-                            &mi.metadata,
+                            mi.metadata,
                         );
                     }
                 }

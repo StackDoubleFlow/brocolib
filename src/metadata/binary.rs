@@ -1,4 +1,4 @@
-use crate::{utils, Elf};
+use crate::{utils, DisassembleError, Elf};
 use anyhow::{bail, ensure, Context, Result};
 use bad64::{disasm, DecodeError, Imm, Instruction, Op, Operand, Reg};
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -6,13 +6,8 @@ use object::{Object, ObjectSection};
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::str;
-use thiserror::Error;
 
 use super::Type;
-
-#[derive(Error, Debug, Clone, Copy)]
-#[error("error disassembling code")]
-struct DisassembleError;
 
 fn analyze_reg_rel(
     elf: &Elf,
