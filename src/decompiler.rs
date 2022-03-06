@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, BTreeMap};
 use std::fmt;
 
 use super::MethodInfo;
@@ -487,6 +487,13 @@ fn get_branch_label(ins: &Instruction) -> Option<u64> {
             };
             Some(target)
         }
+        Op::B | Op::BL => {
+            let target = match ins.operands()[0] {
+                Operand::Label(Imm::Unsigned(addr)) => addr,
+                _ => unreachable!(),
+            };
+            Some(target)
+        }
         _ => None,
     }
 }
@@ -498,7 +505,9 @@ pub fn decompile_fn(
     mi: &MethodInfo,
     data: &[u8],
 ) {
-    let instrs: Vec<_> = disasm(data, mi.metadata.offset)
+    let fn_start = mi.metadata.offset;
+    let fn_end = fn_start + mi.size;
+    let instrs: Vec<_> = disasm(data, fn_start)
         .map(Result::unwrap)
         .collect();
 
@@ -509,24 +518,63 @@ pub fn decompile_fn(
     let mut branch_targets = BTreeSet::new();
     for ins in &instrs {
         if let Some(target) = get_branch_label(ins) {
-            let fn_start = mi.metadata.offset;
-            let fn_end = fn_start + mi.size;
             if (fn_start..fn_end).contains(&target) {
                 branch_targets.insert(target);
             }
         }
     }
 
-    let mut blocks: HashMap<_, _> =
-        SplitBefore::new(&instrs, |x| branch_targets.contains(&x.address()))
-            .map(|instrs| (instrs[0].address(), BasicBlock::new(instrs)))
-            .collect();
+    let (instrs, raise_nri) = match instrs.last() {
+        Some(last) if dbg!(get_branch_label(last)) == Some(dbg!(codegen_addrs.raise_nri)) => {
+            (&instrs[..instrs.len() - 1], Some(last.address()))
+        },
+        _ => (instrs.as_slice(), None)
+    };
+
+    let mut blocks = BTreeMap::new();
+    let mut i = 0;
+    while i < instrs.len() {
+        let start = i;
+        let addr = instrs[i].address();
+        while i < instrs.len() {
+            let ins = &instrs[i];
+            if i != start && branch_targets.contains(&ins.address()) {
+                break;
+            }
+            i += 1;
+            if let Some(target) = get_branch_label(ins) {
+                dbg!(target, raise_nri);
+                if raise_nri == Some(target) {
+                    continue;
+                }
+                if (fn_start..fn_end).contains(&target) {
+                    break;
+                }
+            }
+        }
+        println!("inserting block at {}", addr);
+        blocks.insert(addr, BasicBlock::new(&instrs[start..i]));
+    }
+
+    // match instrs.last() {
+    //     Some(last) if get_branch_label(last) == Some(codegen_addrs.raise_nri) => {
+
+    //     },
+    //     _ => None,
+    // };
+    // let raise_nri = 
+
+    // let mut blocks: HashMap<_, _> =
+    //     SplitBefore::new(&instrs, |x| branch_targets.contains(&x.address()))
+    //         .map(|instrs| (instrs[0].address(), BasicBlock::new(instrs)))
+    //         .collect();
     let block_keys: Vec<_> = blocks.keys().cloned().collect();
 
     // Find block predecessors
     for &offset in &block_keys {
         for ins in blocks[&offset].instrs {
             if let Some(target) = get_branch_label(ins) {
+                
                 blocks.entry(target).and_modify(|block| {
                     if !block.predecessors.contains(&offset) {
                         block.predecessors.push(offset)
