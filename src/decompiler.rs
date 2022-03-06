@@ -33,6 +33,7 @@ enum ValueSource {
     CalleeSaved,
     Param(usize),
     SpecialParam(SpecialParam),
+    NullCheck(Box<ValueSource>),
 }
 
 impl ValueSource {
@@ -154,6 +155,7 @@ enum RawNode<'a> {
     Imm(u64),
     Op { op: Op, num_defines: usize },
     Call { to: CallTarget<'a> },
+    Callvirt { to: CallTarget<'a> },
     LoadField(&'a Field<'a>),
     StoreField(&'a Field<'a>),
     LoadParam(usize),
@@ -525,7 +527,7 @@ pub fn decompile_fn(
     }
 
     let (instrs, raise_nri) = match instrs.last() {
-        Some(last) if dbg!(get_branch_label(last)) == Some(dbg!(codegen_addrs.raise_nri)) => {
+        Some(last) if get_branch_label(last) == Some(codegen_addrs.raise_nri) => {
             (&instrs[..instrs.len() - 1], Some(last.address()))
         },
         _ => (instrs.as_slice(), None)
@@ -543,7 +545,6 @@ pub fn decompile_fn(
             }
             i += 1;
             if let Some(target) = get_branch_label(ins) {
-                dbg!(target, raise_nri);
                 if raise_nri == Some(target) {
                     continue;
                 }
@@ -587,6 +588,7 @@ pub fn decompile_fn(
     let entry_block = blocks.get_mut(&mi.metadata.offset).unwrap();
     entry_block.decompiled = Some(decompile(
         codegen_data,
+        raise_nri,
         &methods,
         mi,
         initial_ctx,
@@ -604,7 +606,7 @@ pub fn decompile_fn(
                     let ctx = predecessor_decompiled.context_after.clone();
                     let block = blocks.get_mut(&offset).unwrap();
                     block.decompiled =
-                        Some(decompile(codegen_data, &methods, mi, ctx, block.instrs));
+                        Some(decompile(codegen_data, raise_nri, &methods, mi, ctx, block.instrs));
                     did_something = true;
                     break;
                 }
@@ -623,6 +625,7 @@ struct DecompiledBlock<'a> {
 
 fn decompile<'a>(
     codegen_data: &'a Metadata,
+    raise_nri: Option<u64>,
     methods: &HashMap<u64, &'a MethodInfo>,
     mi: &MethodInfo,
     mut ctx: ValueContext,
@@ -650,8 +653,17 @@ fn decompile<'a>(
                 let node = graph.add_node(RawNode::Call { to: CallTarget(to) });
                 let (num_r, num_v) = num_params(codegen_data, to);
 
+                let mut args_start = 0;
+                if is_instance(to) {
+                    if let ValueSource::NullCheck(val) = ctx.read_reg(&mut graph, Reg::X0) {
+                        graph[node] = RawNode::Callvirt { to: CallTarget(to )};
+                        val.create_edge(&mut graph, node, 0);
+                        args_start = 1;
+                    }
+                }
+
                 // TODO: Fix operand index
-                for i in 0..num_r {
+                for i in args_start..num_r {
                     use Reg::*;
                     let arg_regs = [X0, X1, X2, X3, X4, X5, X6, X7];
                     let reg = ctx.read_reg(&mut graph, arg_regs[i]);
@@ -669,6 +681,17 @@ fn decompile<'a>(
                     let node = graph.add_node(RawNode::Ret);
                     graph.add_edge(chain, node, RawEdge::Chain);
                     chain = node;
+                }
+            }
+            Op::CBZ => {
+                let reg = unwrap_reg(operands[0]);
+                let addr = match operands[1] {
+                    Operand::Label(Imm::Unsigned(addr)) => addr,
+                    _ => unreachable!(),
+                };
+                if Some(addr) == raise_nri {
+                    let val = ctx.read_reg(&mut graph, reg);
+                    ctx.write_reg(reg, ValueSource::NullCheck(Box::new(val)));
                 }
             }
             Op::LDR | Op::LDP => {
