@@ -21,7 +21,7 @@ fn find_raise_nri(
 
     let end = string_eq.offset + size;
     let mut ins_data = &elf.data()[end as usize - 4..end as usize];
-    let ins = decode(ins_data.read_u32::<LE>()?, string_eq.offset).map_err(|_| DisassembleError)?;
+    let ins = decode(ins_data.read_u32::<LE>()?, end - 4).map_err(|_| DisassembleError)?;
     match (ins.op(), ins.operands()[0]) {
         (Op::BL, Operand::Label(Imm::Unsigned(imm))) => Ok(imm),
         _ => bail!("Unexpected instruction when searching for find_raise_nri"),
