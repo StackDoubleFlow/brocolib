@@ -84,7 +84,7 @@ fn main() -> Result<()> {
         offsets.iter().cloned().zip(method_infos.iter()).collect();
     let codegen_addrs = CodegenAddrs::find(&elf, &metadata, &methods_map)?;
 
-    let offset = find_method_addr(&metadata, "", "BombCutSoundEffect", "Init");
+    let offset = find_method_addr(&metadata, "", "BombCutSoundEffect", "LateUpdate");
     let mi = method_infos
         .iter()
         .find(|mi| mi.metadata.offset == offset)

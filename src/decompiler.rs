@@ -655,9 +655,11 @@ fn decompile<'a>(
 
                 let mut args_start = 0;
                 if is_instance(to) {
+                    ctx.read_reg(&mut graph, Reg::X0);
                     if let ValueSource::NullCheck(val) = ctx.read_reg(&mut graph, Reg::X0) {
-                        graph[node] = RawNode::Callvirt { to: CallTarget(to )};
+                        graph[node] = RawNode::Callvirt { to: CallTarget(to) };
                         val.create_edge(&mut graph, node, 0);
+                        ctx.write_reg(Reg::X0, *val);
                         args_start = 1;
                     }
                 }
