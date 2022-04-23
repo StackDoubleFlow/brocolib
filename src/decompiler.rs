@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap, BTreeMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 
 use super::MethodInfo;
@@ -509,9 +509,7 @@ pub fn decompile_fn(
 ) {
     let fn_start = mi.metadata.offset;
     let fn_end = fn_start + mi.size;
-    let instrs: Vec<_> = disasm(data, fn_start)
-        .map(Result::unwrap)
-        .collect();
+    let instrs: Vec<_> = disasm(data, fn_start).map(Result::unwrap).collect();
 
     let mut initial_ctx = ValueContext::default();
     load_params(codegen_data, mi, &mut initial_ctx);
@@ -529,8 +527,8 @@ pub fn decompile_fn(
     let (instrs, raise_nri) = match instrs.last() {
         Some(last) if get_branch_label(last) == Some(codegen_addrs.raise_nri) => {
             (&instrs[..instrs.len() - 1], Some(last.address()))
-        },
-        _ => (instrs.as_slice(), None)
+        }
+        _ => (instrs.as_slice(), None),
     };
 
     let mut blocks = BTreeMap::new();
@@ -563,7 +561,7 @@ pub fn decompile_fn(
     //     },
     //     _ => None,
     // };
-    // let raise_nri = 
+    // let raise_nri =
 
     // let mut blocks: HashMap<_, _> =
     //     SplitBefore::new(&instrs, |x| branch_targets.contains(&x.address()))
@@ -575,7 +573,6 @@ pub fn decompile_fn(
     for &offset in &block_keys {
         for ins in blocks[&offset].instrs {
             if let Some(target) = get_branch_label(ins) {
-                
                 blocks.entry(target).and_modify(|block| {
                     if !block.predecessors.contains(&offset) {
                         block.predecessors.push(offset)
@@ -605,8 +602,14 @@ pub fn decompile_fn(
                 if let Some(predecessor_decompiled) = &blocks[&predecessor].decompiled {
                     let ctx = predecessor_decompiled.context_after.clone();
                     let block = blocks.get_mut(&offset).unwrap();
-                    block.decompiled =
-                        Some(decompile(codegen_data, raise_nri, &methods, mi, ctx, block.instrs));
+                    block.decompiled = Some(decompile(
+                        codegen_data,
+                        raise_nri,
+                        &methods,
+                        mi,
+                        ctx,
+                        block.instrs,
+                    ));
                     did_something = true;
                     break;
                 }

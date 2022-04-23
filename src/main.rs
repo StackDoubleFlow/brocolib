@@ -8,7 +8,7 @@ mod utils;
 use anyhow::{Context, Result};
 use codegen_api::CodegenAddrs;
 use decompiler::decompile_fn;
-use metadata::{Method, Metadata};
+use metadata::{Metadata, Method};
 use object::endian::Endianness;
 use object::read::elf::ElfFile64;
 use object::{Object, ObjectSection};
@@ -27,10 +27,20 @@ pub struct MethodInfo<'a> {
 
 type Elf<'a> = ElfFile64<'a, Endianness>;
 
-fn find_method_addr<'a>(metadata: &Metadata<'a>, namespace: &'a str, class: &'a str, name: &str) -> u64 {
+fn find_method_addr<'a>(
+    metadata: &Metadata<'a>,
+    namespace: &'a str,
+    class: &'a str,
+    name: &str,
+) -> u64 {
     let class = metadata.type_map[&(namespace, class)];
     let class = &metadata[class];
-    class.methods.iter().find(|m| m.name == name).unwrap().offset
+    class
+        .methods
+        .iter()
+        .find(|m| m.name == name)
+        .unwrap()
+        .offset
 }
 
 fn main() -> Result<()> {

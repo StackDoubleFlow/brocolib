@@ -1,3 +1,6 @@
+[workspace]
+members = ["il2cpp_metadata_raw"]
+
 [package]
 name = "brocolib"
 version = "0.1.0"
@@ -21,3 +24,4 @@ byteorder = "1.4"
 # id-arena = "2.2"
 thiserror = "1"
 binde = { git = "https://github.com/StackDoubleFlow/binde" }
+il2cpp_metadata_raw = { path = "./il2cpp_metadata_raw" }

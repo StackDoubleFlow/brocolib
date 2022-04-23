@@ -8,8 +8,8 @@ use anyhow::{Context, Result};
 use binary::find_registration;
 use binde::BinaryDeserialize;
 use byteorder::{ReadBytesExt, LE};
+use il2cpp_metadata_raw::Metadata as RawMetadata;
 use std::collections::HashMap;
-use std::io::Cursor;
 
 #[derive(Debug, Clone, Copy)]
 pub struct TypeIndex(usize);
@@ -88,49 +88,33 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
     let code_registration = CodeRegistration::read(elf, code_registration)?;
     let metadata_registration = MetadataRegistration::read(elf, metadata_registration)?;
 
-    let mut cur = Cursor::new(data);
-    let mut header = [0; 66];
-    for h in &mut header {
-        *h = cur.read_u32::<LE>()?;
-    }
-    assert!(header[0] == 0xFAB11BAF, "metadata sanity check failed");
-    assert!(header[1] == 24, "only il2cpp version 24 is supported");
+    let raw_metadata = il2cpp_metadata_raw::deserialize(data)?;
 
-    let str_offset = header[6] as usize;
-    let methods_offset = header[12];
-    let parameters_offset = header[22] as usize;
-    let fields_offset = header[24] as usize;
-    let type_defs_offset = header[40];
-    let type_defs_len = header[41] as usize / 92;
-    let images_offset = header[42];
-    let images_len = header[43] as usize / 40;
-
-    let mut type_definitions = Vec::with_capacity(type_defs_len);
-    cur.set_position(type_defs_offset as u64);
-    for type_idx in 0..type_defs_len {
-        let raw = Il2CppTypeDefinition::deserialize::<LE, _>(&mut cur)?;
-        let name = utils::get_str(data, str_offset + raw.name_index as usize)?;
-        let namespace = utils::get_str(data, str_offset + raw.namespace_index as usize)?;
+    let mut type_definitions = Vec::with_capacity(raw_metadata.type_definitions.len());
+    for (type_idx, raw) in raw_metadata.type_definitions.iter().enumerate() {
+        let name = utils::get_str(&raw_metadata.string, raw.name_index as usize)?;
+        let namespace = utils::get_str(&raw_metadata.string, raw.namespace_index as usize)?;
         let mut methods = Vec::with_capacity(raw.method_count as usize);
-        let mut methods_cur = Cursor::new(data);
-        if raw.method_count > 0 {
-            methods_cur.set_position(methods_offset as u64 + raw.method_start as u64 * 32);
-        }
-        for _ in 0..raw.method_count {
-            let raw_method = raw::Il2CppMethodDefinition::deserialize::<LE, _>(&mut methods_cur)?;
-            let name = utils::get_str(data, str_offset + raw_method.name_index as usize)?;
+        let method_start = if raw.method_start > 0 {
+            raw.method_start
+        } else {
+            0
+        };
+        for raw_method in &raw_metadata.methods
+            [method_start as usize..method_start as usize + raw.method_count as usize]
+        {
+            let name = utils::get_str(&raw_metadata.string, raw_method.name_index as usize)?;
             let mut params = Vec::with_capacity(raw_method.parameter_count as usize);
-            let mut params_cur = Cursor::new(data);
-            if raw_method.parameter_count > 0 {
-                params_cur.set_position(
-                    parameters_offset as u64 + raw_method.parameter_start as u64 * 12,
-                );
-            }
-            for _ in 0..raw_method.parameter_count {
-                let raw_param =
-                    raw::Il2CppParameterDefinition::deserialize::<LE, _>(&mut params_cur)?;
+            let param_start = if raw_method.parameter_start > 0 {
+                raw_method.parameter_start
+            } else {
+                0
+            };
+            for raw_param in &raw_metadata.parameters
+                [param_start as usize..param_start as usize + raw_method.parameter_count as usize]
+            {
                 params.push(Parameter {
-                    name: utils::get_str(data, str_offset + raw_param.name_index as usize)?,
+                    name: utils::get_str(&raw_metadata.string, raw_param.name_index as usize)?,
                     ty: TypeIndex(raw_param.type_index as usize),
                 })
             }
@@ -145,13 +129,14 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
             })
         }
         let mut fields = Vec::with_capacity(raw.field_count as usize);
-        let mut fields_cur = Cursor::new(data);
-        if raw.field_count > 0 {
-            fields_cur.set_position(fields_offset as u64 + raw.field_start as u64 * 12);
-        }
-        for field_idx in 0..raw.field_count {
-            let raw_field = raw::Il2CppFieldDefinition::deserialize::<LE, _>(&mut fields_cur)?;
-            let name = utils::get_str(data, str_offset + raw_field.name_index as usize)?;
+        let field_start = if raw.field_start > 0 {
+            raw.field_start
+        } else {
+            0
+        } as usize;
+        let field_slice = &raw_metadata.fields[field_start..field_start + raw.field_count as usize];
+        for (field_idx, raw_field) in field_slice.iter().enumerate() {
+            let name = utils::get_str(&raw_metadata.string, raw_field.name_index as usize)?;
             let field_offset_addr = metadata_registration.field_offset_addrs[type_idx];
             let mut field_offset_data =
                 &elf.data()[field_offset_addr as usize + field_idx as usize * 4..];
@@ -173,10 +158,8 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
         })
     }
 
-    cur.set_position(images_offset as u64);
-    for _ in 0..images_len {
-        let raw = raw::Il2CppImageDefinition::deserialize::<LE, _>(&mut cur)?;
-        let name = utils::get_str(data, str_offset + raw.name_index as usize)?;
+    for raw in &raw_metadata.images {
+        let name = utils::get_str(&raw_metadata.string, raw.name_index as usize)?;
         let module = code_registration.modules.iter().find(|m| m.name == name);
         let module = module
             .with_context(|| format!("count not find code registration module '{}'", name))?;
