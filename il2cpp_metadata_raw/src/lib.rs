@@ -185,12 +185,13 @@ pub struct Il2CppGenericParameter {
 #[derive(Debug, DekuRead)]
 #[deku(endian = "little", ctx = "_: Endian")]
 pub struct Il2CppGenericContainer {
-    /* index of the generic type definition or the generic method definition corresponding to this container */
-    pub owner_index: u32, // either index into Il2CppClass metadata array or Il2CppMethodDefinition array
+    /// index of the generic type definition or the generic method definition corresponding to this container \
+    /// either index into Il2CppClass metadata array or Il2CppMethodDefinition array
+    pub owner_index: u32,
     pub type_argc: u32,
-    /* If true, we're a generic method, otherwise a generic type definition. */
+    /// If true, we're a generic method, otherwise a generic type definition.
     pub is_method: u32,
-    /* Our type parameters. */
+    /// Our type parameters.
     pub generic_parameter_start: GenericParameterIndex,
 }
 
@@ -267,7 +268,8 @@ pub struct Il2CppWindowsRuntimeTypeNamePair {
 #[deku(endian = "little", ctx = "_: Endian")]
 pub struct Il2CppFieldRef {
     pub type_index: TypeIndex,
-    pub field_index: FieldIndex, // local offset into type fields
+    /// local offset into type fields
+    pub field_index: FieldIndex,
 }
 
 #[derive(Debug, DekuRead)]
