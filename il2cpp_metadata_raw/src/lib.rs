@@ -52,11 +52,11 @@ pub struct Il2CppEventDefinition {
 #[derive(Debug, DekuRead)]
 #[deku(endian = "little", ctx = "_: Endian")]
 pub struct Il2CppMethodDefinition {
-    pub name_index: i32,
-    pub declaring_type: i32,
-    pub return_type: i32,
-    pub parameter_start: i32,
-    pub generic_container_index: i32,
+    pub name_index: StringIndex,
+    pub declaring_type: TypeDefinitionIndex,
+    pub return_type: TypeIndex,
+    pub parameter_start: ParameterIndex,
+    pub generic_container_index: GenericContainerIndex,
     pub token: u32,
     pub flags: u16,
     pub iflags: u16,
@@ -75,27 +75,27 @@ pub struct Il2CppParameterDefinition {
 #[derive(Debug, DekuRead)]
 #[deku(endian = "little", ctx = "_: Endian")]
 pub struct Il2CppTypeDefinition {
-    pub name_index: i32,
-    pub namespace_index: i32,
-    pub byval_type_index: i32,
-    pub byref_type_index: i32,
+    pub name_index: StringIndex,
+    pub namespace_index: StringIndex,
+    pub byval_type_index: TypeIndex,
+    pub byref_type_index: TypeIndex,
 
-    pub declaring_type_index: i32,
-    pub parent_index: i32,
-    pub element_type_index: i32,
+    pub declaring_type_index: TypeIndex,
+    pub parent_index: TypeIndex,
+    pub element_type_index: TypeIndex,
 
-    pub generic_container_index: i32,
+    pub generic_container_index: GenericContainerIndex,
 
     pub flags: u32,
 
-    pub field_start: i32,
-    pub method_start: i32,
-    pub event_start: i32,
-    pub property_start: i32,
-    pub nested_types_start: i32,
-    pub interfaces_start: i32,
-    pub vtable_start: i32,
-    pub interface_offsets_start: i32,
+    pub field_start: FieldIndex,
+    pub method_start: MethodIndex,
+    pub event_start: EventIndex,
+    pub property_start: PropertyIndex,
+    pub nested_types_start: NestedTypeIndex,
+    pub interfaces_start: InterfacesIndex,
+    pub vtable_start: VTableIndex,
+    pub interface_offsets_start: InterfacesIndex,
 
     pub method_count: u16,
     pub property_count: u16,
@@ -113,19 +113,19 @@ pub struct Il2CppTypeDefinition {
 #[derive(Debug, DekuRead)]
 #[deku(endian = "little", ctx = "_: Endian")]
 pub struct Il2CppImageDefinition {
-    pub name_index: i32,
-    pub assembly_index: i32,
+    pub name_index: StringIndex,
+    pub assembly_index: AssemblyIndex,
 
-    pub type_start: i32,
+    pub type_start: TypeDefinitionIndex,
     pub type_count: u32,
 
-    pub exported_type_start: i32,
+    pub exported_type_start: TypeDefinitionIndex,
     pub exported_type_count: u32,
 
-    pub entry_point_index: i32,
+    pub entry_point_index: MethodIndex,
     pub token: u32,
 
-    pub custom_attribute_start: i32,
+    pub custom_attribute_start: CustomAttributeIndex,
     pub custom_attribute_count: u32,
 }
 
