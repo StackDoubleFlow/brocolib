@@ -170,7 +170,7 @@ impl<'a> CodeRegistration<'a> {
         let invokers_len = cur.read_u64::<LittleEndian>()?;
         let invokers_addr = cur.read_u64::<LittleEndian>()?;
         cur.set_position(vaddr_conv(elf, invokers_addr)?);
-        let invoker_pointers = Vec::with_capacity(invokers_len);
+        let mut invoker_pointers = Vec::with_capacity(invokers_len as usize);
         for _ in 0..invokers_len {
             invoker_pointers.push(vaddr_conv(elf, cur.read_u64::<LittleEndian>()?)?);
         }
