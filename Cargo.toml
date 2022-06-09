@@ -1,5 +1,5 @@
 [workspace]
-members = ["il2cpp_metadata_raw"]
+members = ["il2cpp_metadata_raw", "il2cpp_binary"]
 
 [package]
 name = "brocolib"
