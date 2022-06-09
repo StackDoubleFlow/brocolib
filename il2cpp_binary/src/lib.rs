@@ -8,7 +8,7 @@ use std::io::Cursor;
 use std::str;
 use thiserror::Error;
 
-type Elf<'a> = ElfFile64<'a, Endianness>;
+pub type Elf<'a> = ElfFile64<'a, Endianness>;
 
 #[derive(Error, Debug, Clone, Copy)]
 #[error("error disassembling code")]
