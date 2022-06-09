@@ -121,9 +121,11 @@ pub fn find_registration(elf: &Elf) -> Result<(u64, u64)> {
 pub struct CodeGenModule<'a> {
     pub name: &'a str,
     pub method_pointers: Vec<u64>,
+    pub invoker_indices_ptr: u64,
 }
 
 pub struct CodeRegistration<'a> {
+    pub invoker_pointers: Vec<u64>,
     pub modules: Vec<CodeGenModule<'a>>,
 }
 
@@ -141,7 +143,8 @@ impl<'a> CodeRegistration<'a> {
             .collect();
         let mut modules = Vec::with_capacity(modules_len as usize);
         for module_addr in module_addrs {
-            cur.set_position(vaddr_conv(elf, module_addr?)?);
+            let module_addr = vaddr_conv(elf, module_addr?)?;
+            cur.set_position(module_addr);
             let name_ptr = vaddr_conv(elf, cur.read_u64::<LittleEndian>()?)?;
             let name = get_str(elf.data(), name_ptr as usize)?;
 
@@ -153,13 +156,29 @@ impl<'a> CodeRegistration<'a> {
                 method_pointers.push(vaddr_conv(elf, cur.read_u64::<LittleEndian>()?)?);
             }
 
+            cur.set_position(module_addr + 8 * 5);
+            let invoker_indices_ptr = vaddr_conv(elf, cur.read_u64::<LittleEndian>()?)?;
+
             modules.push(CodeGenModule {
                 name,
                 method_pointers,
+                invoker_indices_ptr,
             });
         }
 
-        Ok(Self { modules })
+        cur.set_position(addr + 8 * 5);
+        let invokers_len = cur.read_u64::<LittleEndian>()?;
+        let invokers_addr = cur.read_u64::<LittleEndian>()?;
+        cur.set_position(vaddr_conv(elf, invokers_addr)?);
+        let invoker_pointers = Vec::with_capacity(invokers_len);
+        for _ in 0..invokers_len {
+            invoker_pointers.push(vaddr_conv(elf, cur.read_u64::<LittleEndian>()?)?);
+        }
+
+        Ok(Self {
+            modules,
+            invoker_pointers,
+        })
     }
 }
 
