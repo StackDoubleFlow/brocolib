@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 deku = "0.13"
 thiserror = "1"
+binde = { git = "https://github.com/StackDoubleFlow/binde" }
