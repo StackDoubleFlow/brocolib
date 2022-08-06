@@ -138,8 +138,8 @@ pub struct Il2CppImageDefinition {
 #[derive(Debug, BinaryDeserialize, DekuWrite)]
 #[deku(endian = "little", ctx = "_: Endian")]
 pub struct Il2CppFieldDefinition {
-    pub name_index: i32,
-    pub type_index: i32,
+    pub name_index: StringIndex,
+    pub type_index: TypeIndex,
     pub token: u32,
 }
 
