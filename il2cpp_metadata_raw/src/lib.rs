@@ -1,4 +1,5 @@
 use std::io::Cursor;
+use std::str::{self, Utf8Error};
 
 use binde::{BinaryDeserialize, LittleEndian};
 use deku::bitvec::BitVec;
@@ -415,6 +416,17 @@ metadata! {
     unresolved_virtual_call_parameter_ranges: Vec<Il2CppRange>,
     windows_runtime_type_names: Vec<Il2CppWindowsRuntimeTypeNamePair>,
     exported_type_definitions: Vec<TypeDefinitionIndex>,
+}
+
+impl<'a> Metadata<'a> {
+    pub fn get_str(&self, idx: u32) -> Result<&str, Utf8Error> {
+        let idx = idx as usize;
+        let mut len = 0;
+        while self.string[idx + len] != 0 {
+            len += 1;
+        }
+        str::from_utf8(&self.string[idx..idx + len])
+    }
 }
 
 #[derive(Error, Debug)]
