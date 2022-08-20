@@ -1,5 +1,6 @@
 use anyhow::{bail, ensure, Context, Result};
 use bad64::{disasm, DecodeError, Imm, Instruction, Op, Operand, Reg};
+use binread::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use object::read::elf::ElfFile64;
 use object::{Endianness, Object, ObjectSection, ObjectSegment};
@@ -128,70 +129,181 @@ pub fn find_registration(elf: &Elf) -> Result<(u64, u64)> {
     bail!("codegen registration not found");
 }
 
+struct ElfReader<'a> {
+    elf: &'a Elf<'a>,
+}
+
+impl<'a> ElfReader<'a> {
+    fn new(elf: &'a Elf) -> Self {
+        Self { elf }
+    }
+
+    fn make_cur(&self, vaddr: u64) -> Result<Cursor<&[u8]>> {
+        let pos = vaddr_conv(self.elf, vaddr)?;
+        let mut cur = Cursor::new(self.elf.data());
+        cur.set_position(pos);
+        Ok(cur)
+    }
+
+    fn get_str(&self, vaddr: u64) -> Result<&'a str> {
+        let ptr = vaddr_conv(self.elf, vaddr)?;
+        get_str(self.elf.data(), ptr as usize)
+    }
+}
+
+#[derive(BinRead)]
+pub struct TokenAdjustorThunkPair {
+    pub token: u32,
+    #[br(align_before = 8)]
+    pub adjustor_thunk: u64,
+}
+
+#[derive(BinRead)]
+pub struct Range {
+    pub start: u32,
+    pub length: u32,
+}
+
+#[derive(BinRead)]
+pub struct TokenRangePair {
+    pub token: u32,
+    pub range: Range,
+}
+
+#[derive(BinRead)]
+#[br(repr = u32)]
+pub enum RGCTXDataType {
+    Invalid,
+    Type,
+    Class,
+    Method,
+    Array
+}
+
+#[derive(BinRead)]
+pub struct RGCTXDefinition {
+    pub ty: RGCTXDataType,
+    /// Can be either a method or type index
+    pub data: u32
+}
+
+fn read_arr<T>(reader: &ElfReader, vaddr: u64, len: usize) -> Result<Vec<T>> where T: BinRead {
+    let mut cur = reader.make_cur(vaddr)?;
+    let mut vec = Vec::with_capacity(len as usize);
+    for _ in 0..len {
+        vec.push(cur.read_le()?);
+    }
+    Ok(vec)
+}
+
+fn read_len_arr<T>(reader: &ElfReader, cur: &mut Cursor<&[u8]>) -> Result<Vec<T>> where T: BinRead {
+    let count = cur.read_u32::<LittleEndian>()? as usize;
+    let _padding = cur.read_u32::<LittleEndian>()?;
+    let addr = cur.read_u64::<LittleEndian>()?;
+    read_arr(&reader, addr, count)
+}
+
+fn read_len_arr_nullable<T>(reader: &ElfReader, cur: &mut Cursor<&[u8]>) -> Result<Vec<T>> where T: BinRead + Default + Clone {
+    let count = cur.read_u32::<LittleEndian>()? as usize;
+    let _padding = cur.read_u32::<LittleEndian>()?;
+    let addr = cur.read_u64::<LittleEndian>()?;
+    if addr_in_bss(reader.elf, addr) {
+        Ok(vec![Default::default(); count])
+    } else {
+        read_arr(&reader, addr, count)
+    }
+}
+
 pub struct CodeGenModule<'a> {
     pub name: &'a str,
     pub method_pointers: Vec<u64>,
-    pub invoker_indices_ptr: u64,
+    pub adjustor_thunks: Vec<TokenAdjustorThunkPair>,
+    pub invoker_indices: Vec<u32>,
+
+    // TODO:
+    // reverse_pinvoke_wrapper_indicies: Vec<TokenIndexMethodTuple>,
+
+    pub rgctx_ranges: Vec<TokenRangePair>,
+    pub rgctxs: Vec<RGCTXDefinition>,
+
+    // TODO:
+    // debugger_metadata: DebuggerMetadataRegistration
+}
+
+impl<'a> CodeGenModule<'a> {
+    fn read(reader: &ElfReader<'a>, vaddr: u64) -> Result<Self> {
+        let mut cur = reader.make_cur(vaddr)?;
+
+        let name = reader.get_str(cur.read_u64::<LittleEndian>()?)?;
+
+        let method_pointers = read_len_arr_nullable(reader, &mut cur)?;
+        let adjustor_thunks = read_len_arr(reader, &mut cur)?;
+
+        let addr = cur.read_u64::<LittleEndian>()?;
+        let invoker_indices = read_arr(reader, addr, method_pointers.len())?;
+
+        let _todo = cur.read_u128::<LittleEndian>()?;
+
+        let rgctx_ranges = read_len_arr(reader, &mut cur)?;
+        let rgctxs = read_len_arr(reader, &mut cur)?;
+        Ok(Self {
+            name,
+            method_pointers,
+            adjustor_thunks,
+            invoker_indices,
+            rgctx_ranges,
+            rgctxs
+        })
+    }
 }
 
 pub struct CodeRegistration<'a> {
+    pub reverse_pinvoke_wrappers: Vec<u64>,
+    pub generic_method_pointers: Vec<u64>,
+    pub generic_adjustor_thunks: Vec<u64>,
     pub invoker_pointers: Vec<u64>,
-    pub modules: Vec<CodeGenModule<'a>>,
+    pub custom_attribute_generators: Vec<u64>,
+    pub unresolved_virtual_call_pointers: Vec<u64>,
+
+    // TODO
+    // pub interop_data: Vec<InteropData>,
+    // pub windows_runtime_factory_table: Vec<WindowsRuntimeFactoryTableEntry>,
+
+    pub code_gen_modules: Vec<CodeGenModule<'a>>,
 }
 
 impl<'a> CodeRegistration<'a> {
     pub fn read(elf: &'a Elf, addr: u64) -> Result<Self> {
-        let mut cur = Cursor::new(elf.data());
-        let addr = vaddr_conv(elf, addr)?;
-        cur.set_position(addr + 8 * 15);
-        let modules_len = cur.read_u64::<LittleEndian>()?;
-        let modules_addr = cur.read_u64::<LittleEndian>()?;
+        let reader = ElfReader::new(elf);
+        let mut cur = reader.make_cur(addr)?;
 
-        cur.set_position(vaddr_conv(elf, modules_addr)?);
-        let module_addrs: Vec<_> = (0..modules_len)
-            .map(|_| cur.read_u64::<LittleEndian>())
-            .collect();
-        let mut modules = Vec::with_capacity(modules_len as usize);
-        for module_addr in module_addrs {
-            let module_addr = vaddr_conv(elf, module_addr?)?;
-            cur.set_position(module_addr);
-            let name_ptr = vaddr_conv(elf, cur.read_u64::<LittleEndian>()?)?;
-            let name = get_str(elf.data(), name_ptr as usize)?;
+        let reverse_pinvoke_wrappers = read_len_arr(&reader, &mut cur)?;
 
-            let method_ptrs_len = cur.read_u64::<LittleEndian>()?;
-            let method_ptrs_ptr = vaddr_conv(elf, cur.read_u64::<LittleEndian>()?)?;
-            let mut method_pointers = Vec::with_capacity(method_ptrs_len as usize);
-            if addr_in_bss(elf, method_ptrs_ptr) {
-                method_pointers.extend(std::iter::repeat(0).take(method_ptrs_len as usize))
-            } else {
-                cur.set_position(method_ptrs_ptr);
-                for _ in 0..method_ptrs_len {
-                    method_pointers.push(vaddr_conv(elf, cur.read_u64::<LittleEndian>()?)?);
-                }
-            }
+        let generic_method_pointers = read_len_arr(&reader, &mut cur)?;
+        let addr = cur.read_u64::<LittleEndian>()?;
+        let generic_adjustor_thunks = read_arr(&reader, addr, generic_method_pointers.len())?;
 
-            cur.set_position(module_addr + 8 * 5);
-            let invoker_indices_ptr = vaddr_conv(elf, cur.read_u64::<LittleEndian>()?)?;
+        let invoker_pointers = read_len_arr(&reader, &mut cur)?;
+        let custom_attribute_generators = read_len_arr(&reader, &mut cur)?;
+        let unresolved_virtual_call_pointers= read_len_arr(&reader, &mut cur)?;
 
-            modules.push(CodeGenModule {
-                name,
-                method_pointers,
-                invoker_indices_ptr,
-            });
-        }
+        let _todo = cur.read_u128::<LittleEndian>()?;
+        let _todo = cur.read_u128::<LittleEndian>()?;
 
-        cur.set_position(addr + 8 * 5);
-        let invokers_len = cur.read_u64::<LittleEndian>()?;
-        let invokers_addr = cur.read_u64::<LittleEndian>()?;
-        cur.set_position(vaddr_conv(elf, invokers_addr)?);
-        let mut invoker_pointers = Vec::with_capacity(invokers_len as usize);
-        for _ in 0..invokers_len {
-            invoker_pointers.push(vaddr_conv(elf, cur.read_u64::<LittleEndian>()?)?);
+        let module_addrs = read_len_arr(&reader, &mut cur)?;
+        let mut code_gen_modules = Vec::with_capacity(module_addrs.len());
+        for addr in module_addrs {
+            code_gen_modules.push(CodeGenModule::read(&reader, addr)?);
         }
 
         Ok(Self {
-            modules,
+            reverse_pinvoke_wrappers,
+            generic_method_pointers,
+            generic_adjustor_thunks,
             invoker_pointers,
+            custom_attribute_generators,
+            unresolved_virtual_call_pointers,
+            code_gen_modules
         })
     }
 }
