@@ -35,6 +35,16 @@ pub fn get_str(data: &[u8], offset: usize) -> Result<&str> {
     Ok(str)
 }
 
+pub fn addr_in_bss(elf: &Elf, vaddr: u64) -> bool {
+    match elf.section_by_name(".bss") {
+        Some(bss) => {
+            bss.address() <= vaddr && vaddr - bss.address() < bss.size()
+        }
+        None => false,
+    }
+    
+}
+
 pub fn vaddr_conv(elf: &Elf, vaddr: u64) -> Result<u64> {
     for segment in elf.segments() {
         if segment.address() <= vaddr {
@@ -151,9 +161,13 @@ impl<'a> CodeRegistration<'a> {
             let method_ptrs_len = cur.read_u64::<LittleEndian>()?;
             let method_ptrs_ptr = vaddr_conv(elf, cur.read_u64::<LittleEndian>()?)?;
             let mut method_pointers = Vec::with_capacity(method_ptrs_len as usize);
-            cur.set_position(method_ptrs_ptr);
-            for _ in 0..method_ptrs_len {
-                method_pointers.push(vaddr_conv(elf, cur.read_u64::<LittleEndian>()?)?);
+            if addr_in_bss(elf, method_ptrs_ptr) {
+                method_pointers.extend(std::iter::repeat(0).take(method_ptrs_len as usize))
+            } else {
+                cur.set_position(method_ptrs_ptr);
+                for _ in 0..method_ptrs_len {
+                    method_pointers.push(vaddr_conv(elf, cur.read_u64::<LittleEndian>()?)?);
+                }
             }
 
             cur.set_position(module_addr + 8 * 5);
