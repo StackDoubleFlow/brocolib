@@ -215,7 +215,7 @@ pub struct CodeGenModule<'a> {
     pub invoker_indices: Vec<u32>,
 
     // TODO:
-    // reverse_pinvoke_wrapper_indicies: Vec<TokenIndexMethodTuple>,
+    // reverse_pinvoke_wrapper_indices: Vec<TokenIndexMethodTuple>,
 
     pub rgctx_ranges: Vec<TokenRangePair>,
     pub rgctxs: Vec<RGCTXDefinition>,
@@ -302,32 +302,107 @@ impl<'a> CodeRegistration<'a> {
     }
 }
 
-pub enum TypeData {
-    TypeDefinitionIndex(u32),
-    TypeIndex(usize),
-    GenericParameterIndex(usize),
-    GenericClassIndex(usize),
+#[derive(Clone, Copy, Debug)]
+pub enum TypeEnum {
+    Void,
+    Boolean,
+    Char,
+    I1,
+    U1,
+    I2,
+    U2,
+    I4,
+    U4,
+    I8,
+    U8,
+    R4,
+    R8,
+    String,
+    Ptr,
+    Valuetype,
+    Class,
+    Var,
+    Array,
+    Genericinst,
+    Typedbyref,
+    I,
+    U,
+    Object,
+    Szarray,
+    Mvar,
 }
 
+impl TypeEnum {
+    fn from_ty(ty: u8) -> Result<Self> {
+        Ok(match ty {
+            0x01 => TypeEnum::Void,
+            0x02 => TypeEnum::Boolean,
+            0x03 => TypeEnum::Char,
+            0x04 => TypeEnum::I1,
+            0x05 => TypeEnum::U1,
+            0x06 => TypeEnum::I2,
+            0x07 => TypeEnum::U2,
+            0x08 => TypeEnum::I4,
+            0x09 => TypeEnum::U4,
+            0x0a => TypeEnum::I8,
+            0x0b => TypeEnum::U8,
+            0x0c => TypeEnum::R4,
+            0x0d => TypeEnum::R8,
+            0x0e => TypeEnum::String,
+            0x0f => TypeEnum::Ptr,
+            0x11 => TypeEnum::Valuetype,
+            0x12 => TypeEnum::Class,
+            0x13 => TypeEnum::Var,
+            0x14 => TypeEnum::Array,
+            0x15 => TypeEnum::Genericinst,
+            0x16 => TypeEnum::Typedbyref,
+            0x18 => TypeEnum::I,
+            0x19 => TypeEnum::U,
+            0x1c => TypeEnum::Object,
+            0x1d => TypeEnum::Szarray,
+            0x1e => TypeEnum::Mvar,
+            _ => bail!("unknown Il2CppType type {}", ty)
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum TypeData {
+    TypeDefinitionIndex(u32),
+    /// For TypeEnum::Ptr and TypeEnum::Szarray
+    TypeIndex(usize),
+    /// For TypeEnum::Var and TypeEnum::Mvar
+    GenericParameterIndex(u32),
+    /// For TypeEnum::Genericinst
+    GenericClassIndex(usize),
+    // TODO
+    /// FOr TypeEnum::Array
+    ArrayType
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct Type {
     pub data: TypeData,
     pub attrs: u16,
-    pub ty: u8,
+    pub ty: TypeEnum,
     pub byref: bool,
 }
 
 impl Type {
-    fn read(reader: &ElfReader, vaddr: u64) -> Result<Type> {
+    fn read(reader: &ElfReader, vaddr: u64, type_map: &HashMap<u64, usize>, generic_class_map: &HashMap<u64, usize>) -> Result<Type> {
         let mut cur = reader.make_cur(vaddr)?;
         
         let raw_data = cur.read_u64::<LittleEndian>()?;
         let attrs = cur.read_u16::<LittleEndian>()?;
-        let ty = cur.read_u8()?;
+        let ty = TypeEnum::from_ty(cur.read_u8()?)?;
         let bitfield = cur.read_u8()?;
 
         let data = match ty {
-
-            _ => bail!("unknown Il2CppType type {}", ty)
+            TypeEnum::Var | TypeEnum::Mvar => TypeData::GenericParameterIndex(raw_data as u32),
+            TypeEnum::Ptr | TypeEnum::Szarray => TypeData::TypeIndex(type_map[&raw_data]),
+            TypeEnum::Array => TypeData::ArrayType,
+            TypeEnum::Genericinst => TypeData::GenericClassIndex(generic_class_map[&raw_data]),
+            _ => TypeData::TypeDefinitionIndex(raw_data as u32)
         };
         let byref = (bitfield >> 7) != 0;
         
@@ -363,9 +438,9 @@ impl GenericClass {
 
 pub struct GenericContext {
     /// Indices into MetadataRegistration generic_insts field
-    pub class_inst_idx: usize,
+    pub class_inst_idx: Option<usize>,
     /// Indices into MetadataRegistration generic_insts field
-    pub method_inst_idx: usize,
+    pub method_inst_idx: Option<usize>,
 }
 
 #[derive(BinRead)]
@@ -381,8 +456,8 @@ impl GenericContext {
     fn read(cur: &mut Cursor<&[u8]>, generic_inst_map: &HashMap<u64, usize>) -> Result<Self> {
 
         Ok(Self {
-            class_inst_idx: generic_inst_map[&cur.read_u64::<LittleEndian>()?],
-            method_inst_idx: generic_inst_map[&cur.read_u64::<LittleEndian>()?],
+            class_inst_idx: generic_inst_map.get(&cur.read_u64::<LittleEndian>()?).copied(),
+            method_inst_idx: generic_inst_map.get(&cur.read_u64::<LittleEndian>()?).copied(),
         })
     }
 }
@@ -399,8 +474,7 @@ impl GenericInst {
         let type_ptrs = read_len_arr(reader, &mut cur)?;
         let mut types = Vec::with_capacity(type_ptrs.len());
         for addr in type_ptrs {
-            let mut cur = reader.make_cur(addr)?;
-            types.push(types_map[&cur.read_u64::<LittleEndian>()?]);
+            types.push(types_map[&addr]);
         }
         Ok(Self {
             types
@@ -468,11 +542,13 @@ impl MetadataRegistration {
             generic_class_map.insert(addr, i);
         }
 
-        let mut types = Vec::with_capacity(type_addrs.len());
         let mut type_map = HashMap::new();
-        for (i, addr) in type_addrs.into_iter().enumerate() {
-            types.push(Type::read(&reader, addr)?);
+        for (i, &addr) in type_addrs.iter().enumerate() {
             type_map.insert(addr, i);
+        }
+        let mut types = Vec::with_capacity(type_addrs.len());
+        for addr in type_addrs {
+            types.push(Type::read(&reader, addr, &type_map, &generic_class_map)?);
         }
 
         let mut generic_insts = Vec::with_capacity(generic_inst_addrs.len());
@@ -480,7 +556,6 @@ impl MetadataRegistration {
             let mut cur = reader.make_cur(addr)?;
             generic_insts.push(GenericInst::read(&reader, addr, &type_map)?);
         }
-
 
         let mut type_definition_sizes = Vec::with_capacity(type_definition_sizes_ptrs.len());
         for addr in type_definition_sizes_ptrs {
@@ -490,12 +565,14 @@ impl MetadataRegistration {
 
         let mut field_offsets = Vec::with_capacity(field_offset_ptrs.len());
         for addr in field_offset_ptrs {
+            if addr == 0 {
+                field_offsets.push(Vec::new());
+                continue;
+            }
             let mut cur = reader.make_cur(addr)?;
-            let arr_addr = cur.read_u64::<LittleEndian>()?;
-            let arr_len = 0; // TODO
 
+            let arr_len = 0; // TODO
             let mut arr = Vec::with_capacity(arr_len);
-            let mut cur = reader.make_cur(arr_addr)?;
             for _ in 0..arr_len {
                 arr.push(cur.read_u32::<LittleEndian>()?);
             }
@@ -515,8 +592,8 @@ impl MetadataRegistration {
 }
 
 pub fn registrations<'a>(elf: &'a Elf<'a>) -> Result<(CodeRegistration<'a>, MetadataRegistration)> {
-    let (cr_addr, mr_addr) = find_registration(&elf).unwrap();
+    let (cr_addr, mr_addr) = find_registration(&elf)?;
     let code_registration = CodeRegistration::read(&elf, cr_addr)?;
-    let metadata_registration = MetadataRegistration::read(&elf, mr_addr).unwrap();
+    let metadata_registration = MetadataRegistration::read(&elf, mr_addr)?;
     Ok((code_registration, metadata_registration))
 }
