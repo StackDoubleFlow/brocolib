@@ -387,6 +387,7 @@ pub struct Type {
     pub attrs: u16,
     pub ty: TypeEnum,
     pub byref: bool,
+    pub pinned: bool,
 }
 
 impl Type {
@@ -405,13 +406,15 @@ impl Type {
             TypeEnum::Genericinst => TypeData::GenericClassIndex(generic_class_map[&raw_data]),
             _ => TypeData::TypeDefinitionIndex(raw_data as u32)
         };
-        let byref = (bitfield >> 7) != 0;
+        let byref = (bitfield >> 6) != 0;
+        let pinned = (bitfield >> 7) != 0;
         
         Ok(Type {
             data,
             attrs,
             ty,
             byref,
+            pinned,
         })
     }
 }
