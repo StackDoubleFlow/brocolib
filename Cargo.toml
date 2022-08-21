@@ -25,3 +25,4 @@ byteorder = "1.4"
 thiserror = "1"
 binde = { git = "https://github.com/StackDoubleFlow/binde" }
 il2cpp_metadata_raw = { path = "./il2cpp_metadata_raw" }
+il2cpp_binary = { path = "./il2cpp_binary" }

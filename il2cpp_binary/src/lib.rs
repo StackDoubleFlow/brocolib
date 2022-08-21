@@ -153,7 +153,6 @@ fn find_registration(elf: &Elf) -> Result<(u64, u64)> {
                 Some(regs) => regs,
                 None => continue,
             };
-            dbg!(&regs);
             return Ok((regs[&Reg::X0], regs[&Reg::X1]));
         }
     }
@@ -651,7 +650,6 @@ pub fn registrations<'a>(
     metadata: &Metadata,
 ) -> Result<(CodeRegistration<'a>, MetadataRegistration)> {
     let (cr_addr, mr_addr) = find_registration(&elf)?;
-    println!("{:x}", cr_addr);
     let code_registration = CodeRegistration::read(&elf, cr_addr)?;
     let metadata_registration = MetadataRegistration::read(&elf, mr_addr, metadata)?;
     Ok((code_registration, metadata_registration))

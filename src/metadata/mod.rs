@@ -1,8 +1,6 @@
 mod binary;
-mod raw;
 
 use crate::metadata::binary::{CodeRegistration, MetadataRegistration};
-use crate::metadata::raw::Il2CppTypeDefinition;
 use crate::{utils, Elf};
 use anyhow::{Context, Result};
 use binary::find_registration;
@@ -95,7 +93,7 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
         let name = utils::get_str(&raw_metadata.string, raw.name_index as usize)?;
         let namespace = utils::get_str(&raw_metadata.string, raw.namespace_index as usize)?;
         let mut methods = Vec::with_capacity(raw.method_count as usize);
-        let method_start = if raw.method_start > 0 {
+        let method_start = if raw.method_count > 0 {
             raw.method_start
         } else {
             0
@@ -105,7 +103,7 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
         {
             let name = utils::get_str(&raw_metadata.string, raw_method.name_index as usize)?;
             let mut params = Vec::with_capacity(raw_method.parameter_count as usize);
-            let param_start = if raw_method.parameter_start > 0 {
+            let param_start = if raw_method.parameter_count > 0 {
                 raw_method.parameter_start
             } else {
                 0
@@ -129,7 +127,7 @@ pub fn read<'a>(data: &'a [u8], elf: &'a Elf) -> Result<Metadata<'a>> {
             })
         }
         let mut fields = Vec::with_capacity(raw.field_count as usize);
-        let field_start = if raw.field_start > 0 {
+        let field_start = if raw.field_count > 0 {
             raw.field_start
         } else {
             0
