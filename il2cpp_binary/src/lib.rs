@@ -1,4 +1,3 @@
-use anyhow::{bail, ensure, Context, Result};
 use bad64::{disasm, DecodeError, Imm, Instruction, Op, Operand, Reg};
 use binread::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -6,7 +5,7 @@ use il2cpp_metadata_raw::Metadata;
 use object::read::elf::ElfFile64;
 use object::{Endianness, Object, ObjectSection, ObjectSegment};
 use std::collections::HashMap;
-use std::io::Cursor;
+use std::io::{self, Cursor};
 use std::str;
 use thiserror::Error;
 
@@ -16,6 +15,37 @@ pub type Elf<'a> = ElfFile64<'a, Endianness>;
 #[error("error disassembling code")]
 pub struct DisassembleError;
 
+#[derive(Error, Debug)]
+pub enum Il2CppBinaryError {
+    #[error("error disassembling code")]
+    Disassemble(DecodeError),
+
+    #[error("failed to convert vitual address {0:016x}")]
+    VAddrConv(u64),
+
+    #[error("could not find .init_array section in elf")]
+    MissingInitArray,
+
+    #[error("could not find registration function")]
+    MissingRegistration,
+
+    #[error("invalid Il2CppType with type {0}")]
+    InvalidType(u8),
+
+    #[error(transparent)]
+    Io(#[from] io::Error),
+
+    #[error(transparent)]
+    BinaryDeserialize(#[from] binread::Error),
+
+    #[error(transparent)]
+    Utf8(#[from] str::Utf8Error),
+
+    #[error(transparent)]
+    Elf(#[from] object::Error),
+}
+
+type Result<T> = std::result::Result<T, Il2CppBinaryError>;
 
 pub fn strlen(data: &[u8], offset: usize) -> usize {
     let mut len = 0;
@@ -33,12 +63,9 @@ pub fn get_str(data: &[u8], offset: usize) -> Result<&str> {
 
 pub fn addr_in_bss(elf: &Elf, vaddr: u64) -> bool {
     match elf.section_by_name(".bss") {
-        Some(bss) => {
-            bss.address() <= vaddr && vaddr - bss.address() < bss.size()
-        }
+        Some(bss) => bss.address() <= vaddr && vaddr - bss.address() < bss.size(),
         None => false,
     }
-    
 }
 
 pub fn vaddr_conv(elf: &Elf, vaddr: u64) -> Result<u64> {
@@ -51,16 +78,12 @@ pub fn vaddr_conv(elf: &Elf, vaddr: u64) -> Result<u64> {
             }
         }
     }
-    bail!("Failed to convert virtual address {:016x}", vaddr);
+    Err(Il2CppBinaryError::VAddrConv(vaddr))
 }
 
-fn analyze_reg_rel(
-    elf: &Elf,
-    instructions: &[Result<Instruction, DecodeError>],
-) -> Result<HashMap<Reg, u64>> {
+fn analyze_reg_rel(elf: &Elf, instructions: &[Instruction]) -> Option<HashMap<Reg, u64>> {
     let mut map = HashMap::new();
     for ins in instructions {
-        let ins = ins.as_ref().map_err(|_| DisassembleError)?;
         match (ins.op(), ins.operands()) {
             (Op::ADRP, [Operand::Reg { reg, .. }, Operand::Label(Imm::Unsigned(imm))]) => {
                 map.insert(*reg, *imm);
@@ -72,7 +95,9 @@ fn analyze_reg_rel(
                     ..
                 }],
             ) => {
-                ensure!(a == b);
+                if a != b {
+                    return None;
+                }
                 map.entry(*a).and_modify(|v| *v += imm);
             }
             (
@@ -83,7 +108,9 @@ fn analyze_reg_rel(
                     ..
                 }],
             ) => {
-                ensure!(a == b);
+                if a != b {
+                    return None;
+                }
                 map.entry(*a).and_modify(|v| {
                     // TODO: propogate error
                     let ptr = vaddr_conv(elf, (*v as i64 + imm) as u64).unwrap();
@@ -95,33 +122,42 @@ fn analyze_reg_rel(
             _ => {}
         }
     }
-    Ok(map)
+    Some(map)
+}
+
+fn try_disassemble(code: &[u8], addr: u64) -> Result<Vec<Instruction>> {
+    disasm(code, addr)
+        .map(|res| res.map_err(|err| Il2CppBinaryError::Disassemble(err)))
+        .collect()
 }
 
 /// Returns address to (g_CodeRegistration, g_MetadataRegistration)
 fn find_registration(elf: &Elf) -> Result<(u64, u64)> {
     let init_array = elf
         .section_by_name(".init_array")
-        .context("could not find .init_array section in elf")?;
+        .ok_or(Il2CppBinaryError::MissingInitArray)?;
     let mut init_array_cur = Cursor::new(init_array.data()?);
     for _ in 0..init_array.size() / 8 {
         let init_addr = init_array_cur.read_u64::<LittleEndian>()?;
         let init_code = &elf.data()[init_addr as usize..init_addr as usize + 7 * 4];
-        let instructions: Vec<_> = disasm(init_code, init_addr).collect();
+        let instructions = try_disassemble(init_code, init_addr)?;
 
-        let last_ins = instructions[6].as_ref().map_err(|_| DisassembleError)?;
-        if last_ins.op() != Op::B {
+        if instructions[6].op() != Op::B {
             continue;
         }
-        if let Ok(regs) = analyze_reg_rel(elf, instructions.as_slice()) {
+        if let Some(regs) = analyze_reg_rel(elf, &instructions) {
             let fn_addr = regs[&Reg::X1];
             let code = &elf.data()[fn_addr as usize..fn_addr as usize + 7 * 4];
-            let instructions: Vec<_> = disasm(code, fn_addr).collect();
-            let regs = analyze_reg_rel(elf, instructions.as_slice())?;
+            let instructions = try_disassemble(code, fn_addr)?;
+            let regs = match analyze_reg_rel(elf, instructions.as_slice()) {
+                Some(regs) => regs,
+                None => continue,
+            };
+            dbg!(&regs);
             return Ok((regs[&Reg::X0], regs[&Reg::X1]));
         }
     }
-    bail!("codegen registration not found");
+    Err(Il2CppBinaryError::MissingRegistration)
 }
 
 struct ElfReader<'a> {
@@ -172,17 +208,20 @@ pub enum RGCTXDataType {
     Type,
     Class,
     Method,
-    Array
+    Array,
 }
 
 #[derive(BinRead)]
 pub struct RGCTXDefinition {
     pub ty: RGCTXDataType,
     /// Can be either a method or type index
-    pub data: u32
+    pub data: u32,
 }
 
-fn read_arr<T>(reader: &ElfReader, vaddr: u64, len: usize) -> Result<Vec<T>> where T: BinRead {
+fn read_arr<T>(reader: &ElfReader, vaddr: u64, len: usize) -> Result<Vec<T>>
+where
+    T: BinRead,
+{
     let mut cur = reader.make_cur(vaddr)?;
     let mut vec = Vec::with_capacity(len as usize);
     for _ in 0..len {
@@ -191,14 +230,20 @@ fn read_arr<T>(reader: &ElfReader, vaddr: u64, len: usize) -> Result<Vec<T>> whe
     Ok(vec)
 }
 
-fn read_len_arr<T>(reader: &ElfReader, cur: &mut Cursor<&[u8]>) -> Result<Vec<T>> where T: BinRead {
+fn read_len_arr<T>(reader: &ElfReader, cur: &mut Cursor<&[u8]>) -> Result<Vec<T>>
+where
+    T: BinRead,
+{
     let count = cur.read_u32::<LittleEndian>()? as usize;
     let _padding = cur.read_u32::<LittleEndian>()?;
     let addr = cur.read_u64::<LittleEndian>()?;
     read_arr(&reader, addr, count)
 }
 
-fn read_len_arr_nullable<T>(reader: &ElfReader, cur: &mut Cursor<&[u8]>) -> Result<Vec<T>> where T: BinRead + Default + Clone {
+fn read_len_arr_nullable<T>(reader: &ElfReader, cur: &mut Cursor<&[u8]>) -> Result<Vec<T>>
+where
+    T: BinRead + Default + Clone,
+{
     let count = cur.read_u32::<LittleEndian>()? as usize;
     let _padding = cur.read_u32::<LittleEndian>()?;
     let addr = cur.read_u64::<LittleEndian>()?;
@@ -217,10 +262,8 @@ pub struct CodeGenModule<'a> {
 
     // TODO:
     // reverse_pinvoke_wrapper_indices: Vec<TokenIndexMethodTuple>,
-
     pub rgctx_ranges: Vec<TokenRangePair>,
     pub rgctxs: Vec<RGCTXDefinition>,
-
     // TODO:
     // debugger_metadata: DebuggerMetadataRegistration
 }
@@ -247,7 +290,7 @@ impl<'a> CodeGenModule<'a> {
             adjustor_thunks,
             invoker_indices,
             rgctx_ranges,
-            rgctxs
+            rgctxs,
         })
     }
 }
@@ -263,7 +306,6 @@ pub struct CodeRegistration<'a> {
     // TODO
     // pub interop_data: Vec<InteropData>,
     // pub windows_runtime_factory_table: Vec<WindowsRuntimeFactoryTableEntry>,
-
     pub code_gen_modules: Vec<CodeGenModule<'a>>,
 }
 
@@ -280,7 +322,7 @@ impl<'a> CodeRegistration<'a> {
 
         let invoker_pointers = read_len_arr(&reader, &mut cur)?;
         let custom_attribute_generators = read_len_arr(&reader, &mut cur)?;
-        let unresolved_virtual_call_pointers= read_len_arr(&reader, &mut cur)?;
+        let unresolved_virtual_call_pointers = read_len_arr(&reader, &mut cur)?;
 
         let _todo = cur.read_u128::<LittleEndian>()?;
         let _todo = cur.read_u128::<LittleEndian>()?;
@@ -298,7 +340,7 @@ impl<'a> CodeRegistration<'a> {
             invoker_pointers,
             custom_attribute_generators,
             unresolved_virtual_call_pointers,
-            code_gen_modules
+            code_gen_modules,
         })
     }
 }
@@ -362,7 +404,7 @@ impl TypeEnum {
             0x1c => TypeEnum::Object,
             0x1d => TypeEnum::Szarray,
             0x1e => TypeEnum::Mvar,
-            _ => bail!("unknown Il2CppType type {}", ty)
+            _ => return Err(Il2CppBinaryError::InvalidType(ty)),
         })
     }
 }
@@ -377,8 +419,8 @@ pub enum TypeData {
     /// For TypeEnum::Genericinst
     GenericClassIndex(usize),
     // TODO
-    /// FOr TypeEnum::Array
-    ArrayType
+    /// For TypeEnum::Array
+    ArrayType,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -391,9 +433,14 @@ pub struct Type {
 }
 
 impl Type {
-    fn read(reader: &ElfReader, vaddr: u64, type_map: &HashMap<u64, usize>, generic_class_map: &HashMap<u64, usize>) -> Result<Type> {
+    fn read(
+        reader: &ElfReader,
+        vaddr: u64,
+        type_map: &HashMap<u64, usize>,
+        generic_class_map: &HashMap<u64, usize>,
+    ) -> Result<Type> {
         let mut cur = reader.make_cur(vaddr)?;
-        
+
         let raw_data = cur.read_u64::<LittleEndian>()?;
         let attrs = cur.read_u16::<LittleEndian>()?;
         let ty = TypeEnum::from_ty(cur.read_u8()?)?;
@@ -404,11 +451,11 @@ impl Type {
             TypeEnum::Ptr | TypeEnum::Szarray => TypeData::TypeIndex(type_map[&raw_data]),
             TypeEnum::Array => TypeData::ArrayType,
             TypeEnum::Genericinst => TypeData::GenericClassIndex(generic_class_map[&raw_data]),
-            _ => TypeData::TypeDefinitionIndex(raw_data as u32)
+            _ => TypeData::TypeDefinitionIndex(raw_data as u32),
         };
         let byref = (bitfield >> 6) != 0;
         let pinned = (bitfield >> 7) != 0;
-        
+
         Ok(Type {
             data,
             attrs,
@@ -425,17 +472,21 @@ pub struct GenericClass {
 }
 
 impl GenericClass {
-    fn read(reader: &ElfReader, vaddr: u64, generic_inst_map: &HashMap<u64, usize>) -> Result<Self> {
+    fn read(
+        reader: &ElfReader,
+        vaddr: u64,
+        generic_inst_map: &HashMap<u64, usize>,
+    ) -> Result<Self> {
         let mut cur = reader.make_cur(vaddr)?;
 
         let type_definition_index = cur.read_u32::<LittleEndian>()?;
         let _padding = cur.read_u32::<LittleEndian>()?;
-        
+
         let context = cur.read_le()?;
         let context = GenericContext::read(&mut cur, generic_inst_map)?;
         Ok(Self {
             type_definition_index,
-            context
+            context,
         })
     }
 }
@@ -458,10 +509,13 @@ pub struct MethodSpec {
 
 impl GenericContext {
     fn read(cur: &mut Cursor<&[u8]>, generic_inst_map: &HashMap<u64, usize>) -> Result<Self> {
-
         Ok(Self {
-            class_inst_idx: generic_inst_map.get(&cur.read_u64::<LittleEndian>()?).copied(),
-            method_inst_idx: generic_inst_map.get(&cur.read_u64::<LittleEndian>()?).copied(),
+            class_inst_idx: generic_inst_map
+                .get(&cur.read_u64::<LittleEndian>()?)
+                .copied(),
+            method_inst_idx: generic_inst_map
+                .get(&cur.read_u64::<LittleEndian>()?)
+                .copied(),
         })
     }
 }
@@ -480,9 +534,7 @@ impl GenericInst {
         for addr in type_ptrs {
             types.push(types_map[&addr]);
         }
-        Ok(Self {
-            types
-        })
+        Ok(Self { types })
     }
 }
 
@@ -516,7 +568,6 @@ pub struct MetadataRegistration {
     pub method_specs: Vec<MethodSpec>,
     pub field_offsets: Vec<Vec<u32>>,
     pub type_definition_sizes: Vec<TypeDefinitionSizes>,
-
     // TODO:
     // pub metadata_usages: ??
 }
@@ -595,8 +646,12 @@ impl MetadataRegistration {
     }
 }
 
-pub fn registrations<'a>(elf: &'a Elf<'a>, metadata: &Metadata) -> Result<(CodeRegistration<'a>, MetadataRegistration)> {
+pub fn registrations<'a>(
+    elf: &'a Elf<'a>,
+    metadata: &Metadata,
+) -> Result<(CodeRegistration<'a>, MetadataRegistration)> {
     let (cr_addr, mr_addr) = find_registration(&elf)?;
+    println!("{:x}", cr_addr);
     let code_registration = CodeRegistration::read(&elf, cr_addr)?;
     let metadata_registration = MetadataRegistration::read(&elf, mr_addr, metadata)?;
     Ok((code_registration, metadata_registration))
