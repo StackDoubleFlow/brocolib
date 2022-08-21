@@ -2,6 +2,7 @@ use anyhow::{bail, ensure, Context, Result};
 use bad64::{disasm, DecodeError, Imm, Instruction, Op, Operand, Reg};
 use binread::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
+use il2cpp_metadata_raw::Metadata;
 use object::read::elf::ElfFile64;
 use object::{Endianness, Object, ObjectSection, ObjectSegment};
 use std::collections::HashMap;
@@ -518,7 +519,7 @@ pub struct MetadataRegistration {
 }
 
 impl MetadataRegistration {
-    fn read(elf: &Elf, addr: u64) -> Result<Self> {
+    fn read(elf: &Elf, addr: u64, metadata: &Metadata) -> Result<Self> {
         let reader = ElfReader::new(elf);
         let mut cur = reader.make_cur(addr)?;
 
@@ -564,14 +565,14 @@ impl MetadataRegistration {
         }
 
         let mut field_offsets = Vec::with_capacity(field_offset_ptrs.len());
-        for addr in field_offset_ptrs {
+        for (i, addr) in field_offset_ptrs.into_iter().enumerate() {
             if addr == 0 {
                 field_offsets.push(Vec::new());
                 continue;
             }
             let mut cur = reader.make_cur(addr)?;
 
-            let arr_len = 0; // TODO
+            let arr_len = metadata.type_definitions[i].field_count as usize;
             let mut arr = Vec::with_capacity(arr_len);
             for _ in 0..arr_len {
                 arr.push(cur.read_u32::<LittleEndian>()?);
@@ -585,15 +586,15 @@ impl MetadataRegistration {
             generic_method_table,
             types,
             method_specs,
-            field_offsets: vec![],
+            field_offsets: field_offsets,
             type_definition_sizes,
         })
     }
 }
 
-pub fn registrations<'a>(elf: &'a Elf<'a>) -> Result<(CodeRegistration<'a>, MetadataRegistration)> {
+pub fn registrations<'a>(elf: &'a Elf<'a>, metadata: &Metadata) -> Result<(CodeRegistration<'a>, MetadataRegistration)> {
     let (cr_addr, mr_addr) = find_registration(&elf)?;
     let code_registration = CodeRegistration::read(&elf, cr_addr)?;
-    let metadata_registration = MetadataRegistration::read(&elf, mr_addr)?;
+    let metadata_registration = MetadataRegistration::read(&elf, mr_addr, metadata)?;
     Ok((code_registration, metadata_registration))
 }
