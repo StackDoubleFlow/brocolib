@@ -127,7 +127,7 @@ fn analyze_reg_rel(elf: &Elf, instructions: &[Instruction]) -> Option<HashMap<Re
 
 fn try_disassemble(code: &[u8], addr: u64) -> Result<Vec<Instruction>> {
     disasm(code, addr)
-        .map(|res| res.map_err(|err| Il2CppBinaryError::Disassemble(err)))
+        .map(|res| res.map_err(Il2CppBinaryError::Disassemble))
         .collect()
 }
 
@@ -236,7 +236,7 @@ where
     let count = cur.read_u32::<LittleEndian>()? as usize;
     let _padding = cur.read_u32::<LittleEndian>()?;
     let addr = cur.read_u64::<LittleEndian>()?;
-    read_arr(&reader, addr, count)
+    read_arr(reader, addr, count)
 }
 
 fn read_len_arr_nullable<T>(reader: &ElfReader, cur: &mut Cursor<&[u8]>) -> Result<Vec<T>>
@@ -249,7 +249,7 @@ where
     if addr_in_bss(reader.elf, addr) {
         Ok(vec![Default::default(); count])
     } else {
-        read_arr(&reader, addr, count)
+        read_arr(reader, addr, count)
     }
 }
 
@@ -481,7 +481,6 @@ impl GenericClass {
         let type_definition_index = cur.read_u32::<LittleEndian>()?;
         let _padding = cur.read_u32::<LittleEndian>()?;
 
-        let context = cur.read_le()?;
         let context = GenericContext::read(&mut cur, generic_inst_map)?;
         Ok(Self {
             type_definition_index,
@@ -607,7 +606,6 @@ impl MetadataRegistration {
 
         let mut generic_insts = Vec::with_capacity(generic_inst_addrs.len());
         for addr in generic_inst_addrs {
-            let mut cur = reader.make_cur(addr)?;
             generic_insts.push(GenericInst::read(&reader, addr, &type_map)?);
         }
 
@@ -639,7 +637,7 @@ impl MetadataRegistration {
             generic_method_table,
             types,
             method_specs,
-            field_offsets: field_offsets,
+            field_offsets,
             type_definition_sizes,
         })
     }
@@ -649,8 +647,8 @@ pub fn registrations<'a>(
     elf: &'a Elf<'a>,
     metadata: &Metadata,
 ) -> Result<(CodeRegistration<'a>, MetadataRegistration)> {
-    let (cr_addr, mr_addr) = find_registration(&elf)?;
-    let code_registration = CodeRegistration::read(&elf, cr_addr)?;
-    let metadata_registration = MetadataRegistration::read(&elf, mr_addr, metadata)?;
+    let (cr_addr, mr_addr) = find_registration(elf)?;
+    let code_registration = CodeRegistration::read(elf, cr_addr)?;
+    let metadata_registration = MetadataRegistration::read(elf, mr_addr, metadata)?;
     Ok((code_registration, metadata_registration))
 }
