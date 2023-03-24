@@ -8,7 +8,7 @@ use deku::prelude::*;
 use thiserror::Error;
 
 const SANITY: u32 = 0xFAB11BAF;
-const VERSION: u32 = 24;
+const VERSION: u32 = 29;
 
 pub type TypeIndex = u32;
 pub type TypeDefinitionIndex = u32;
@@ -85,7 +85,6 @@ pub struct Il2CppTypeDefinition {
     pub name_index: StringIndex,
     pub namespace_index: StringIndex,
     pub byval_type_index: TypeIndex,
-    pub byref_type_index: TypeIndex,
 
     pub declaring_type_index: TypeIndex,
     pub parent_index: TypeIndex,
@@ -251,15 +250,14 @@ pub struct Il2CppMetadataUsagePair {
 
 #[derive(Debug, BinaryDeserialize, DekuWrite)]
 #[deku(endian = "little", ctx = "_: Endian")]
-pub struct Il2CppCustomAttributeTypeRange {
+pub struct Il2CppCustomAttributeDataRange {
     pub token: u32,
-    pub start: u32,
-    pub count: u32,
+    pub start_offset: u32,
 }
 
 #[derive(Debug, BinaryDeserialize, DekuWrite)]
 #[deku(endian = "little", ctx = "_: Endian")]
-pub struct Il2CppRange {
+pub struct Il2CppMetadataRange {
     pub start: u32,
     pub length: u32,
 }
@@ -406,15 +404,16 @@ metadata! {
     type_definitions: Vec<Il2CppTypeDefinition>,
     images: Vec<Il2CppImageDefinition>,
     assemblies: Vec<Il2CppAssemblyDefinition>,
-    metadata_usage_lists: Vec<Il2CppMetadataUsageList>,
-    metadata_usage_pairs: Vec<Il2CppMetadataUsagePair>,
     field_refs: Vec<Il2CppFieldRef>,
     referenced_assemblies: Vec<u32>,
-    attributes_info: Vec<Il2CppCustomAttributeTypeRange>,
+    attribute_data: Vec<u8>,
+    attribute_data_range: Vec<Il2CppCustomAttributeDataRange>,
+    attributes_info: Vec<Il2CppCustomAttributeDataRange>,
     attribute_types: Vec<TypeIndex>,
     unresolved_virtual_call_parameter_types: Vec<TypeIndex>,
-    unresolved_virtual_call_parameter_ranges: Vec<Il2CppRange>,
+    unresolved_virtual_call_parameter_ranges: Vec<Il2CppMetadataRange>,
     windows_runtime_type_names: Vec<Il2CppWindowsRuntimeTypeNamePair>,
+    windows_runtime_strings: &'a [u8],
     exported_type_definitions: Vec<TypeDefinitionIndex>,
 }
 

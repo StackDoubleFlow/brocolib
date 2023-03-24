@@ -3,7 +3,7 @@ use binread::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use il2cpp_metadata_raw::Metadata;
 use object::read::elf::ElfFile64;
-use object::{Endianness, Object, ObjectSection, ObjectSegment};
+use object::{Endianness, Object, ObjectSection, ObjectSegment, ObjectSymbol};
 use std::collections::HashMap;
 use std::io::{self, Cursor};
 use std::str;
@@ -23,8 +23,11 @@ pub enum Il2CppBinaryError {
     #[error("failed to convert vitual address {0:016x}")]
     VAddrConv(u64),
 
-    #[error("could not find .init_array section in elf")]
-    MissingInitArray,
+    #[error("could not find il2cpp_init symbol in elf")]
+    MissingIl2CppInit,
+
+    #[error("could not find indirect branch in Runtime::Init")]
+    MissingBlr,
 
     #[error("could not find registration function")]
     MissingRegistration,
@@ -81,7 +84,7 @@ pub fn vaddr_conv(elf: &Elf, vaddr: u64) -> Result<u64> {
     Err(Il2CppBinaryError::VAddrConv(vaddr))
 }
 
-fn analyze_reg_rel(elf: &Elf, instructions: &[Instruction]) -> Option<HashMap<Reg, u64>> {
+fn analyze_reg_rel(elf: &Elf, instructions: &[Instruction]) -> HashMap<Reg, u64> {
     let mut map = HashMap::new();
     for ins in instructions {
         match (ins.op(), ins.operands()) {
@@ -96,7 +99,7 @@ fn analyze_reg_rel(elf: &Elf, instructions: &[Instruction]) -> Option<HashMap<Re
                 }],
             ) => {
                 if a != b {
-                    return None;
+                    continue;
                 }
                 map.entry(*a).and_modify(|v| *v += imm);
             }
@@ -109,7 +112,7 @@ fn analyze_reg_rel(elf: &Elf, instructions: &[Instruction]) -> Option<HashMap<Re
                 }],
             ) => {
                 if a != b {
-                    return None;
+                    continue;
                 }
                 map.entry(*a).and_modify(|v| {
                     // TODO: propogate error
@@ -122,7 +125,7 @@ fn analyze_reg_rel(elf: &Elf, instructions: &[Instruction]) -> Option<HashMap<Re
             _ => {}
         }
     }
-    Some(map)
+    map
 }
 
 fn try_disassemble(code: &[u8], addr: u64) -> Result<Vec<Instruction>> {
@@ -131,32 +134,56 @@ fn try_disassemble(code: &[u8], addr: u64) -> Result<Vec<Instruction>> {
         .collect()
 }
 
-/// Returns address to (g_CodeRegistration, g_MetadataRegistration)
-fn find_registration(elf: &Elf) -> Result<(u64, u64)> {
-    let init_array = elf
-        .section_by_name(".init_array")
-        .ok_or(Il2CppBinaryError::MissingInitArray)?;
-    let mut init_array_cur = Cursor::new(init_array.data()?);
-    for _ in 0..init_array.size() / 8 {
-        let init_addr = init_array_cur.read_u64::<LittleEndian>()?;
-        let init_code = &elf.data()[init_addr as usize..init_addr as usize + 7 * 4];
-        let instructions = try_disassemble(init_code, init_addr)?;
+fn nth_bl(elf: &Elf, addr: u64, n: usize) -> Result<u64> {
+    let mut count = 0;
 
-        if instructions[6].op() != Op::B {
-            continue;
-        }
-        if let Some(regs) = analyze_reg_rel(elf, &instructions) {
-            let fn_addr = regs[&Reg::X1];
-            let code = &elf.data()[fn_addr as usize..fn_addr as usize + 7 * 4];
-            let instructions = try_disassemble(code, fn_addr)?;
-            let regs = match analyze_reg_rel(elf, instructions.as_slice()) {
-                Some(regs) => regs,
-                None => continue,
-            };
-            return Ok((regs[&Reg::X0], regs[&Reg::X1]));
+    for i in 0.. {
+        let addr = addr + i * 4;
+        let code = &elf.data()[addr as usize..addr as usize + 4];
+        let ins = &try_disassemble(code, addr)?[0];
+        match (ins.op(), ins.operands()) {
+            (Op::BL, [Operand::Label(Imm::Unsigned(addr))]) => {
+                count += 1;
+                if count == n {
+                    return Ok(*addr);
+                }
+            },
+            _ => {}
         }
     }
-    Err(Il2CppBinaryError::MissingRegistration)
+
+    unreachable!()
+}
+
+/// Finds and returns the address of the first `blr` instruction it comes across starting from `addr`.
+fn find_blr(elf: &Elf, addr: u64, limit: usize) -> Result<Option<(u64, Reg)>> {
+    for i in 0..limit {
+        let addr = addr + i as u64 * 4;
+        let code = &elf.data()[addr as usize..addr as usize + 4];
+        let ins = &try_disassemble(code, addr)?[0];
+        match (ins.op(), ins.operands()) {
+            (Op::BLR, [Operand::Reg { reg, .. }]) => return Ok(Some((addr, *reg))),
+            _ => {}
+        }
+    }
+    Ok(None)
+}
+
+/// Returns address to (g_CodeRegistration, g_MetadataRegistration)
+fn find_registration(elf: &Elf) -> Result<(u64, u64)> {
+    let il2cpp_init = elf.dynamic_symbols().find(|s| s.name() == Ok("il2cpp_init")).ok_or(Il2CppBinaryError::MissingIl2CppInit)?.address();
+    let runtime_init = nth_bl(elf, il2cpp_init, 2)?;
+
+    let (blr_addr, blr_reg) = find_blr(elf, runtime_init, 200)?.ok_or(Il2CppBinaryError::MissingBlr)?;
+    let instructions = try_disassemble(&elf.data()[runtime_init as usize..blr_addr as usize], runtime_init)?;
+    let regs = analyze_reg_rel(elf, &instructions);
+
+    let fn_addr = vaddr_conv(elf, regs[&blr_reg])?;
+    let code = &elf.data()[fn_addr as usize..fn_addr as usize + 7 * 4];
+    let instructions = try_disassemble(code, fn_addr)?;
+    let regs = analyze_reg_rel(elf, instructions.as_slice());
+
+    return Ok((regs[&Reg::X0], regs[&Reg::X1]));
 }
 
 struct ElfReader<'a> {
@@ -201,20 +228,20 @@ pub struct TokenRangePair {
 }
 
 #[derive(BinRead)]
-#[br(repr = u32)]
+#[br(repr = u64)]
 pub enum RGCTXDataType {
     Invalid,
     Type,
     Class,
     Method,
     Array,
+    Constrained,
 }
 
 #[derive(BinRead)]
 pub struct RGCTXDefinition {
     pub ty: RGCTXDataType,
-    /// Can be either a method or type index
-    pub data: u32,
+    pub data: u64,
 }
 
 fn read_arr<T>(reader: &ElfReader, vaddr: u64, len: usize) -> Result<Vec<T>>
@@ -279,6 +306,7 @@ impl<'a> CodeGenModule<'a> {
         let addr = cur.read_u64::<LittleEndian>()?;
         let invoker_indices = read_arr(reader, addr, method_pointers.len())?;
 
+        // reverse_pinvoke_wrapper_indices
         let _todo = cur.read_u128::<LittleEndian>()?;
 
         let rgctx_ranges = read_len_arr(reader, &mut cur)?;
@@ -299,7 +327,6 @@ pub struct CodeRegistration<'a> {
     pub generic_method_pointers: Vec<u64>,
     pub generic_adjustor_thunks: Vec<u64>,
     pub invoker_pointers: Vec<u64>,
-    pub custom_attribute_generators: Vec<u64>,
     pub unresolved_virtual_call_pointers: Vec<u64>,
 
     // TODO
@@ -320,7 +347,6 @@ impl<'a> CodeRegistration<'a> {
         let generic_adjustor_thunks = read_arr(&reader, addr, generic_method_pointers.len())?;
 
         let invoker_pointers = read_len_arr(&reader, &mut cur)?;
-        let custom_attribute_generators = read_len_arr(&reader, &mut cur)?;
         let unresolved_virtual_call_pointers = read_len_arr(&reader, &mut cur)?;
 
         let _todo = cur.read_u128::<LittleEndian>()?;
@@ -337,7 +363,6 @@ impl<'a> CodeRegistration<'a> {
             generic_method_pointers,
             generic_adjustor_thunks,
             invoker_pointers,
-            custom_attribute_generators,
             unresolved_virtual_call_pointers,
             code_gen_modules,
         })
