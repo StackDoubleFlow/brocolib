@@ -2,8 +2,24 @@ use il2cpp_elf::{Il2CppBinaryError, RuntimeMetadata};
 use il2cpp_global_metadata::{GlobalMetadata, MetadataDeserializeError};
 use thiserror::Error;
 
+/// A Unity IL2CPP application stores metadata in two different ways, the
+/// global metadata and the runtime metadata.
+/// 
+/// The global metadata is generally the `global-metadata.dat` file in the
+/// application. See [`GlobalMetadata`] for more information.
+/// 
+/// The runtime metadata is stored inside the game binary itself. This is 
+/// generally the `libil2cpp.so` file in the application. See 
+/// [`RuntimeMetadata`] for more information.
 pub struct Metadata<'gmd, 'rmd> {
+    /// The application's global metadata.
+    /// 
+    /// See [`GlobalMetadata`] for more information.
     pub global_metadata: GlobalMetadata<'gmd>,
+
+    /// The application's runtime metadata.
+    /// 
+    /// See [`RuntimeMetadata`] for more information.
     pub runtime_metadata: RuntimeMetadata<'rmd>,
 }
 

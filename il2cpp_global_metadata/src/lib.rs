@@ -432,8 +432,10 @@ impl<'a> GlobalMetadata<'a> {
 pub enum MetadataDeserializeError {
     #[error("binary deserialization error")]
     Bin(#[from] std::io::Error),
+
     #[error("il2cpp metadata header sanity check failed")]
     SanityCheck,
+
     #[error("il2cpp metadata header version check failed, found {0}")]
     VersionCheck(u32),
 }

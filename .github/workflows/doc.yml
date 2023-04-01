@@ -1,0 +1,29 @@
+name: Documentation
+on: [push]
+env:
+  CARGO_TERM_COLOR: always
+  DOC_PATH: target/doc
+jobs:
+  doc:
+    name: Documentation
+    runs-on: ubuntu-latest
+    # TODO: Once this branch is merged into master, the ref needs to change
+    if: github.event_name == 'push' && github.ref == 'refs/heads/il2cpp_v29'
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - uses: actions-rs/cargo@v1
+        with:
+          command: doc
+          args: --verbose
+      - name: Doc Index Page Redirection
+        run: echo '<meta http-equiv="refresh" content="1; url=brocolib/index.html">' > ${{ env.DOC_PATH }}/index.html
+      - name: Deploy Documentation
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ${{ env.DOC_PATH }}
+          force_orphan: true
+      
