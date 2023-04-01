@@ -1,5 +1,7 @@
 use std::io::Cursor;
-use std::str::{self, Utf8Error};
+use std::marker::PhantomData;
+use std::ops::Index;
+use std::str;
 
 use binde::{BinaryDeserialize, LittleEndian};
 use deku::bitvec::BitVec;
@@ -9,6 +11,156 @@ use thiserror::Error;
 
 const SANITY: u32 = 0xFAB11BAF;
 const VERSION: u32 = 29;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct MetadataIndex<T, I = u32> {
+    idx: I,
+    _phantom: PhantomData<*mut T>, // invariant
+}
+
+impl<T, I> BinaryDeserialize for MetadataIndex<T, I>
+    where I: BinaryDeserialize
+{
+    const SIZE: usize = I::SIZE;
+
+    fn deserialize<E, R>(reader: R) -> std::io::Result<Self>
+        where
+            E: binde::ByteOrder,
+            R: std::io::Read {
+        Ok(Self {
+            idx: binde::deserialize::<E, _, _>(reader)?,
+            _phantom: PhantomData,
+        })
+    }
+}
+
+impl<T, I> DekuWrite for MetadataIndex<T, I>
+    where I: DekuWrite
+{
+    fn write(
+            &self,
+            output: &mut deku::bitvec::BitVec<u8, deku::bitvec::Msb0>,
+            ctx: (),
+        ) -> Result<(), DekuError> {
+        self.idx.write(output, ctx)
+    }
+}
+
+impl<T> MetadataIndex<T> {
+    pub fn new(idx: u32) -> Self {
+        Self {
+            idx,
+            _phantom: PhantomData
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct MetadataTable<T> {
+    table: T,
+}
+
+impl<T: DekuWrite> DekuWrite for MetadataTable<T> {
+    fn write(
+            &self,
+            output: &mut deku::bitvec::BitVec<u8, deku::bitvec::Msb0>,
+            ctx: (),
+        ) -> Result<(), DekuError> {
+        self.table.write(output, ctx)
+    }
+}
+
+// Regular indexing for u32
+impl<T> Index<MetadataIndex<T>> for MetadataTable<Vec<T>> {
+    type Output = T;
+
+    fn index(&self, index: MetadataIndex<T>) -> &Self::Output {
+        &self.table[index.idx as usize]
+    }
+}
+
+// Regular indexing for u16
+impl<T> Index<MetadataIndex<T, u16>> for MetadataTable<Vec<T>> {
+    type Output = T;
+
+    fn index(&self, index: MetadataIndex<T, u16>) -> &Self::Output {
+        &self.table[index.idx as usize]
+    }
+}
+
+impl<T> IntoIterator for MetadataTable<T> 
+    where T: IntoIterator
+{
+    type Item = T::Item;
+    type IntoIter = T::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.table.into_iter()
+    }
+}
+
+impl<T> MetadataTable<Vec<T>> {
+    pub fn len(&self) -> usize {
+        self.table.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.table.is_empty()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.table.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.table.iter_mut()
+    }
+}
+
+macro_rules! string_data {
+    ($ty:tt) => {
+        #[derive(Debug, Default)]
+        struct $ty<'data>(&'data [u8]);
+
+        impl<'data> Index<MetadataIndex<$ty<'data>>> for MetadataTable<$ty<'data>> {
+            type Output = str;
+
+            fn index(&self, index: MetadataIndex<$ty>) -> &Self::Output {
+                let idx = index.idx as usize;
+                let mut len = 0;
+                while self.table.0[idx + len] != 0 {
+                    len += 1;
+                }
+
+                // FIXME: maybe not panic here?
+                str::from_utf8(&self.table.0[idx..idx + len]).unwrap()
+            }
+        }
+
+        impl<'data> ReadMetadataTable<'data> for MetadataTable<$ty<'data>> {
+            fn read(cursor: &mut Cursor<&'data [u8]>, size: usize) -> std::io::Result<Self> {
+                let start = cursor.position() as usize;
+                Ok(MetadataTable {
+                    table: $ty(&cursor.get_ref()[start..start + size])
+                })
+            }
+        }
+
+        impl<'data> DekuWrite for MetadataTable<$ty<'data>> {
+            fn write(
+                    &self,
+                    output: &mut deku::bitvec::BitVec<u8, deku::bitvec::Msb0>,
+                    ctx: (),
+                ) -> Result<(), DekuError> {
+                self.table.0.write(output, ctx)
+            }
+        }
+    };
+}
+
+string_data!(StringLiteralData);
+string_data!(StringData);
+string_data!(WindowsRuntimeStringData);
 
 pub type TypeIndex = u32;
 pub type TypeDefinitionIndex = u32;
@@ -291,23 +443,19 @@ where
     fn read(cursor: &mut Cursor<&'a [u8]>, size: usize) -> std::io::Result<Self>;
 }
 
-impl<T: BinaryDeserialize> ReadMetadataTable<'_> for Vec<T> {
+impl<T: BinaryDeserialize> ReadMetadataTable<'_> for MetadataTable<Vec<T>> {
     fn read(cursor: &mut Cursor<&[u8]>, size: usize) -> std::io::Result<Self> {
         let count = size / T::SIZE;
         let mut vec = Vec::new();
         for _ in 0..count {
             vec.push(T::deserialize::<LittleEndian, _>(&mut *cursor)?);
         }
-        Ok(vec)
+        Ok(MetadataTable {
+            table: vec
+        })
     }
 }
 
-impl<'a> ReadMetadataTable<'a> for &'a [u8] {
-    fn read(cursor: &mut Cursor<&'a [u8]>, size: usize) -> std::io::Result<Self> {
-        let start = cursor.position() as usize;
-        Ok(&cursor.get_ref()[start..start + size])
-    }
-}
 
 macro_rules! metadata {
     ($($name:ident: $ty:ty,)*) => {
@@ -324,7 +472,7 @@ macro_rules! metadata {
         #[derive(Debug)]
         pub struct GlobalMetadata<'a> {
             $(
-                pub $name: $ty,
+                pub $name: MetadataTable<$ty>,
             )*
         }
 
@@ -383,8 +531,8 @@ macro_rules! metadata {
 
 metadata! {
     string_literal: Vec<Il2CppStringLiteral>,
-    string_literal_data: &'a [u8],
-    string: &'a [u8],
+    string_literal_data: StringLiteralData<'a>,
+    string: StringData<'a>,
     events: Vec<Il2CppEventDefinition>,
     properties: Vec<Il2CppPropertyDefinition>,
     methods: Vec<Il2CppMethodDefinition>,
@@ -413,19 +561,8 @@ metadata! {
     unresolved_virtual_call_parameter_types: Vec<TypeIndex>,
     unresolved_virtual_call_parameter_ranges: Vec<Il2CppMetadataRange>,
     windows_runtime_type_names: Vec<Il2CppWindowsRuntimeTypeNamePair>,
-    windows_runtime_strings: &'a [u8],
+    windows_runtime_strings: WindowsRuntimeStringData<'a>,
     exported_type_definitions: Vec<TypeDefinitionIndex>,
-}
-
-impl<'a> GlobalMetadata<'a> {
-    pub fn get_str(&self, idx: u32) -> Result<&str, Utf8Error> {
-        let idx = idx as usize;
-        let mut len = 0;
-        while self.string[idx + len] != 0 {
-            len += 1;
-        }
-        str::from_utf8(&self.string[idx..idx + len])
-    }
 }
 
 #[derive(Error, Debug)]
