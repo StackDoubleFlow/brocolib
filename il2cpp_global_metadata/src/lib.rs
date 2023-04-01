@@ -322,19 +322,19 @@ macro_rules! metadata {
         }
 
         #[derive(Debug)]
-        pub struct Metadata<'a> {
+        pub struct GlobalMetadata<'a> {
             $(
                 pub $name: $ty,
             )*
         }
 
-        impl<'a> Metadata<'a> {
+        impl<'a> GlobalMetadata<'a> {
             fn deserialize(
                 data: &'a [u8],
                 header: Il2CppGlobalMetadataHeader,
-            ) -> Result<Metadata, MetadataDeserializeError> {
+            ) -> Result<GlobalMetadata, MetadataDeserializeError> {
                 let mut cursor = Cursor::new(data);
-                Ok(Metadata {
+                Ok(GlobalMetadata {
                     $(
                         $name: {
                             let size = header.$name.len as usize;
@@ -349,7 +349,7 @@ macro_rules! metadata {
                 })
             }
 
-            fn serialize(metadata: &Metadata) -> Result<Vec<u8>, DekuError> {
+            fn serialize(metadata: &GlobalMetadata) -> Result<Vec<u8>, DekuError> {
                 // TODO: optimize and reduce allocations
                 let mut header_size = 8;
                 $(
@@ -417,7 +417,7 @@ metadata! {
     exported_type_definitions: Vec<TypeDefinitionIndex>,
 }
 
-impl<'a> Metadata<'a> {
+impl<'a> GlobalMetadata<'a> {
     pub fn get_str(&self, idx: u32) -> Result<&str, Utf8Error> {
         let idx = idx as usize;
         let mut len = 0;
@@ -434,11 +434,11 @@ pub enum MetadataDeserializeError {
     Bin(#[from] std::io::Error),
     #[error("il2cpp metadata header sanity check failed")]
     SanityCheck,
-    #[error("il2cpp metadata header version check failed, found {}")]
+    #[error("il2cpp metadata header version check failed, found {0}")]
     VersionCheck(u32),
 }
 
-pub fn deserialize(data: &[u8]) -> Result<Metadata, MetadataDeserializeError> {
+pub fn deserialize(data: &[u8]) -> Result<GlobalMetadata, MetadataDeserializeError> {
     let header = Il2CppGlobalMetadataHeader::deserialize::<LittleEndian, _>(Cursor::new(data))?;
 
     if header.sanity != SANITY {
@@ -446,12 +446,12 @@ pub fn deserialize(data: &[u8]) -> Result<Metadata, MetadataDeserializeError> {
     }
 
     if header.version != VERSION {
-        return Err(MetadataDeserializeError::VersionCheck);
+        return Err(MetadataDeserializeError::VersionCheck(header.version));
     }
 
-    Metadata::deserialize(data, header)
+    GlobalMetadata::deserialize(data, header)
 }
 
-pub fn serialize(metadata: &Metadata) -> Result<Vec<u8>, DekuError> {
-    Metadata::serialize(metadata)
+pub fn serialize(metadata: &GlobalMetadata) -> Result<Vec<u8>, DekuError> {
+    GlobalMetadata::serialize(metadata)
 }

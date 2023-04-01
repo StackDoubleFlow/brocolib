@@ -1,7 +1,7 @@
 use bad64::{disasm, DecodeError, Imm, Instruction, Op, Operand, Reg};
 use binread::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
-use il2cpp_metadata_raw::Metadata;
+use il2cpp_global_metadata::GlobalMetadata;
 use object::read::elf::ElfFile64;
 use object::{Endianness, Object, ObjectSection, ObjectSegment, ObjectSymbol};
 use std::collections::HashMap;
@@ -9,7 +9,7 @@ use std::io::{self, Cursor};
 use std::str;
 use thiserror::Error;
 
-pub type Elf<'a> = ElfFile64<'a, Endianness>;
+pub type Elf<'data> = ElfFile64<'data, Endianness>;
 
 #[derive(Error, Debug, Clone, Copy)]
 #[error("error disassembling code")]
@@ -186,12 +186,12 @@ fn find_registration(elf: &Elf) -> Result<(u64, u64)> {
     return Ok((regs[&Reg::X0], regs[&Reg::X1]));
 }
 
-struct ElfReader<'a> {
-    elf: &'a Elf<'a>,
+struct ElfReader<'elf, 'data> {
+    elf: &'elf Elf<'data>,
 }
 
-impl<'a> ElfReader<'a> {
-    fn new(elf: &'a Elf) -> Self {
+impl<'elf, 'data> ElfReader<'elf, 'data> {
+    fn new(elf: &'elf Elf<'data>) -> Self {
         Self { elf }
     }
 
@@ -202,7 +202,7 @@ impl<'a> ElfReader<'a> {
         Ok(cur)
     }
 
-    fn get_str(&self, vaddr: u64) -> Result<&'a str> {
+    fn get_str(&self, vaddr: u64) -> Result<&'data str> {
         let ptr = vaddr_conv(self.elf, vaddr)?;
         get_str(self.elf.data(), ptr as usize)
     }
@@ -280,8 +280,8 @@ where
     }
 }
 
-pub struct CodeGenModule<'a> {
-    pub name: &'a str,
+pub struct CodeGenModule<'data> {
+    pub name: &'data str,
     pub method_pointers: Vec<u64>,
     pub adjustor_thunks: Vec<TokenAdjustorThunkPair>,
     pub invoker_indices: Vec<u32>,
@@ -294,8 +294,8 @@ pub struct CodeGenModule<'a> {
     // debugger_metadata: DebuggerMetadataRegistration
 }
 
-impl<'a> CodeGenModule<'a> {
-    fn read(reader: &ElfReader<'a>, vaddr: u64) -> Result<Self> {
+impl<'data> CodeGenModule<'data> {
+    fn read<'elf>(reader: &ElfReader<'elf, 'data>, vaddr: u64) -> Result<Self> {
         let mut cur = reader.make_cur(vaddr)?;
 
         let name = reader.get_str(cur.read_u64::<LittleEndian>()?)?;
@@ -322,7 +322,7 @@ impl<'a> CodeGenModule<'a> {
     }
 }
 
-pub struct CodeRegistration<'a> {
+pub struct CodeRegistration<'data> {
     pub reverse_pinvoke_wrappers: Vec<u64>,
     pub generic_method_pointers: Vec<u64>,
     pub generic_adjustor_thunks: Vec<u64>,
@@ -332,11 +332,11 @@ pub struct CodeRegistration<'a> {
     // TODO
     // pub interop_data: Vec<InteropData>,
     // pub windows_runtime_factory_table: Vec<WindowsRuntimeFactoryTableEntry>,
-    pub code_gen_modules: Vec<CodeGenModule<'a>>,
+    pub code_gen_modules: Vec<CodeGenModule<'data>>,
 }
 
-impl<'a> CodeRegistration<'a> {
-    fn read(elf: &'a Elf, addr: u64) -> Result<Self> {
+impl<'data> CodeRegistration<'data> {
+    fn read(elf: &Elf<'data>, addr: u64) -> Result<Self> {
         let reader = ElfReader::new(elf);
         let mut cur = reader.make_cur(addr)?;
 
@@ -596,7 +596,7 @@ pub struct MetadataRegistration {
 }
 
 impl MetadataRegistration {
-    fn read(elf: &Elf, addr: u64, metadata: &Metadata) -> Result<Self> {
+    fn read(elf: &Elf, addr: u64, metadata: &GlobalMetadata) -> Result<Self> {
         let reader = ElfReader::new(elf);
         let mut cur = reader.make_cur(addr)?;
 
@@ -668,12 +668,19 @@ impl MetadataRegistration {
     }
 }
 
-pub fn registrations<'a>(
-    elf: &'a Elf<'a>,
-    metadata: &Metadata,
-) -> Result<(CodeRegistration<'a>, MetadataRegistration)> {
+pub struct RuntimeMetadata<'data> {
+    pub code_registration: CodeRegistration<'data>,
+    pub metadata_registration: MetadataRegistration,
+}
+
+pub fn runtime_metadata<'data>(
+    elf: &Elf<'data>,
+    global_metadata: &GlobalMetadata,
+) -> Result<RuntimeMetadata<'data>> {
     let (cr_addr, mr_addr) = find_registration(elf)?;
     let code_registration = CodeRegistration::read(elf, cr_addr)?;
-    let metadata_registration = MetadataRegistration::read(elf, mr_addr, metadata)?;
-    Ok((code_registration, metadata_registration))
+    let metadata_registration = MetadataRegistration::read(elf, mr_addr, global_metadata)?;
+    Ok(RuntimeMetadata {
+        code_registration, metadata_registration
+    })
 }
