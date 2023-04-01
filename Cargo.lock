@@ -121,6 +121,7 @@ version = "0.1.0"
 dependencies = [
  "il2cpp_elf",
  "il2cpp_global_metadata",
+ "thiserror",
 ]
 
 [[package]]

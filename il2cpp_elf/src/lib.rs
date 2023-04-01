@@ -677,15 +677,19 @@ pub struct RuntimeMetadata<'data> {
     pub metadata_registration: MetadataRegistration,
 }
 
-pub fn runtime_metadata<'data>(
-    elf: &Elf<'data>,
-    global_metadata: &GlobalMetadata,
-) -> Result<RuntimeMetadata<'data>> {
-    let (cr_addr, mr_addr) = find_registration(elf)?;
-    let code_registration = CodeRegistration::read(elf, cr_addr)?;
-    let metadata_registration = MetadataRegistration::read(elf, mr_addr, global_metadata)?;
-    Ok(RuntimeMetadata {
-        code_registration,
-        metadata_registration,
-    })
+impl<'data> RuntimeMetadata<'data> {
+    pub fn read(elf: &Elf<'data>, global_metadata: &GlobalMetadata) -> Result<Self> {
+        let (cr_addr, mr_addr) = find_registration(elf)?;
+        let code_registration = CodeRegistration::read(elf, cr_addr)?;
+        let metadata_registration = MetadataRegistration::read(elf, mr_addr, global_metadata)?;
+        Ok(RuntimeMetadata {
+            code_registration,
+            metadata_registration,
+        })
+    }
+
+    pub fn read_elf(elf_data: &'data [u8], global_metadata: &GlobalMetadata) -> Result<Self> {
+        let elf = Elf::parse(elf_data)?;
+        Self::read(&elf, global_metadata)
+    }
 }

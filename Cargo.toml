@@ -10,5 +10,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+thiserror = "1"
 il2cpp_global_metadata = { path = "./il2cpp_global_metadata" }
 il2cpp_elf = { path = "./il2cpp_elf" }
