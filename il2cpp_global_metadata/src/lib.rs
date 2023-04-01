@@ -279,7 +279,7 @@ pub struct Il2CppFieldRef {
 
 #[derive(Debug, BinaryDeserialize, DekuWrite)]
 #[deku(endian = "little", ctx = "_: Endian")]
-pub struct OffsetLen {
+struct OffsetLen {
     offset: u32,
     len: u32,
 }
