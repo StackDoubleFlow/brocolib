@@ -129,32 +129,6 @@ string_data!(StringLiteralData);
 string_data!(StringData);
 string_data!(WindowsRuntimeStringData);
 
-pub type TypeIndex = u32;
-pub type TypeDefinitionIndex = u32;
-pub type FieldIndex = u32;
-pub type DefaultValueIndex = u32;
-pub type DefaultValueDataIndex = u32;
-pub type CustomAttributeIndex = u32;
-pub type ParameterIndex = u32;
-pub type MethodIndex = u32;
-pub type GenericMethodIndex = u32;
-pub type PropertyIndex = u32;
-pub type EventIndex = u32;
-pub type GenericContainerIndex = u32;
-pub type GenericParameterIndex = u32;
-pub type GenericParameterConstraintIndex = u16;
-pub type NestedTypeIndex = u32;
-pub type InterfacesIndex = u32;
-pub type VTableIndex = u32;
-pub type InterfaceOffsetIndex = u32;
-pub type RGCTXIndex = u32;
-pub type StringIndex = u32;
-pub type StringLiteralIndex = u32;
-pub type GenericInstIndex = u32;
-pub type ImageIndex = u32;
-pub type AssemblyIndex = u32;
-pub type InteropDataIndex = u32;
-
 type EncodedMethodIndex = u32;
 
 #[derive(Debug, BinaryDeserialize)]
@@ -439,6 +413,40 @@ macro_rules! metadata {
         }
     };
 }
+
+pub type StringLiteralIndex = MetadataIndex<Il2CppStringLiteral>;
+pub type StringLiteralDataIndex<'a> = MetadataIndex<StringLiteralData<'a>>;
+pub type StringIndex<'a> = MetadataIndex<StringData<'a>>;
+pub type EventIndex = MetadataIndex<Il2CppEventDefinition>;
+pub type PropertyIndex = MetadataIndex<Il2CppPropertyDefinition>;
+pub type MethodIndex = MetadataIndex<Il2CppMethodDefinition>;
+pub type ParameterDefaultValueIndex = MetadataIndex<Il2CppParameterDefaultValue>;
+pub type FieldDefaultValueIndex = MetadataIndex<Il2CppFieldDefaultValue>;
+pub type FieldAndParameterDefaultValueDataIndex = MetadataIndex<u8>;
+pub type FieldMarshaledSizeIndex = MetadataIndex<Il2CppFieldMarshaledSize>;
+pub type ParameterIndex = MetadataIndex<Il2CppParameterDefinition>;
+pub type FieldIndex = MetadataIndex<Il2CppFieldDefinition>;
+pub type GenericParameterIndex = MetadataIndex<Il2CppGenericParameter>;
+pub type GenericParameterConstraintIndex = MetadataIndex<TypeIndex>;
+pub type GenericContainerIndex = MetadataIndex<Il2CppGenericContainer>;
+pub type NestedTypeIndex = MetadataIndex<TypeDefinitionIndex>;
+pub type InterfaceIndex = MetadataIndex<TypeIndex>;
+pub type VtableMethodIndex = MetadataIndex<EncodedMethodIndex>;
+pub type InterfaceOffsetIndex = MetadataIndex<Il2CppInterfaceOffsetPair>;
+pub type TypeDefinitionIndex = MetadataIndex<Il2CppTypeDefinition>;
+pub type ImageIndex = MetadataIndex<Il2CppImageDefinition>;
+pub type AssemblyIndex = MetadataIndex<Il2CppAssemblyDefinition>;
+pub type FieldRefIndex = MetadataIndex<Il2CppFieldRef>;
+pub type ReferencedAssemblyIndex = MetadataIndex<u32>;
+pub type AttributeDataIndex = MetadataIndex<u8>;
+pub type AttributeDataRangeIndex = MetadataIndex<Il2CppCustomAttributeDataRange>;
+pub type AttributesInfoIndex = MetadataIndex<Il2CppCustomAttributeDataRange>;
+pub type AttributeTypeIndex = MetadataIndex<TypeIndex>;
+pub type UnresolvedVirtualCallParameterTypeIndex = MetadataIndex<TypeIndex>;
+pub type UnresolvedVirtualCallParameterRangesIndex = MetadataIndex<Il2CppMetadataRange>;
+pub type WindowsRuntimeTypeNameIndex = MetadataIndex<Il2CppWindowsRuntimeTypeNamePair>;
+pub type WindowsRuntimeStringIndex<'a> = MetadataIndex<WindowsRuntimeStringData<'a>>;
+pub type ExportedTypeDefinitionIndex = MetadataIndex<TypeDefinitionIndex>;
 
 metadata! {
     string_literal: Vec<Il2CppStringLiteral>,

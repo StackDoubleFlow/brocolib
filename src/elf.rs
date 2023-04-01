@@ -1,4 +1,4 @@
-use crate::global_metadata::GlobalMetadata;
+use crate::global_metadata::{GlobalMetadata, MetadataIndex};
 use bad64::{disasm, DecodeError, Imm, Instruction, Op, Operand, Reg};
 use binread::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -652,7 +652,8 @@ impl MetadataRegistration {
             }
             let mut cur = reader.make_cur(addr)?;
 
-            let arr_len = metadata.type_definitions[i].field_count as usize;
+            let type_def_idx = MetadataIndex::new(i as u32);
+            let arr_len = metadata.type_definitions[type_def_idx].field_count as usize;
             let mut arr = Vec::with_capacity(arr_len);
             for _ in 0..arr_len {
                 arr.push(cur.read_u32::<LittleEndian>()?);
