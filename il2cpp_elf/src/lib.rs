@@ -141,14 +141,11 @@ fn nth_bl(elf: &Elf, addr: u64, n: usize) -> Result<u64> {
         let addr = addr + i * 4;
         let code = &elf.data()[addr as usize..addr as usize + 4];
         let ins = &try_disassemble(code, addr)?[0];
-        match (ins.op(), ins.operands()) {
-            (Op::BL, [Operand::Label(Imm::Unsigned(addr))]) => {
-                count += 1;
-                if count == n {
-                    return Ok(*addr);
-                }
-            },
-            _ => {}
+        if let (Op::BL, [Operand::Label(Imm::Unsigned(addr))]) = (ins.op(), ins.operands()) {
+            count += 1;
+            if count == n {
+                return Ok(*addr);
+            }
         }
     }
 
@@ -161,9 +158,8 @@ fn find_blr(elf: &Elf, addr: u64, limit: usize) -> Result<Option<(u64, Reg)>> {
         let addr = addr + i as u64 * 4;
         let code = &elf.data()[addr as usize..addr as usize + 4];
         let ins = &try_disassemble(code, addr)?[0];
-        match (ins.op(), ins.operands()) {
-            (Op::BLR, [Operand::Reg { reg, .. }]) => return Ok(Some((addr, *reg))),
-            _ => {}
+        if let (Op::BLR, [Operand::Reg { reg, .. }]) = (ins.op(), ins.operands()) {
+            return Ok(Some((addr, *reg)));
         }
     }
     Ok(None)
@@ -171,11 +167,19 @@ fn find_blr(elf: &Elf, addr: u64, limit: usize) -> Result<Option<(u64, Reg)>> {
 
 /// Returns address to (g_CodeRegistration, g_MetadataRegistration)
 fn find_registration(elf: &Elf) -> Result<(u64, u64)> {
-    let il2cpp_init = elf.dynamic_symbols().find(|s| s.name() == Ok("il2cpp_init")).ok_or(Il2CppBinaryError::MissingIl2CppInit)?.address();
+    let il2cpp_init = elf
+        .dynamic_symbols()
+        .find(|s| s.name() == Ok("il2cpp_init"))
+        .ok_or(Il2CppBinaryError::MissingIl2CppInit)?
+        .address();
     let runtime_init = nth_bl(elf, il2cpp_init, 2)?;
 
-    let (blr_addr, blr_reg) = find_blr(elf, runtime_init, 200)?.ok_or(Il2CppBinaryError::MissingBlr)?;
-    let instructions = try_disassemble(&elf.data()[runtime_init as usize..blr_addr as usize], runtime_init)?;
+    let (blr_addr, blr_reg) =
+        find_blr(elf, runtime_init, 200)?.ok_or(Il2CppBinaryError::MissingBlr)?;
+    let instructions = try_disassemble(
+        &elf.data()[runtime_init as usize..blr_addr as usize],
+        runtime_init,
+    )?;
     let regs = analyze_reg_rel(elf, &instructions);
 
     let fn_addr = vaddr_conv(elf, regs[&blr_reg])?;
@@ -183,7 +187,7 @@ fn find_registration(elf: &Elf) -> Result<(u64, u64)> {
     let instructions = try_disassemble(code, fn_addr)?;
     let regs = analyze_reg_rel(elf, instructions.as_slice());
 
-    return Ok((regs[&Reg::X0], regs[&Reg::X1]));
+    Ok((regs[&Reg::X0], regs[&Reg::X1]))
 }
 
 struct ElfReader<'elf, 'data> {
@@ -249,7 +253,7 @@ where
     T: BinRead,
 {
     let mut cur = reader.make_cur(vaddr)?;
-    let mut vec = Vec::with_capacity(len as usize);
+    let mut vec = Vec::with_capacity(len);
     for _ in 0..len {
         vec.push(cur.read_le()?);
     }
@@ -681,6 +685,7 @@ pub fn runtime_metadata<'data>(
     let code_registration = CodeRegistration::read(elf, cr_addr)?;
     let metadata_registration = MetadataRegistration::read(elf, mr_addr, global_metadata)?;
     Ok(RuntimeMetadata {
-        code_registration, metadata_registration
+        code_registration,
+        metadata_registration,
     })
 }
