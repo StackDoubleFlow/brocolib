@@ -1,6 +1,3 @@
-[workspace]
-members = ["il2cpp_global_metadata", "il2cpp_elf"]
-
 [package]
 name = "brocolib"
 version = "0.1.0"
@@ -11,5 +8,8 @@ edition = "2021"
 
 [dependencies]
 thiserror = "1"
-il2cpp_global_metadata = { path = "./il2cpp_global_metadata" }
-il2cpp_elf = { path = "./il2cpp_elf" }
+binde = { git = "https://github.com/StackDoubleFlow/binde" }
+bad64 = "0.6"
+byteorder = "1.4"
+object = "0.30"
+binread = "2.2"

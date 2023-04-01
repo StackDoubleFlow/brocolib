@@ -1,7 +1,7 @@
+use crate::global_metadata::GlobalMetadata;
 use bad64::{disasm, DecodeError, Imm, Instruction, Op, Operand, Reg};
 use binread::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
-use il2cpp_global_metadata::GlobalMetadata;
 use object::read::elf::ElfFile64;
 use object::{Endianness, Object, ObjectSection, ObjectSegment, ObjectSymbol};
 use std::collections::HashMap;

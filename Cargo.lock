@@ -107,8 +107,11 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 name = "brocolib"
 version = "0.1.0"
 dependencies = [
- "il2cpp_elf",
- "il2cpp_global_metadata",
+ "bad64",
+ "binde",
+ "binread",
+ "byteorder",
+ "object",
  "thiserror",
 ]
 
@@ -199,26 +202,6 @@ name = "glob"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
-
-[[package]]
-name = "il2cpp_elf"
-version = "0.1.0"
-dependencies = [
- "bad64",
- "binread",
- "byteorder",
- "il2cpp_global_metadata",
- "object",
- "thiserror",
-]
-
-[[package]]
-name = "il2cpp_global_metadata"
-version = "0.1.0"
-dependencies = [
- "binde",
- "thiserror",
-]
 
 [[package]]
 name = "jobserver"

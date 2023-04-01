@@ -2,7 +2,6 @@ use std::io::Cursor;
 use std::marker::PhantomData;
 use std::ops::Index;
 use std::str;
-
 use binde::{BinaryDeserialize, LittleEndian};
 use thiserror::Error;
 
@@ -16,14 +15,16 @@ pub struct MetadataIndex<T, I = u32> {
 }
 
 impl<T, I> BinaryDeserialize for MetadataIndex<T, I>
-    where I: BinaryDeserialize
+where
+    I: BinaryDeserialize,
 {
     const SIZE: usize = I::SIZE;
 
     fn deserialize<E, R>(reader: R) -> std::io::Result<Self>
-        where
-            E: binde::ByteOrder,
-            R: std::io::Read {
+    where
+        E: binde::ByteOrder,
+        R: std::io::Read,
+    {
         Ok(Self {
             idx: binde::deserialize::<E, _, _>(reader)?,
             _phantom: PhantomData,
@@ -35,7 +36,7 @@ impl<T> MetadataIndex<T> {
     pub fn new(idx: u32) -> Self {
         Self {
             idx,
-            _phantom: PhantomData
+            _phantom: PhantomData,
         }
     }
 }
@@ -44,7 +45,6 @@ impl<T> MetadataIndex<T> {
 pub struct MetadataTable<T> {
     table: T,
 }
-
 
 // Regular indexing for u32
 impl<T> Index<MetadataIndex<T>> for MetadataTable<Vec<T>> {
@@ -64,8 +64,9 @@ impl<T> Index<MetadataIndex<T, u16>> for MetadataTable<Vec<T>> {
     }
 }
 
-impl<T> IntoIterator for MetadataTable<T> 
-    where T: IntoIterator
+impl<T> IntoIterator for MetadataTable<T>
+where
+    T: IntoIterator,
 {
     type Item = T::Item;
     type IntoIter = T::IntoIter;
@@ -117,7 +118,7 @@ macro_rules! string_data {
             fn read(cursor: &mut Cursor<&'data [u8]>, size: usize) -> std::io::Result<Self> {
                 let start = cursor.position() as usize;
                 Ok(MetadataTable {
-                    table: $ty(&cursor.get_ref()[start..start + size])
+                    table: $ty(&cursor.get_ref()[start..start + size]),
                 })
             }
         }
@@ -393,12 +394,9 @@ impl<T: BinaryDeserialize> ReadMetadataTable<'_> for MetadataTable<Vec<T>> {
         for _ in 0..count {
             vec.push(T::deserialize::<LittleEndian, _>(&mut *cursor)?);
         }
-        Ok(MetadataTable {
-            table: vec
-        })
+        Ok(MetadataTable { table: vec })
     }
 }
-
 
 macro_rules! metadata {
     ($($name:ident: $ty:ty,)*) => {
