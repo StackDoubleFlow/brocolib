@@ -434,8 +434,8 @@ pub enum MetadataDeserializeError {
     Bin(#[from] std::io::Error),
     #[error("il2cpp metadata header sanity check failed")]
     SanityCheck,
-    #[error("il2cpp metadata header version check failed")]
-    VersionCheck,
+    #[error("il2cpp metadata header version check failed, found {}")]
+    VersionCheck(u32),
 }
 
 pub fn deserialize(data: &[u8]) -> Result<Metadata, MetadataDeserializeError> {
