@@ -4,9 +4,6 @@ use std::ops::Index;
 use std::str;
 
 use binde::{BinaryDeserialize, LittleEndian};
-use deku::bitvec::BitVec;
-use deku::ctx::Endian;
-use deku::prelude::*;
 use thiserror::Error;
 
 const SANITY: u32 = 0xFAB11BAF;
@@ -34,18 +31,6 @@ impl<T, I> BinaryDeserialize for MetadataIndex<T, I>
     }
 }
 
-impl<T, I> DekuWrite for MetadataIndex<T, I>
-    where I: DekuWrite
-{
-    fn write(
-            &self,
-            output: &mut deku::bitvec::BitVec<u8, deku::bitvec::Msb0>,
-            ctx: (),
-        ) -> Result<(), DekuError> {
-        self.idx.write(output, ctx)
-    }
-}
-
 impl<T> MetadataIndex<T> {
     pub fn new(idx: u32) -> Self {
         Self {
@@ -60,15 +45,6 @@ pub struct MetadataTable<T> {
     table: T,
 }
 
-impl<T: DekuWrite> DekuWrite for MetadataTable<T> {
-    fn write(
-            &self,
-            output: &mut deku::bitvec::BitVec<u8, deku::bitvec::Msb0>,
-            ctx: (),
-        ) -> Result<(), DekuError> {
-        self.table.write(output, ctx)
-    }
-}
 
 // Regular indexing for u32
 impl<T> Index<MetadataIndex<T>> for MetadataTable<Vec<T>> {
@@ -120,7 +96,7 @@ impl<T> MetadataTable<Vec<T>> {
 macro_rules! string_data {
     ($ty:tt) => {
         #[derive(Debug, Default)]
-        struct $ty<'data>(&'data [u8]);
+        pub struct $ty<'data>(&'data [u8]);
 
         impl<'data> Index<MetadataIndex<$ty<'data>>> for MetadataTable<$ty<'data>> {
             type Output = str;
@@ -143,16 +119,6 @@ macro_rules! string_data {
                 Ok(MetadataTable {
                     table: $ty(&cursor.get_ref()[start..start + size])
                 })
-            }
-        }
-
-        impl<'data> DekuWrite for MetadataTable<$ty<'data>> {
-            fn write(
-                    &self,
-                    output: &mut deku::bitvec::BitVec<u8, deku::bitvec::Msb0>,
-                    ctx: (),
-                ) -> Result<(), DekuError> {
-                self.table.0.write(output, ctx)
             }
         }
     };
@@ -190,15 +156,13 @@ pub type InteropDataIndex = u32;
 
 type EncodedMethodIndex = u32;
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppStringLiteral {
     pub length: u32,
     pub data_index: StringLiteralIndex,
 }
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppEventDefinition {
     pub name_index: StringIndex,
     pub type_index: TypeIndex,
@@ -208,8 +172,7 @@ pub struct Il2CppEventDefinition {
     pub token: u32,
 }
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppMethodDefinition {
     pub name_index: StringIndex,
     pub declaring_type: TypeDefinitionIndex,
@@ -223,16 +186,14 @@ pub struct Il2CppMethodDefinition {
     pub parameter_count: u16,
 }
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppParameterDefinition {
     pub name_index: i32,
     pub token: u32,
     pub type_index: i32,
 }
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppTypeDefinition {
     pub name_index: StringIndex,
     pub namespace_index: StringIndex,
@@ -268,8 +229,7 @@ pub struct Il2CppTypeDefinition {
     pub token: u32,
 }
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppImageDefinition {
     pub name_index: StringIndex,
     pub assembly_index: AssemblyIndex,
@@ -287,16 +247,14 @@ pub struct Il2CppImageDefinition {
     pub custom_attribute_count: u32,
 }
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppFieldDefinition {
     pub name_index: StringIndex,
     pub type_index: TypeIndex,
     pub token: u32,
 }
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppPropertyDefinition {
     pub name_index: StringIndex,
     pub get: MethodIndex,
@@ -305,32 +263,28 @@ pub struct Il2CppPropertyDefinition {
     pub token: u32,
 }
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppParameterDefaultValue {
     pub parameter_index: ParameterIndex,
     pub type_index: TypeIndex,
     pub data_index: DefaultValueDataIndex,
 }
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppFieldDefaultValue {
     pub field_index: FieldIndex,
     pub type_index: TypeIndex,
     pub data_index: DefaultValueDataIndex,
 }
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppFieldMarshaledSize {
     pub field_index: FieldIndex,
     pub type_index: TypeIndex,
     pub size: u32,
 }
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppGenericParameter {
     pub owner_index: GenericContainerIndex, /* Type or method this parameter was defined in. */
     pub name_index: StringIndex,
@@ -340,8 +294,7 @@ pub struct Il2CppGenericParameter {
     pub flags: u16,
 }
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppGenericContainer {
     /// index of the generic type definition or the generic method definition corresponding to this container \
     /// either index into Il2CppClass metadata array or Il2CppMethodDefinition array
@@ -353,15 +306,13 @@ pub struct Il2CppGenericContainer {
     pub generic_parameter_start: GenericParameterIndex,
 }
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppInterfaceOffsetPair {
     pub interface_type_index: TypeIndex,
     pub offset: u32,
 }
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: deku::ctx::Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppAssemblyNameDefinition {
     pub name_index: StringIndex,
     pub culture_index: StringIndex,
@@ -376,8 +327,7 @@ pub struct Il2CppAssemblyNameDefinition {
     pub public_key_token: [u8; 8],
 }
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppAssemblyDefinition {
     pub image_index: ImageIndex,
     pub token: u32,
@@ -386,51 +336,44 @@ pub struct Il2CppAssemblyDefinition {
     pub aname: Il2CppAssemblyNameDefinition,
 }
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppMetadataUsageList {
     pub start: u32,
     pub count: u32,
 }
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppMetadataUsagePair {
     pub destination_index: u32,
     pub encoded_source_index: u32,
 }
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppCustomAttributeDataRange {
     pub token: u32,
     pub start_offset: u32,
 }
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppMetadataRange {
     pub start: u32,
     pub length: u32,
 }
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppWindowsRuntimeTypeNamePair {
     pub name_index: StringIndex,
     pub type_index: TypeIndex,
 }
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppFieldRef {
     pub type_index: TypeIndex,
     /// local offset into type fields
     pub field_index: FieldIndex,
 }
 
-#[derive(Debug, BinaryDeserialize, DekuWrite)]
-#[deku(endian = "little", ctx = "_: Endian")]
+#[derive(Debug, BinaryDeserialize)]
 pub struct OffsetLen {
     offset: u32,
     len: u32,
@@ -459,9 +402,8 @@ impl<T: BinaryDeserialize> ReadMetadataTable<'_> for MetadataTable<Vec<T>> {
 
 macro_rules! metadata {
     ($($name:ident: $ty:ty,)*) => {
-        #[derive(Debug, BinaryDeserialize, DekuWrite)]
-        #[deku(endian = "little")]
-        struct Il2CppGlobalMetadataHeader {
+        #[derive(Debug, BinaryDeserialize)]
+                struct Il2CppGlobalMetadataHeader {
             sanity: u32,
             version: u32,
             $(
@@ -495,35 +437,6 @@ macro_rules! metadata {
                         },
                     )*
                 })
-            }
-
-            fn serialize(metadata: &GlobalMetadata) -> Result<Vec<u8>, DekuError> {
-                // TODO: optimize and reduce allocations
-                let mut header_size = 8;
-                $(
-                    let _ = metadata.$name;
-                    header_size += 8;
-                )*
-
-                let mut bv = BitVec::new();
-                $(
-                    let offset = bv.len() as u32 / 8;
-                    metadata.$name.write(&mut bv, Endian::Little)?;
-                    let len = (bv.len() as u32 / 8) - offset;
-                    let $name = OffsetLen { offset: offset + header_size, len };
-                )*
-
-                let header = Il2CppGlobalMetadataHeader {
-                    sanity: SANITY,
-                    version: VERSION,
-                    $(
-                        $name,
-                    )*
-                };
-
-                let mut data = header.to_bytes()?;
-                data.append(&mut bv.into_vec());
-                Ok(data)
             }
         }
     };
@@ -589,8 +502,4 @@ pub fn deserialize(data: &[u8]) -> Result<GlobalMetadata, MetadataDeserializeErr
     }
 
     GlobalMetadata::deserialize(data, header)
-}
-
-pub fn serialize(metadata: &GlobalMetadata) -> Result<Vec<u8>, DekuError> {
-    GlobalMetadata::serialize(metadata)
 }
