@@ -1,5 +1,4 @@
 use std::io::Cursor;
-use std::marker::PhantomData;
 use std::ops::Index;
 use std::str;
 use binde::{BinaryDeserialize, LittleEndian};
@@ -8,127 +7,7 @@ use thiserror::Error;
 const SANITY: u32 = 0xFAB11BAF;
 const VERSION: u32 = 29;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct MetadataIndex<T, I = u32> {
-    idx: I,
-    _phantom: PhantomData<*mut T>, // invariant
-}
-
-impl<T, I> BinaryDeserialize for MetadataIndex<T, I>
-where
-    I: BinaryDeserialize,
-{
-    const SIZE: usize = I::SIZE;
-
-    fn deserialize<E, R>(reader: R) -> std::io::Result<Self>
-    where
-        E: binde::ByteOrder,
-        R: std::io::Read,
-    {
-        Ok(Self {
-            idx: binde::deserialize::<E, _, _>(reader)?,
-            _phantom: PhantomData,
-        })
-    }
-}
-
-impl<T> MetadataIndex<T> {
-    pub fn new(idx: u32) -> Self {
-        Self {
-            idx,
-            _phantom: PhantomData,
-        }
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct MetadataTable<T> {
-    table: T,
-}
-
-// Regular indexing for u32
-impl<T> Index<MetadataIndex<T>> for MetadataTable<Vec<T>> {
-    type Output = T;
-
-    fn index(&self, index: MetadataIndex<T>) -> &Self::Output {
-        &self.table[index.idx as usize]
-    }
-}
-
-// Regular indexing for u16
-impl<T> Index<MetadataIndex<T, u16>> for MetadataTable<Vec<T>> {
-    type Output = T;
-
-    fn index(&self, index: MetadataIndex<T, u16>) -> &Self::Output {
-        &self.table[index.idx as usize]
-    }
-}
-
-impl<T> IntoIterator for MetadataTable<T>
-where
-    T: IntoIterator,
-{
-    type Item = T::Item;
-    type IntoIter = T::IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.table.into_iter()
-    }
-}
-
-impl<T> MetadataTable<Vec<T>> {
-    pub fn len(&self) -> usize {
-        self.table.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.table.is_empty()
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.table.iter()
-    }
-
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.table.iter_mut()
-    }
-}
-
-macro_rules! string_data {
-    ($ty:tt) => {
-        #[derive(Debug, Default)]
-        pub struct $ty<'data>(&'data [u8]);
-
-        impl<'data> Index<MetadataIndex<$ty<'data>>> for MetadataTable<$ty<'data>> {
-            type Output = str;
-
-            fn index(&self, index: MetadataIndex<$ty>) -> &Self::Output {
-                let idx = index.idx as usize;
-                let mut len = 0;
-                while self.table.0[idx + len] != 0 {
-                    len += 1;
-                }
-
-                // FIXME: maybe not panic here?
-                str::from_utf8(&self.table.0[idx..idx + len]).unwrap()
-            }
-        }
-
-        impl<'data> ReadMetadataTable<'data> for MetadataTable<$ty<'data>> {
-            fn read(cursor: &mut Cursor<&'data [u8]>, size: usize) -> std::io::Result<Self> {
-                let start = cursor.position() as usize;
-                Ok(MetadataTable {
-                    table: $ty(&cursor.get_ref()[start..start + size]),
-                })
-            }
-        }
-    };
-}
-
-string_data!(StringLiteralData);
-string_data!(StringData);
-string_data!(WindowsRuntimeStringData);
-
+type TypeIndex = u32;
 type EncodedMethodIndex = u32;
 
 #[derive(Debug, BinaryDeserialize)]
@@ -187,9 +66,9 @@ pub struct Il2CppTypeDefinition {
     pub event_start: EventIndex,
     pub property_start: PropertyIndex,
     pub nested_types_start: NestedTypeIndex,
-    pub interfaces_start: InterfacesIndex,
-    pub vtable_start: VTableIndex,
-    pub interface_offsets_start: InterfacesIndex,
+    pub interfaces_start: InterfaceIndex,
+    pub vtable_start: VTableMethodIndex,
+    pub interface_offsets_start: InterfaceOffsetIndex,
 
     pub method_count: u16,
     pub property_count: u16,
@@ -218,7 +97,7 @@ pub struct Il2CppImageDefinition {
     pub entry_point_index: MethodIndex,
     pub token: u32,
 
-    pub custom_attribute_start: CustomAttributeIndex,
+    pub custom_attribute_start: AttributeDataRangeIndex,
     pub custom_attribute_count: u32,
 }
 
@@ -242,14 +121,14 @@ pub struct Il2CppPropertyDefinition {
 pub struct Il2CppParameterDefaultValue {
     pub parameter_index: ParameterIndex,
     pub type_index: TypeIndex,
-    pub data_index: DefaultValueDataIndex,
+    pub data_index: FieldAndParameterDefaultValueIndex,
 }
 
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppFieldDefaultValue {
     pub field_index: FieldIndex,
     pub type_index: TypeIndex,
-    pub data_index: DefaultValueDataIndex,
+    pub data_index: FieldAndParameterDefaultValueIndex,
 }
 
 #[derive(Debug, BinaryDeserialize)]
@@ -361,17 +240,6 @@ where
     fn read(cursor: &mut Cursor<&'a [u8]>, size: usize) -> std::io::Result<Self>;
 }
 
-impl<T: BinaryDeserialize> ReadMetadataTable<'_> for MetadataTable<Vec<T>> {
-    fn read(cursor: &mut Cursor<&[u8]>, size: usize) -> std::io::Result<Self> {
-        let count = size / T::SIZE;
-        let mut vec = Vec::new();
-        for _ in 0..count {
-            vec.push(T::deserialize::<LittleEndian, _>(&mut *cursor)?);
-        }
-        Ok(MetadataTable { table: vec })
-    }
-}
-
 macro_rules! metadata {
     ($($name:ident: $ty:ty,)*) => {
         #[derive(Debug, BinaryDeserialize)]
@@ -386,7 +254,7 @@ macro_rules! metadata {
         #[derive(Debug)]
         pub struct GlobalMetadata<'a> {
             $(
-                pub $name: MetadataTable<$ty>,
+                pub $name: $ty,
             )*
         }
 
@@ -414,74 +282,204 @@ macro_rules! metadata {
     };
 }
 
-pub type StringLiteralIndex = MetadataIndex<Il2CppStringLiteral>;
-pub type StringLiteralDataIndex<'a> = MetadataIndex<StringLiteralData<'a>>;
-pub type StringIndex<'a> = MetadataIndex<StringData<'a>>;
-pub type EventIndex = MetadataIndex<Il2CppEventDefinition>;
-pub type PropertyIndex = MetadataIndex<Il2CppPropertyDefinition>;
-pub type MethodIndex = MetadataIndex<Il2CppMethodDefinition>;
-pub type ParameterDefaultValueIndex = MetadataIndex<Il2CppParameterDefaultValue>;
-pub type FieldDefaultValueIndex = MetadataIndex<Il2CppFieldDefaultValue>;
-pub type FieldAndParameterDefaultValueDataIndex = MetadataIndex<u8>;
-pub type FieldMarshaledSizeIndex = MetadataIndex<Il2CppFieldMarshaledSize>;
-pub type ParameterIndex = MetadataIndex<Il2CppParameterDefinition>;
-pub type FieldIndex = MetadataIndex<Il2CppFieldDefinition>;
-pub type GenericParameterIndex = MetadataIndex<Il2CppGenericParameter>;
-pub type GenericParameterConstraintIndex = MetadataIndex<TypeIndex>;
-pub type GenericContainerIndex = MetadataIndex<Il2CppGenericContainer>;
-pub type NestedTypeIndex = MetadataIndex<TypeDefinitionIndex>;
-pub type InterfaceIndex = MetadataIndex<TypeIndex>;
-pub type VtableMethodIndex = MetadataIndex<EncodedMethodIndex>;
-pub type InterfaceOffsetIndex = MetadataIndex<Il2CppInterfaceOffsetPair>;
-pub type TypeDefinitionIndex = MetadataIndex<Il2CppTypeDefinition>;
-pub type ImageIndex = MetadataIndex<Il2CppImageDefinition>;
-pub type AssemblyIndex = MetadataIndex<Il2CppAssemblyDefinition>;
-pub type FieldRefIndex = MetadataIndex<Il2CppFieldRef>;
-pub type ReferencedAssemblyIndex = MetadataIndex<u32>;
-pub type AttributeDataIndex = MetadataIndex<u8>;
-pub type AttributeDataRangeIndex = MetadataIndex<Il2CppCustomAttributeDataRange>;
-pub type AttributesInfoIndex = MetadataIndex<Il2CppCustomAttributeDataRange>;
-pub type AttributeTypeIndex = MetadataIndex<TypeIndex>;
-pub type UnresolvedVirtualCallParameterTypeIndex = MetadataIndex<TypeIndex>;
-pub type UnresolvedVirtualCallParameterRangesIndex = MetadataIndex<Il2CppMetadataRange>;
-pub type WindowsRuntimeTypeNameIndex = MetadataIndex<Il2CppWindowsRuntimeTypeNamePair>;
-pub type WindowsRuntimeStringIndex<'a> = MetadataIndex<WindowsRuntimeStringData<'a>>;
-pub type ExportedTypeDefinitionIndex = MetadataIndex<TypeDefinitionIndex>;
+
+macro_rules! index_type {
+    ($name:ident, $ty:ty) => {
+        #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        struct $name($ty);
+
+        impl $name {
+            fn index(self) -> $ty {
+                self.0
+            }
+
+            fn new(index: $ty) -> Self {
+                Self(index)
+            }
+        }
+        
+        impl BinaryDeserialize for $name {
+            const SIZE: usize = <$ty>::SIZE;
+            fn deserialize<E, R>(reader: R) -> std::io::Result<Self>
+                where
+                    E: binde::ByteOrder,
+                    R: std::io::Read {
+                Ok(Self(binde::deserialize::<E, _, _>(reader)?))
+            }
+        }
+    };
+}
+
+macro_rules! basic_table {
+    ($name:ident: $ty:ty => $idx_name:ident: $idx_ty:ty) => {
+        #[derive(Debug, Default)]
+        struct $name {
+            table: Vec<$ty>,
+        }
+
+        impl $name {
+            fn as_vec(&self) -> &Vec<$ty> {
+                &self.table
+            }
+        }
+
+        impl ReadMetadataTable<'_> for $name {
+            fn read(cursor: &mut Cursor<&[u8]>, size: usize) -> std::io::Result<Self> {
+                let count = size / <$ty>::SIZE;
+                let mut vec = Vec::new();
+                for _ in 0..count {
+                    vec.push(<$ty>::deserialize::<LittleEndian, _>(&mut *cursor)?);
+                }
+                Ok($name { table: vec })
+            }
+        }
+
+        index_type!($idx_name, $idx_ty);
+
+        impl Index<$idx_name> for $name {
+            type Output = $ty;
+
+            fn index(&self, index: $idx_name) -> &Self::Output {
+                &self.table[index.0 as usize]
+            }
+        }
+
+        impl<R> Index<R> for $name 
+            where R: std::ops::RangeBounds<$idx_name>
+        {
+            type Output = [$ty];
+
+            fn index(&self, range: R) -> &Self::Output {
+                use std::ops::Bound;
+                let start = match range.start_bound() {
+                    Bound::Unbounded => Bound::Unbounded,
+                    Bound::Included(idx) => Bound::Included(idx.0 as usize),
+                    Bound::Excluded(idx) => Bound::Excluded(idx.0 as usize),
+                };
+                let end = match range.end_bound() {
+                    Bound::Unbounded => Bound::Unbounded,
+                    Bound::Included(idx) => Bound::Included(idx.0 as usize),
+                    Bound::Excluded(idx) => Bound::Excluded(idx.0 as usize),
+                };
+                &self.table[(start, end)]
+            }
+        }
+    };
+    ($name:ident: $ty:ty, $idx_name:ident) => {
+        basic_table!($name: $ty => $idx_name: u32);
+    }
+}
+
+macro_rules! string_data_table {
+    ($name:ident, $idx_name:ident) => {
+        #[derive(Debug, Default)]
+        struct $name<'data> {
+            data: &'data [u8]
+        }
+
+        impl<'data> $name<'data> {
+            fn data(&self) -> &'data [u8] {
+                self.data
+            }
+        }
+
+        index_type!($idx_name, u32);
+
+        impl<'data> Index<$idx_name> for $name<'data> {
+            type Output = str;
+
+            fn index(&self, index: $idx_name) -> &Self::Output {
+                let idx = index.0 as usize;
+                let mut len = 0;
+                while self.data[idx + len] != 0 {
+                    len += 1;
+                }
+
+                // FIXME: maybe not panic here?
+                str::from_utf8(&self.data[idx..idx + len]).unwrap()
+            }
+        }
+
+        impl<'data> ReadMetadataTable<'data> for $name<'data> {
+                fn read(cursor: &mut Cursor<&'data [u8]>, size: usize) -> std::io::Result<Self> {
+                    let start = cursor.position() as usize;
+                    Ok($name {
+                        data: &cursor.get_ref()[start..start + size],
+                    })
+                }
+            }
+        };
+}
+
+basic_table!(StringLiteralTable: Il2CppStringLiteral, StringLiteralIndex);
+string_data_table!(StringLiteralData, StringLiteralDataIndex);
+string_data_table!(StringData, StringIndex);
+basic_table!(EventTable: Il2CppEventDefinition, EventIndex);
+basic_table!(PropertyTable: Il2CppPropertyDefinition, PropertyIndex);
+basic_table!(MethodTable: Il2CppMethodDefinition, MethodIndex);
+basic_table!(ParameterDefaultValueTable: Il2CppParameterDefaultValue, ParameterDefaultValueIndex);
+basic_table!(FieldDefaultValueTable: Il2CppFieldDefaultValue, FieldDefaultValueIndex);
+// TODO: data?
+basic_table!(FieldAndParameterDefaultValueTable: u8, FieldAndParameterDefaultValueIndex);
+basic_table!(FieldMarshaledSizeTable: Il2CppFieldMarshaledSize, FieldMarshaledSizeIndex);
+basic_table!(ParameterTable: Il2CppParameterDefinition, ParameterIndex);
+basic_table!(FieldTable: Il2CppFieldDefinition, FieldIndex);
+basic_table!(GenericParameterTable: Il2CppGenericParameter, GenericParameterIndex);
+basic_table!(GenericParameterConstraintTable: TypeIndex, GenericParameterConstraintIndex);
+basic_table!(GenericContainerTable: Il2CppGenericContainer, GenericContainerIndex);
+basic_table!(NestedTypeTable: TypeDefinitionIndex, NestedTypeIndex);
+basic_table!(InterfaceTable: TypeIndex, InterfaceIndex);
+basic_table!(VTableMethodTable: u32, VTableMethodIndex);
+basic_table!(InterfaceOffsetTable: Il2CppInterfaceOffsetPair, InterfaceOffsetIndex);
+basic_table!(TypeDefinitionTable: Il2CppTypeDefinition, TypeDefinitionIndex);
+basic_table!(ImageTable: Il2CppImageDefinition, ImageIndex);
+basic_table!(AssemblyTable: Il2CppAssemblyDefinition, AssemblyIndex);
+basic_table!(FieldRefTable: Il2CppFieldRef, FieldRefIndex);
+// TODO: reference assemblies?
+basic_table!(ReferencedAssemblyTable: u32, ReferenceAssemblyIndex);
+basic_table!(AttributeDataRangeTable: Il2CppCustomAttributeDataRange, AttributeDataRangeIndex);
+// TODO: data?
+basic_table!(AttributeDataTable: u8, AttributeDataIndex);
+basic_table!(AttributeInfoTable: Il2CppCustomAttributeDataRange, AttributeInfoIndex);
+basic_table!(AttributeTypeTable: TypeIndex, AttributeTypeIndex);
+basic_table!(UnresolvedVirtualCallParameterTypeTable: TypeIndex, UnresolvedVirtualCallParameterTypeIndex);
+basic_table!(UnresolvedVirtualCallParameterRangeTable: Il2CppMetadataRange, UnresolvedVirtualCallParameterRangeIndex);
+basic_table!(WindowsRuntimeTypeNameTable: Il2CppWindowsRuntimeTypeNamePair, WindowsRuntimeTypeNameIndex);
+string_data_table!(WindowsRuntimeStringData, WindowsRuntimeStringDataIndex);
+basic_table!(ExportedTypeDefinitionTable: TypeDefinitionIndex, ExportedTypeDefinitionIndex);
 
 metadata! {
-    string_literal: Vec<Il2CppStringLiteral>,
+    string_literal: StringLiteralTable,
     string_literal_data: StringLiteralData<'a>,
     string: StringData<'a>,
-    events: Vec<Il2CppEventDefinition>,
-    properties: Vec<Il2CppPropertyDefinition>,
-    methods: Vec<Il2CppMethodDefinition>,
-    parameter_default_values: Vec<Il2CppParameterDefaultValue>,
-    field_default_values: Vec<Il2CppFieldDefaultValue>,
-    field_and_parameter_default_value_data: Vec<u8>,
-    field_marshaled_sizes: Vec<Il2CppFieldMarshaledSize>,
-    parameters: Vec<Il2CppParameterDefinition>,
-    fields: Vec<Il2CppFieldDefinition>,
-    generic_parameters: Vec<Il2CppGenericParameter>,
-    generic_parameter_constraints: Vec<TypeIndex>,
-    generic_containers: Vec<Il2CppGenericContainer>,
-    nested_types: Vec<TypeDefinitionIndex>,
-    interfaces: Vec<TypeIndex>,
-    vtable_methods: Vec<EncodedMethodIndex>,
-    interface_offsets: Vec<Il2CppInterfaceOffsetPair>,
-    type_definitions: Vec<Il2CppTypeDefinition>,
-    images: Vec<Il2CppImageDefinition>,
-    assemblies: Vec<Il2CppAssemblyDefinition>,
-    field_refs: Vec<Il2CppFieldRef>,
-    referenced_assemblies: Vec<u32>,
-    attribute_data: Vec<u8>,
-    attribute_data_range: Vec<Il2CppCustomAttributeDataRange>,
-    attributes_info: Vec<Il2CppCustomAttributeDataRange>,
-    attribute_types: Vec<TypeIndex>,
-    unresolved_virtual_call_parameter_types: Vec<TypeIndex>,
-    unresolved_virtual_call_parameter_ranges: Vec<Il2CppMetadataRange>,
-    windows_runtime_type_names: Vec<Il2CppWindowsRuntimeTypeNamePair>,
+    events: EventTable,
+    properties: PropertyTable,
+    methods: MethodTable,
+    parameter_default_values: ParameterDefaultValueTable,
+    field_default_values: FieldDefaultValueTable,
+    field_and_parameter_default_value_data: FieldAndParameterDefaultValueTable,
+    field_marshaled_sizes: FieldMarshaledSizeTable,
+    parameters: ParameterTable,
+    fields: FieldTable,
+    generic_parameters: GenericParameterTable,
+    generic_parameter_constraints: GenericParameterConstraintTable,
+    generic_containers: GenericContainerTable,
+    nested_types: NestedTypeTable,
+    interfaces: InterfaceTable,
+    vtable_methods: VTableMethodTable,
+    interface_offsets: InterfaceOffsetTable,
+    type_definitions: TypeDefinitionTable,
+    images: ImageTable,
+    assemblies: AssemblyTable,
+    field_refs: FieldRefTable,
+    referenced_assemblies: ReferencedAssemblyTable,
+    attribute_data: AttributeDataTable,
+    attribute_data_range: AttributeDataRangeTable,
+    unresolved_virtual_call_parameter_types: UnresolvedVirtualCallParameterTypeTable,
+    unresolved_virtual_call_parameter_ranges: UnresolvedVirtualCallParameterRangeTable,
+    windows_runtime_type_names: WindowsRuntimeTypeNameTable,
     windows_runtime_strings: WindowsRuntimeStringData<'a>,
-    exported_type_definitions: Vec<TypeDefinitionIndex>,
+    exported_type_definitions: ExportedTypeDefinitionTable,
 }
 
 #[derive(Error, Debug)]
