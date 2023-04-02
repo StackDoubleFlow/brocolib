@@ -7,6 +7,7 @@ use thiserror::Error;
 const SANITY: u32 = 0xFAB11BAF;
 const VERSION: u32 = 29;
 
+// TODO
 type TypeIndex = u32;
 type EncodedMethodIndex = u32;
 
@@ -243,7 +244,7 @@ where
 macro_rules! metadata {
     ($($name:ident: $ty:ty,)*) => {
         #[derive(Debug, BinaryDeserialize)]
-                struct Il2CppGlobalMetadataHeader {
+        struct Il2CppGlobalMetadataHeader {
             sanity: u32,
             version: u32,
             $(
@@ -286,14 +287,14 @@ macro_rules! metadata {
 macro_rules! index_type {
     ($name:ident, $ty:ty) => {
         #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-        struct $name($ty);
+        pub struct $name($ty);
 
         impl $name {
-            fn index(self) -> $ty {
+            pub fn index(self) -> $ty {
                 self.0
             }
 
-            fn new(index: $ty) -> Self {
+            pub fn new(index: $ty) -> Self {
                 Self(index)
             }
         }
@@ -313,12 +314,12 @@ macro_rules! index_type {
 macro_rules! basic_table {
     ($name:ident: $ty:ty => $idx_name:ident: $idx_ty:ty) => {
         #[derive(Debug, Default)]
-        struct $name {
+        pub struct $name {
             table: Vec<$ty>,
         }
 
         impl $name {
-            fn as_vec(&self) -> &Vec<$ty> {
+            pub fn as_vec(&self) -> &Vec<$ty> {
                 &self.table
             }
         }
@@ -373,12 +374,12 @@ macro_rules! basic_table {
 macro_rules! string_data_table {
     ($name:ident, $idx_name:ident) => {
         #[derive(Debug, Default)]
-        struct $name<'data> {
+        pub struct $name<'data> {
             data: &'data [u8]
         }
 
         impl<'data> $name<'data> {
-            fn data(&self) -> &'data [u8] {
+            pub fn data(&self) -> &'data [u8] {
                 self.data
             }
         }
@@ -429,7 +430,7 @@ basic_table!(GenericParameterConstraintTable: TypeIndex, GenericParameterConstra
 basic_table!(GenericContainerTable: Il2CppGenericContainer, GenericContainerIndex);
 basic_table!(NestedTypeTable: TypeDefinitionIndex, NestedTypeIndex);
 basic_table!(InterfaceTable: TypeIndex, InterfaceIndex);
-basic_table!(VTableMethodTable: u32, VTableMethodIndex);
+basic_table!(VTableMethodTable: EncodedMethodIndex, VTableMethodIndex);
 basic_table!(InterfaceOffsetTable: Il2CppInterfaceOffsetPair, InterfaceOffsetIndex);
 basic_table!(TypeDefinitionTable: Il2CppTypeDefinition, TypeDefinitionIndex);
 basic_table!(ImageTable: Il2CppImageDefinition, ImageIndex);

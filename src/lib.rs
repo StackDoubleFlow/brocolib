@@ -1,5 +1,5 @@
-mod elf;
-mod global_metadata;
+pub mod elf;
+pub mod global_metadata;
 
 use elf::{Il2CppBinaryError, RuntimeMetadata};
 use global_metadata::{GlobalMetadata, MetadataDeserializeError};
