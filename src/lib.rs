@@ -5,6 +5,8 @@ use elf::{Il2CppBinaryError, RuntimeMetadata};
 use global_metadata::{GlobalMetadata, MetadataDeserializeError};
 use thiserror::Error;
 
+/// A container for all of the applications metadata structures.
+/// 
 /// A Unity IL2CPP application stores metadata in two different ways, the
 /// global metadata and the runtime metadata.
 ///
