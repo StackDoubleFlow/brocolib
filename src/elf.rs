@@ -298,6 +298,7 @@ where
 
 /// Defined at `il2cpp-class-internals:582`
 pub struct Il2CppCodeGenModule<'data> {
+    /// Module names have `.dll` at the end
     pub name: &'data str,
     pub method_pointers: Vec<u64>,
     pub adjustor_thunks: Vec<Il2CppTokenAdjustorThunkPair>,
