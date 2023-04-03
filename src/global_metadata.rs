@@ -11,12 +11,19 @@ const VERSION: u32 = 29;
 type TypeIndex = u32;
 type EncodedMethodIndex = u32;
 
+/// A C# string literal.
+/// 
+/// These are stored as UTF-8 in the metadata file and expanded to UTF-16 at
+/// runtime.
+/// 
+/// Defined at `vm/GlobalMetadataFileInternals.h:187`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppStringLiteral {
     pub length: u32,
     pub data_index: StringLiteralIndex,
 }
 
+/// Defined at `vm/GlobalMetadataFileInternals.h:168`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppEventDefinition {
     pub name_index: StringIndex,
@@ -27,6 +34,7 @@ pub struct Il2CppEventDefinition {
     pub token: u32,
 }
 
+/// Defined at `vm/GlobalMetadataFileInternals.h:154`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppMethodDefinition {
     pub name_index: StringIndex,
@@ -41,6 +49,7 @@ pub struct Il2CppMethodDefinition {
     pub parameter_count: u16,
 }
 
+/// Defined at `vm/GlobalMetadataFileInternals.h:140`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppParameterDefinition {
     pub name_index: i32,
@@ -48,6 +57,7 @@ pub struct Il2CppParameterDefinition {
     pub type_index: i32,
 }
 
+/// Defined at `vm/GlobalMetadataFileInternals.h:66`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppTypeDefinition {
     pub name_index: StringIndex,
@@ -56,6 +66,7 @@ pub struct Il2CppTypeDefinition {
 
     pub declaring_type_index: TypeIndex,
     pub parent_index: TypeIndex,
+    /// Only used for enums
     pub element_type_index: TypeIndex,
 
     pub generic_container_index: GenericContainerIndex,
@@ -80,10 +91,25 @@ pub struct Il2CppTypeDefinition {
     pub interfaces_count: u16,
     pub interface_offsets_count: u16,
 
+    /// bitfield to portably encode boolean values as single bits
+    /// - 01 - valuetype;
+    /// - 02 - enumtype;
+    /// - 03 - has_finalize;
+    /// - 04 - has_cctor;
+    /// - 05 - is_blittable;
+    /// - 06 - is_import_or_windows_runtime;
+    /// - 07-10 - One of nine possible PackingSize values (0, 1, 2, 4, 8, 16,
+    ///           32, 64, or 128)
+    /// - 11 - PackingSize is default
+    /// - 12 - ClassSize is default
+    /// - 13-16 - One of nine possible PackingSize values (0, 1, 2, 4, 8, 16,
+    ///           32, 64, or 128) - the specified packing size (even for
+    ///           explicit layouts)
     pub bitfield: u32,
     pub token: u32,
 }
 
+/// Defined at `vm/GlobalMetadataFileInternals.h:208`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppImageDefinition {
     pub name_index: StringIndex,
@@ -102,6 +128,7 @@ pub struct Il2CppImageDefinition {
     pub custom_attribute_count: u32,
 }
 
+/// Defined at `vm/GlobalMetadataFileInternals.h:113`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppFieldDefinition {
     pub name_index: StringIndex,
@@ -109,6 +136,7 @@ pub struct Il2CppFieldDefinition {
     pub token: u32,
 }
 
+/// Defined at `vm/GlobalMetadataFileInternals.h:178`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppPropertyDefinition {
     pub name_index: StringIndex,
@@ -118,6 +146,7 @@ pub struct Il2CppPropertyDefinition {
     pub token: u32,
 }
 
+/// Defined at `vm/GlobalMetadataFileInternals.h:147`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppParameterDefaultValue {
     pub parameter_index: ParameterIndex,
@@ -125,6 +154,7 @@ pub struct Il2CppParameterDefaultValue {
     pub data_index: FieldAndParameterDefaultValueIndex,
 }
 
+/// Defined at `vm/GlobalMetadataFileInternals.h:120`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppFieldDefaultValue {
     pub field_index: FieldIndex,
@@ -132,6 +162,7 @@ pub struct Il2CppFieldDefaultValue {
     pub data_index: FieldAndParameterDefaultValueIndex,
 }
 
+/// Defined at `vm/GlobalMetadataFileInternals.h:127`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppFieldMarshaledSize {
     pub field_index: FieldIndex,
@@ -139,21 +170,29 @@ pub struct Il2CppFieldMarshaledSize {
     pub size: u32,
 }
 
+/// Defined at `vm/GlobalMetadataFileInternals.h:258`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppGenericParameter {
-    pub owner_index: GenericContainerIndex, /* Type or method this parameter was defined in. */
+    /// Type or method this parameter was defined in.
+    pub owner_index: GenericContainerIndex, 
+    /// The name of the generic parameter.
     pub name_index: StringIndex,
+    /// An optional list of constraints for the generic parameter
     pub constraints_start: GenericParameterConstraintIndex,
     pub constraints_count: u16,
+    /// The position in the generic parameter list.
     pub num: u16,
     pub flags: u16,
 }
 
+/// Defined at `vm/GlobalMetadataFileInternals.h:247`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppGenericContainer {
-    /// index of the generic type definition or the generic method definition corresponding to this container \
-    /// either index into Il2CppClass metadata array or Il2CppMethodDefinition array
+    /// The index of the generic type definition or the generic method definition 
+    /// corresponding to this container. Either index into Il2CppClass metadata
+    /// array or Il2CppMethodDefinition array.
     pub owner_index: u32,
+    /// The number of generic parameters this type or method has.
     pub type_argc: u32,
     /// If true, we're a generic method, otherwise a generic type definition.
     pub is_method: u32,
@@ -161,14 +200,19 @@ pub struct Il2CppGenericContainer {
     pub generic_parameter_start: GenericParameterIndex,
 }
 
+/// Defined at `vm/GlobalMetadataFileInternals.h:60`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppInterfaceOffsetPair {
     pub interface_type_index: TypeIndex,
     pub offset: u32,
 }
 
+/// Defined at `vm/GlobalMetadataFileInternals.h:193`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppAssemblyNameDefinition {
+    /// The name of the assembly.
+    /// 
+    /// Assembly names do not end with `.dll`
     pub name_index: StringIndex,
     pub culture_index: StringIndex,
     pub public_key_index: StringIndex,
@@ -182,6 +226,7 @@ pub struct Il2CppAssemblyNameDefinition {
     pub public_key_token: [u8; 8],
 }
 
+/// Defined at `vm/GlobalMetadataFileInternals.h:226`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppAssemblyDefinition {
     pub image_index: ImageIndex,
@@ -191,36 +236,28 @@ pub struct Il2CppAssemblyDefinition {
     pub aname: Il2CppAssemblyNameDefinition,
 }
 
-#[derive(Debug, BinaryDeserialize)]
-pub struct Il2CppMetadataUsageList {
-    pub start: u32,
-    pub count: u32,
-}
-
-#[derive(Debug, BinaryDeserialize)]
-pub struct Il2CppMetadataUsagePair {
-    pub destination_index: u32,
-    pub encoded_source_index: u32,
-}
-
+/// Defined at `vm/GlobalMetadataFileInternals.h:235`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppCustomAttributeDataRange {
     pub token: u32,
     pub start_offset: u32,
 }
 
+/// Defined at `vm/GlobalMetadataFileInternals.h:241`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppMetadataRange {
     pub start: u32,
     pub length: u32,
 }
 
+/// Defined at `vm/GlobalMetadataFileInternals.h:269`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppWindowsRuntimeTypeNamePair {
     pub name_index: StringIndex,
     pub type_index: TypeIndex,
 }
 
+/// Defined at `vm/GlobalMetadataFileInternals.h:134`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppFieldRef {
     pub type_index: TypeIndex,
@@ -229,7 +266,7 @@ pub struct Il2CppFieldRef {
 }
 
 #[derive(Debug, BinaryDeserialize)]
-pub struct OffsetLen {
+struct OffsetLen {
     offset: u32,
     len: u32,
 }
