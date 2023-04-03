@@ -540,6 +540,7 @@ pub struct Il2CppGenericClass {
     ///
     /// Indices into the [`Il2CppMetadataRegistration::types`] field.
     pub type_index: usize,
+
     /// A context that contains the type instantiation doesn't contain any method instantiation.
     pub context: Il2CppGenericContext,
 }
@@ -568,6 +569,7 @@ impl Il2CppGenericClass {
 pub struct Il2CppGenericContext {
     /// Indices into the [`Il2CppMetadataRegistration::generic_insts`] field
     pub class_inst_idx: Option<usize>,
+
     /// Indices into the [`Il2CppMetadataRegistration::generic_insts`] field
     pub method_inst_idx: Option<usize>,
 }
@@ -583,10 +585,12 @@ pub struct Il2CppGenericContext {
 pub struct Il2CppMethodSpec {
     /// The method definition.
     pub method_definition_index: MethodIndex,
+
     /// The class generic argument list (if class is generic).
     ///
     /// Indices into the [`Il2CppMetadataRegistration::generic_insts`] field
     pub class_inst_index: u32,
+
     /// The method generic argument list (if method is generic).
     ///
     /// Indices into the [`Il2CppMetadataRegistration::generic_insts`] field
@@ -629,8 +633,11 @@ impl Il2CppGenericInst {
 
 #[derive(BinRead)]
 pub struct GenericMethodIndices {
-    pub method_index: MethodIndex,
+    /// Index for the [`Il2CppCodeRegistration::generic_method_pointers`] field
+    pub method_index: u32,
+    /// Index for the [`Il2CppCodeRegistration::invoker_pointers`] field
     pub invoker_index: u32,
+    /// Index for the [`Il2CppCodeRegistration::generic_adjustor_thunks`] field
     pub adjustor_thunk_index: u32,
 }
 
