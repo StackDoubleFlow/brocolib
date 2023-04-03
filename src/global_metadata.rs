@@ -1,5 +1,6 @@
 //! Global metadata types.
 
+use crate::Metadata;
 use std::io::Cursor;
 use std::ops::Index;
 use std::str;
@@ -46,18 +47,57 @@ pub struct Il2CppMethodDefinition {
     pub parameter_start: ParameterIndex,
     pub generic_container_index: GenericContainerIndex,
     pub token: u32,
+
+    /// Method attributes. See `il2cpp-tabledefs.h`.
     pub flags: u16,
+
+    /// Method implementation attributes. See `il2cpp-tabledefs.h`.
     pub iflags: u16,
     pub slot: u16,
     pub parameter_count: u16,
 }
 
+impl Il2CppMethodDefinition {
+    pub fn full_name(&self, metadata: &Metadata) -> String {
+        let mr = &metadata.runtime_metadata.metadata_registration;
+        let gm = &metadata.global_metadata;
+        let mut full_name = String::new();
+        full_name.push_str(&mr.types[self.return_type as usize].full_name(metadata));
+        full_name.push(' ');
+        full_name.push_str(&gm.type_definitions[self.declaring_type].full_name(metadata));
+        full_name.push_str("::");
+        full_name.push_str(&gm.string[self.name_index]);
+        if self.generic_container_index.is_valid() {
+            full_name.push('<');
+            let gc = &gm.generic_containers[self.generic_container_index];
+            for (i, param) in gm.generic_parameters[gc.generic_parameter_start.make_range(gc.type_argc)].iter().enumerate() {
+                if i > 0 {
+                    full_name.push_str(", ");
+                }
+                full_name.push_str(&gm.string[param.name_index]);
+            }
+            full_name.push('>');
+        }
+        full_name.push('(');
+        for (i, param) in gm.parameters[self.parameter_start.make_range(self.parameter_count as u32)].iter().enumerate() {
+            if i > 0 {
+                full_name.push_str(", ");
+            }
+            full_name.push_str(&mr.types[param.type_index as usize].full_name(metadata));
+            full_name.push(' ');
+            full_name.push_str(&gm.string[param.name_index]);
+        }
+        full_name.push(')');
+        full_name
+    }
+}
+
 /// Defined at `vm/GlobalMetadataFileInternals.h:140`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppParameterDefinition {
-    pub name_index: i32,
+    pub name_index: StringIndex,
     pub token: u32,
-    pub type_index: i32,
+    pub type_index: TypeIndex,
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:66`
@@ -69,6 +109,7 @@ pub struct Il2CppTypeDefinition {
 
     pub declaring_type_index: TypeIndex,
     pub parent_index: TypeIndex,
+
     /// Only used for enums
     pub element_type_index: TypeIndex,
 
@@ -112,6 +153,27 @@ pub struct Il2CppTypeDefinition {
     pub token: u32,
 }
 
+impl Il2CppTypeDefinition {
+    pub fn full_name(&self, metadata: &Metadata) -> String {
+        let namespace = &metadata.global_metadata.string[self.namespace_index];
+        let name = &metadata.global_metadata.string[self.name_index];
+
+        if self.declaring_type_index != u32::MAX {
+            return metadata.runtime_metadata.metadata_registration.types[self.declaring_type_index as usize].full_name(metadata) + "::" + name;
+        }
+
+        if namespace.is_empty() {
+            return name.to_string();
+        }
+
+        let mut full_name = String::new();
+        full_name.push_str(namespace);
+        full_name.push('.');
+        full_name.push_str(name);
+        full_name
+    }
+}
+
 /// Defined at `vm/GlobalMetadataFileInternals.h:208`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppImageDefinition {
@@ -145,6 +207,7 @@ pub struct Il2CppPropertyDefinition {
     pub name_index: StringIndex,
     pub get: MethodIndex,
     pub set: MethodIndex,
+    /// See `il2cpp-tabledef.h`
     pub attrs: u32,
     pub token: u32,
 }
@@ -337,6 +400,18 @@ macro_rules! index_type {
             pub fn new(index: $ty) -> Self {
                 Self(index)
             }
+
+            pub fn make_range(self, count: $ty) -> std::ops::Range<$name> {
+                if count > 0 {
+                    self..Self::new(self.0 + count)
+                } else {
+                    Self(0)..Self(0)
+                }
+            }
+
+            pub fn is_valid(self) -> bool {
+                self.0 != <$ty>::MAX
+            }
         }
         
         impl BinaryDeserialize for $name {
@@ -352,7 +427,7 @@ macro_rules! index_type {
 }
 
 macro_rules! basic_table {
-    ($name:ident: $ty:ty => $idx_name:ident: $idx_ty:ty) => {
+    ($name:ident: $ty:ty, $idx_name:ident: $idx_ty:ty) => {
         #[derive(Debug, Default)]
         pub struct $name {
             table: Vec<$ty>,
@@ -407,7 +482,7 @@ macro_rules! basic_table {
         }
     };
     ($name:ident: $ty:ty, $idx_name:ident) => {
-        basic_table!($name: $ty => $idx_name: u32);
+        basic_table!($name: $ty, $idx_name: u32);
     }
 }
 
@@ -466,7 +541,7 @@ basic_table!(FieldMarshaledSizeTable: Il2CppFieldMarshaledSize, FieldMarshaledSi
 basic_table!(ParameterTable: Il2CppParameterDefinition, ParameterIndex);
 basic_table!(FieldTable: Il2CppFieldDefinition, FieldIndex);
 basic_table!(GenericParameterTable: Il2CppGenericParameter, GenericParameterIndex);
-basic_table!(GenericParameterConstraintTable: TypeIndex, GenericParameterConstraintIndex);
+basic_table!(GenericParameterConstraintTable: TypeIndex, GenericParameterConstraintIndex: u16);
 basic_table!(GenericContainerTable: Il2CppGenericContainer, GenericContainerIndex);
 basic_table!(NestedTypeTable: TypeDefinitionIndex, NestedTypeIndex);
 basic_table!(InterfaceTable: TypeIndex, InterfaceIndex);

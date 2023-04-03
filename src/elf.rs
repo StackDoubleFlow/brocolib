@@ -8,7 +8,8 @@
 //! To read metadata information from `libil2cpp.so`, see
 //! [`RuntimeMetadata::read()`] and [`RuntimeMetadata::read_elf()`].
 
-use crate::global_metadata::{GlobalMetadata, TypeDefinitionIndex, MethodIndex};
+use crate::Metadata;
+use crate::global_metadata::{GlobalMetadata, TypeDefinitionIndex, MethodIndex, GenericParameterIndex};
 use bad64::{disasm, DecodeError, Imm, Instruction, Op, Operand, Reg};
 use binread::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -406,41 +407,73 @@ impl<'data> Il2CppCodeRegistration<'data> {
     }
 }
 
+/// Corresponds to element type signatures.
+/// See ECMA-335, II.23.1.16
+/// 
 /// Defined at `il2cpp-blob.h:6`
 #[derive(Clone, Copy, Debug)]
 pub enum Il2CppTypeEnum {
-    // TODO: More types?
+    /// End of list
+    End,
+    /// System.Void (void)
     Void,
+    /// System.Boolean (bool)
     Boolean,
+    /// System.Char (char)
     Char,
+    /// System.SByte (sbyte)
     I1,
+    /// System.Byte (byte)
     U1,
+    /// System.Int16 (short)
     I2,
+    /// System.UInt16 (ushort)
     U2,
+    /// System.Int32 (int)
     I4,
+    /// System.UInt32 (uint)
     U4,
+    /// System.Int64 (long)
     I8,
+    /// System.UInt64 (ulong)
     U8,
+    /// System.Single (float)
     R4,
+    /// System.Double (double)
     R8,
+    /// System.String (string)
     String,
     Ptr,
+    Byref,
     Valuetype,
     Class,
     Var,
     Array,
     Genericinst,
+    /// System.TypedReference
     Typedbyref,
+    /// System.IntPtr
     I,
+    /// System.UIntPtr
     U,
+    Fnptr,
+    /// System.Object (object)
     Object,
     Szarray,
     Mvar,
+    CmodReqd,
+    CmodOpt,
+    Internal,
+    Modifier,
+    Sentinel,
+    Pinned,
+    Enum
 }
 
 impl Il2CppTypeEnum {
     fn from_ty(ty: u8) -> Result<Self> {
         Ok(match ty {
+            0x00 => Il2CppTypeEnum::End,
             0x01 => Il2CppTypeEnum::Void,
             0x02 => Il2CppTypeEnum::Boolean,
             0x03 => Il2CppTypeEnum::Char,
@@ -456,6 +489,7 @@ impl Il2CppTypeEnum {
             0x0d => Il2CppTypeEnum::R8,
             0x0e => Il2CppTypeEnum::String,
             0x0f => Il2CppTypeEnum::Ptr,
+            0x10 => Il2CppTypeEnum::Byref,
             0x11 => Il2CppTypeEnum::Valuetype,
             0x12 => Il2CppTypeEnum::Class,
             0x13 => Il2CppTypeEnum::Var,
@@ -464,9 +498,17 @@ impl Il2CppTypeEnum {
             0x16 => Il2CppTypeEnum::Typedbyref,
             0x18 => Il2CppTypeEnum::I,
             0x19 => Il2CppTypeEnum::U,
+            0x1b => Il2CppTypeEnum::Fnptr,
             0x1c => Il2CppTypeEnum::Object,
             0x1d => Il2CppTypeEnum::Szarray,
             0x1e => Il2CppTypeEnum::Mvar,
+            0x1f => Il2CppTypeEnum::CmodReqd,
+            0x20 => Il2CppTypeEnum::CmodOpt,
+            0x21 => Il2CppTypeEnum::Internal,
+            0x40 => Il2CppTypeEnum::Modifier,
+            0x41 => Il2CppTypeEnum::Sentinel,
+            0x45 => Il2CppTypeEnum::Pinned,
+            0x55 => Il2CppTypeEnum::Enum,
             _ => return Err(Il2CppBinaryError::InvalidType(ty)),
         })
     }
@@ -474,11 +516,11 @@ impl Il2CppTypeEnum {
 
 #[derive(Clone, Copy, Debug)]
 pub enum TypeData {
-    TypeDefinitionIndex(u32),
+    TypeDefinitionIndex(TypeDefinitionIndex),
     /// For TypeEnum::Ptr and TypeEnum::Szarray
     TypeIndex(usize),
     /// For TypeEnum::Var and TypeEnum::Mvar
-    GenericParameterIndex(u32),
+    GenericParameterIndex(GenericParameterIndex),
     /// For TypeEnum::Genericinst
     GenericClassIndex(usize),
     // TODO
@@ -490,7 +532,7 @@ pub enum TypeData {
 #[derive(Clone, Copy, Debug)]
 pub struct Il2CppType {
     pub data: TypeData,
-    /// param attributes or field flags
+    /// Param attributes or field flags. See `il2cpp-tabledef.h`
     pub attrs: u16,
     pub ty: Il2CppTypeEnum,
     pub byref: bool,
@@ -513,11 +555,11 @@ impl Il2CppType {
         let bitfield = cur.read_u8()?;
 
         let data = match ty {
-            Il2CppTypeEnum::Var | Il2CppTypeEnum::Mvar => TypeData::GenericParameterIndex(raw_data as u32),
+            Il2CppTypeEnum::Var | Il2CppTypeEnum::Mvar => TypeData::GenericParameterIndex(GenericParameterIndex::new(raw_data as u32)),
             Il2CppTypeEnum::Ptr | Il2CppTypeEnum::Szarray => TypeData::TypeIndex(type_map[&raw_data]),
             Il2CppTypeEnum::Array => TypeData::ArrayType,
             Il2CppTypeEnum::Genericinst => TypeData::GenericClassIndex(generic_class_map[&raw_data]),
-            _ => TypeData::TypeDefinitionIndex(raw_data as u32),
+            _ => TypeData::TypeDefinitionIndex(TypeDefinitionIndex::new(raw_data as u32)),
         };
         let byref = (bitfield >> 6) != 0;
         let pinned = (bitfield >> 7) != 0;
@@ -528,6 +570,47 @@ impl Il2CppType {
             ty,
             byref,
             pinned,
+        })
+    }
+
+    pub fn full_name(&self, metadata: &Metadata) -> String {
+        let mr = &metadata.runtime_metadata.metadata_registration;
+        let types = &mr.types;
+        let type_defs = &metadata.global_metadata.type_definitions;
+
+        String::from(match self.ty {
+            Il2CppTypeEnum::Void => "System.Void",
+            Il2CppTypeEnum::Boolean => "System.Boolean",
+            Il2CppTypeEnum::Char => "System.Char",
+            Il2CppTypeEnum::I1 => "System.SByte",
+            Il2CppTypeEnum::U1 => "System.Byte",
+            Il2CppTypeEnum::I2 => "System.Int16",
+            Il2CppTypeEnum::U2 => "System.UInt16",
+            Il2CppTypeEnum::I4 => "System.Int32",
+            Il2CppTypeEnum::U4 => "System.UInt32",
+            Il2CppTypeEnum::U8 => "System.Int64",
+            Il2CppTypeEnum::I8 => "System.UInt64",
+            Il2CppTypeEnum::R4 => "System.Float",
+            Il2CppTypeEnum::R8 => "System.Double",
+            Il2CppTypeEnum::String => "System.String",
+            Il2CppTypeEnum::Typedbyref => "System.TypedReference",
+            Il2CppTypeEnum::I => "System.IntPtr",
+            Il2CppTypeEnum::U => "System.UIntPtr",
+            Il2CppTypeEnum::Object => "System.Object",
+            Il2CppTypeEnum::Sentinel => "<<SENTINEL>>",
+            _ => return match (self.ty, self.data) {
+                (Il2CppTypeEnum::Var | Il2CppTypeEnum::Mvar, TypeData::GenericParameterIndex(idx)) => metadata.global_metadata.string[metadata.global_metadata.generic_parameters[idx].name_index].to_string(),
+                (Il2CppTypeEnum::Ptr, TypeData::TypeIndex(ty_idx)) => format!("{}*", types[ty_idx].full_name(metadata)),
+                (Il2CppTypeEnum::Szarray, TypeData::TypeIndex(ty_idx)) => format!("{}[]", types[ty_idx].full_name(metadata)),
+                (Il2CppTypeEnum::Class | Il2CppTypeEnum::Valuetype, TypeData::TypeDefinitionIndex(ty_idx)) => type_defs[ty_idx].full_name(metadata),
+                (Il2CppTypeEnum::Genericinst, TypeData::GenericClassIndex(gc)) => {
+                    let gc = &mr.generic_classes[gc];
+                    let inst = &mr.generic_insts[gc.context.class_inst_idx.unwrap()];
+                    let generic_args = inst.types.iter().map(|ty| types[*ty].full_name(metadata)).collect::<Vec<_>>().join(", ");
+                    format!("{}<{}>", types[gc.type_index].full_name(metadata), generic_args)
+                }
+                _ => format!("({:?}?)", self.ty)
+            }
         })
     }
 }
@@ -635,8 +718,10 @@ impl Il2CppGenericInst {
 pub struct GenericMethodIndices {
     /// Index for the [`Il2CppCodeRegistration::generic_method_pointers`] field
     pub method_index: u32,
+
     /// Index for the [`Il2CppCodeRegistration::invoker_pointers`] field
     pub invoker_index: u32,
+
     /// Index for the [`Il2CppCodeRegistration::generic_adjustor_thunks`] field
     pub adjustor_thunk_index: u32,
 }
