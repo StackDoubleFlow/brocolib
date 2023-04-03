@@ -1,8 +1,8 @@
 //! This library provides a convenient way to parse the metadata structures for
 //! a Unity IL2CPP game.
 //! 
-//! The documentation contains many refernces to C/C++ header source files. You
-//! can find these files in a Unity install at the following path:
+//! The documentation contains many references to C/C++ header source files.
+//! You can find these files in a Unity install at the following path:
 //! `UnityEditor/2021.3.16f1/Editor/Data/il2cpp/libil2cpp`
 
 pub mod elf;

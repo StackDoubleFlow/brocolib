@@ -1,4 +1,14 @@
-use crate::global_metadata::{GlobalMetadata, TypeDefinitionIndex};
+//! ELF runtime metadata types.
+//! 
+//! For IL2CPP Unity games that are built for linux or linux-based platforms,
+//! you will find a shared object file named `libil2cpp.so`. This file contains
+//! the libil2cpp library, code generated from C#, as well as certain metadata
+//! information.
+//! 
+//! To read metadata information from `libil2cpp.so`, see
+//! [`RuntimeMetadata::read()`] and [`RuntimeMetadata::read_elf()`].
+
+use crate::global_metadata::{GlobalMetadata, TypeDefinitionIndex, MethodIndex};
 use bad64::{disasm, DecodeError, Imm, Instruction, Op, Operand, Reg};
 use binread::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -522,9 +532,15 @@ impl Il2CppType {
     }
 }
 
+/// A generic class instantiation.
+///
 /// Defined at `il2cpp-runtime-metadata.h:40`
 pub struct Il2CppGenericClass {
-    pub type_definition_index: u32,
+    /// The generic type definition.
+    ///
+    /// Indices into the [`Il2CppMetadataRegistration::types`] field.
+    pub type_index: usize,
+    /// A context that contains the type instantiation doesn't contain any method instantiation.
     pub context: Il2CppGenericContext,
 }
 
@@ -533,15 +549,16 @@ impl Il2CppGenericClass {
         reader: &ElfReader,
         vaddr: u64,
         generic_inst_map: &HashMap<u64, usize>,
+        type_map: &HashMap<u64, usize>,
     ) -> Result<Self> {
         let mut cur = reader.make_cur(vaddr)?;
 
-        let type_definition_index = cur.read_u32::<LittleEndian>()?;
-        let _padding = cur.read_u32::<LittleEndian>()?;
+        let type_ptr = cur.read_u64::<LittleEndian>()?;
+        let type_index = type_map[&type_ptr];
 
         let context = Il2CppGenericContext::read(&mut cur, generic_inst_map)?;
         Ok(Self {
-            type_definition_index,
+            type_index,
             context,
         })
     }
@@ -549,19 +566,30 @@ impl Il2CppGenericClass {
 
 /// Defined at `il2cpp-runtime-metadata.h:27`
 pub struct Il2CppGenericContext {
-    /// Indices into [`Il2CppMetadataRegistration`] `generic_insts` field
+    /// Indices into the [`Il2CppMetadataRegistration::generic_insts`] field
     pub class_inst_idx: Option<usize>,
-    /// Indices into [`Il2CppMetadataRegistration`] `generic_insts` field
+    /// Indices into the [`Il2CppMetadataRegistration::generic_insts`] field
     pub method_inst_idx: Option<usize>,
 }
 
+/// A generic method instantiation.
+/// 
+/// It is not possible for both `class_inst_index` and `method_inst_index`
+/// to be invalid since if both the class and method are not generic, you
+/// cannot make a generic instance.
+/// 
 /// Defined at `il2cpp-metadata.h:67`
 #[derive(BinRead)]
 pub struct Il2CppMethodSpec {
-    pub method_definition_index: u32,
-    /// Indices into [`Il2CppMetadataRegistration`] `generic_insts` field
+    /// The method definition.
+    pub method_definition_index: MethodIndex,
+    /// The class generic argument list (if class is generic).
+    ///
+    /// Indices into the [`Il2CppMetadataRegistration::generic_insts`] field
     pub class_inst_index: u32,
-    /// Indices into [`Il2CppMetadataRegistration`] `generic_insts` field
+    /// The method generic argument list (if method is generic).
+    ///
+    /// Indices into the [`Il2CppMetadataRegistration::generic_insts`] field
     pub method_inst_index: u32,
 }
 
@@ -578,8 +606,11 @@ impl Il2CppGenericContext {
     }
 }
 
+/// A list of types used for a generic instantiation.
+/// 
+/// Defined at `il2cpp-runtime-metadata.h:21`
 pub struct Il2CppGenericInst {
-    /// Indices into [`Il2CppMetadataRegistration`] `types` field
+    /// Indices into the [`Il2CppMetadataRegistration::types`] field
     pub types: Vec<usize>,
 }
 
@@ -598,7 +629,7 @@ impl Il2CppGenericInst {
 
 #[derive(BinRead)]
 pub struct GenericMethodIndices {
-    pub method_index: u32,
+    pub method_index: MethodIndex,
     pub invoker_index: u32,
     pub adjustor_thunk_index: u32,
 }
@@ -606,6 +637,7 @@ pub struct GenericMethodIndices {
 /// Defined at `il2cpp-metadata.h:105`
 #[derive(BinRead)]
 pub struct Il2CppGenericMethodFunctionsDefinitions {
+    /// Index for [`Il2CppMetadataRegistration::method_specs`]
     pub generic_method_index: u32,
     pub indices: GenericMethodIndices,
 }
@@ -652,17 +684,18 @@ impl Il2CppMetadataRegistration {
             generic_inst_map.insert(addr, i);
         }
 
-        let mut generic_classes = Vec::with_capacity(type_addrs.len());
-        let mut generic_class_map = HashMap::new();
-        for (i, addr) in generic_class_addrs.into_iter().enumerate() {
-            generic_classes.push(Il2CppGenericClass::read(&reader, addr, &generic_inst_map)?);
-            generic_class_map.insert(addr, i);
-        }
-
         let mut type_map = HashMap::new();
         for (i, &addr) in type_addrs.iter().enumerate() {
             type_map.insert(addr, i);
         }
+
+        let mut generic_classes = Vec::with_capacity(type_addrs.len());
+        let mut generic_class_map = HashMap::new();
+        for (i, addr) in generic_class_addrs.into_iter().enumerate() {
+            generic_classes.push(Il2CppGenericClass::read(&reader, addr, &generic_inst_map, &type_map)?);
+            generic_class_map.insert(addr, i);
+        }
+
         let mut types = Vec::with_capacity(type_addrs.len());
         for addr in type_addrs {
             types.push(Il2CppType::read(&reader, addr, &type_map, &generic_class_map)?);
@@ -714,6 +747,7 @@ pub struct RuntimeMetadata<'data> {
 }
 
 impl<'data> RuntimeMetadata<'data> {
+    /// Read runtime metadata information from an [`Elf`].
     pub fn read(elf: &Elf<'data>, global_metadata: &GlobalMetadata) -> Result<Self> {
         let (cr_addr, mr_addr) = find_registration(elf)?;
         let code_registration = Il2CppCodeRegistration::read(elf, cr_addr)?;
@@ -724,6 +758,7 @@ impl<'data> RuntimeMetadata<'data> {
         })
     }
 
+    /// Read runtime metadata information from raw ELF data.
     pub fn read_elf(elf_data: &'data [u8], global_metadata: &GlobalMetadata) -> Result<Self> {
         let elf = Elf::parse(elf_data)?;
         Self::read(&elf, global_metadata)

@@ -1,6 +1,9 @@
+//! Global metadata types.
+
 use std::io::Cursor;
 use std::ops::Index;
 use std::str;
+use binread::BinRead;
 use binde::{BinaryDeserialize, LittleEndian};
 use thiserror::Error;
 
@@ -92,17 +95,17 @@ pub struct Il2CppTypeDefinition {
     pub interface_offsets_count: u16,
 
     /// bitfield to portably encode boolean values as single bits
-    /// - 01 - valuetype;
-    /// - 02 - enumtype;
-    /// - 03 - has_finalize;
-    /// - 04 - has_cctor;
-    /// - 05 - is_blittable;
-    /// - 06 - is_import_or_windows_runtime;
-    /// - 07-10 - One of nine possible PackingSize values (0, 1, 2, 4, 8, 16,
+    /// * 01 - valuetype;
+    /// * 02 - enumtype;
+    /// * 03 - has_finalize;
+    /// * 04 - has_cctor;
+    /// * 05 - is_blittable;
+    /// * 06 - is_import_or_windows_runtime;
+    /// * 07-10 - One of nine possible PackingSize values (0, 1, 2, 4, 8, 16,
     ///           32, 64, or 128)
-    /// - 11 - PackingSize is default
-    /// - 12 - ClassSize is default
-    /// - 13-16 - One of nine possible PackingSize values (0, 1, 2, 4, 8, 16,
+    /// * 11 - PackingSize is default
+    /// * 12 - ClassSize is default
+    /// * 13-16 - One of nine possible PackingSize values (0, 1, 2, 4, 8, 16,
     ///           32, 64, or 128) - the specified packing size (even for
     ///           explicit layouts)
     pub bitfield: u32,
@@ -323,7 +326,7 @@ macro_rules! metadata {
 
 macro_rules! index_type {
     ($name:ident, $ty:ty) => {
-        #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, BinRead)]
         pub struct $name($ty);
 
         impl $name {
