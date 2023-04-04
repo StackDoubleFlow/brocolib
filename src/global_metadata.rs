@@ -145,19 +145,12 @@ impl Il2CppMethodDefinition {
         let mut full_name = String::new();
         full_name.push_str(&mr.types[self.return_type as usize].full_name(metadata));
         full_name.push(' ');
-        full_name.push_str(&gm.type_definitions[self.declaring_type].full_name(metadata));
+        full_name.push_str(&gm.type_definitions[self.declaring_type].full_name(metadata, true));
         full_name.push_str("::");
         full_name.push_str(&gm.string[self.name_index]);
         if self.generic_container_index.is_valid() {
-            full_name.push('<');
             let gc = &gm.generic_containers[self.generic_container_index];
-            for (i, param) in gm.generic_parameters[gc.generic_parameter_start.make_range(gc.type_argc)].iter().enumerate() {
-                if i > 0 {
-                    full_name.push_str(", ");
-                }
-                full_name.push_str(&gm.string[param.name_index]);
-            }
-            full_name.push('>');
+            full_name.push_str(&gc.full_name(metadata));
         }
         full_name.push('(');
         for (i, param) in gm.parameters[self.parameter_start.make_range(self.parameter_count as u32)].iter().enumerate() {
@@ -235,7 +228,7 @@ pub struct Il2CppTypeDefinition {
 }
 
 impl Il2CppTypeDefinition {
-    pub fn full_name(&self, metadata: &Metadata) -> String {
+    pub fn full_name(&self, metadata: &Metadata, with_generics: bool) -> String {
         let namespace = &metadata.global_metadata.string[self.namespace_index];
         let name = &metadata.global_metadata.string[self.name_index];
 
@@ -251,6 +244,10 @@ impl Il2CppTypeDefinition {
         full_name.push_str(namespace);
         full_name.push('.');
         full_name.push_str(name);
+        if self.generic_container_index.is_valid() && with_generics {
+            let gc = &metadata.global_metadata.generic_containers[self.generic_container_index];
+            full_name.push_str(&gc.full_name(metadata));
+        }
         full_name
     }
 }
@@ -345,6 +342,22 @@ pub struct Il2CppGenericContainer {
     pub is_method: u32,
     /// Our type parameters.
     pub generic_parameter_start: GenericParameterIndex,
+}
+
+impl Il2CppGenericContainer {
+    fn full_name(&self, metadata: &Metadata) -> String {
+        let gm = &metadata.global_metadata;
+        let mut full_name = String::new();
+        full_name.push('<');
+        for (i, param) in gm.generic_parameters[self.generic_parameter_start.make_range(self.type_argc)].iter().enumerate() {
+            if i > 0 {
+                full_name.push_str(", ");
+            }
+            full_name.push_str(&gm.string[param.name_index]);
+        }
+        full_name.push('>');
+        full_name
+    }
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:60`

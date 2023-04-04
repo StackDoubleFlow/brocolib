@@ -602,7 +602,7 @@ impl Il2CppType {
                 (Il2CppTypeEnum::Var | Il2CppTypeEnum::Mvar, TypeData::GenericParameterIndex(idx)) => metadata.global_metadata.string[metadata.global_metadata.generic_parameters[idx].name_index].to_string(),
                 (Il2CppTypeEnum::Ptr, TypeData::TypeIndex(ty_idx)) => format!("{}*", types[ty_idx].full_name(metadata)),
                 (Il2CppTypeEnum::Szarray, TypeData::TypeIndex(ty_idx)) => format!("{}[]", types[ty_idx].full_name(metadata)),
-                (Il2CppTypeEnum::Class | Il2CppTypeEnum::Valuetype, TypeData::TypeDefinitionIndex(ty_idx)) => type_defs[ty_idx].full_name(metadata),
+                (Il2CppTypeEnum::Class | Il2CppTypeEnum::Valuetype, TypeData::TypeDefinitionIndex(ty_idx)) => type_defs[ty_idx].full_name(metadata, false),
                 (Il2CppTypeEnum::Genericinst, TypeData::GenericClassIndex(gc)) => {
                     let gc = &mr.generic_classes[gc];
                     let inst = &mr.generic_insts[gc.context.class_inst_idx.unwrap()];
