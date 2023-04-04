@@ -13,7 +13,64 @@ const VERSION: u32 = 29;
 
 // TODO
 type TypeIndex = u32;
-type EncodedMethodIndex = u32;
+
+#[derive(Debug)]
+pub enum InvalidMethodIndex {
+    NoData,
+    AmbiguousMethod
+}
+
+#[derive(Debug)]
+pub enum DecodedMethodIndex {
+    Invalid(InvalidMethodIndex),
+    TypeInfo(TypeIndex),
+    Il2CppType(TypeIndex),
+    MethodDef(MethodIndex),
+    FieldInfo(FieldRefIndex),
+    StringLiteral(StringLiteralIndex),
+    // TODO: Generic method index
+    MethodRef(u32),
+    FieldRva(FieldRefIndex),
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct EncodedMethodIndex(pub u32);
+
+impl EncodedMethodIndex {
+    pub fn decode(self) -> DecodedMethodIndex {
+        let ty = (self.0 & 0xE0000000) >> 29;
+        let idx = (self.0 & 0x1FFFFFFE) >> 1;
+        let invalid = self.0 & 0x00000001;
+
+        match ty {
+            0 => DecodedMethodIndex::Invalid(match invalid {
+                0 => InvalidMethodIndex::NoData,
+                1 => InvalidMethodIndex::AmbiguousMethod,
+                _ => panic!("Unknown invalid method index type: {}", invalid),
+            }),
+            1 => DecodedMethodIndex::TypeInfo(idx),
+            2 => DecodedMethodIndex::Il2CppType(idx),
+            3 => DecodedMethodIndex::MethodDef(MethodIndex::new(idx)),
+            4 => DecodedMethodIndex::FieldInfo(FieldRefIndex::new(idx)),
+            5 => DecodedMethodIndex::StringLiteral(StringLiteralIndex::new(idx)),
+            6 => DecodedMethodIndex::MethodRef(idx),
+            7 => DecodedMethodIndex::FieldRva(FieldRefIndex::new(idx)),
+            _ => panic!("Unknown encoded method index type: {}", ty),
+        }
+
+    }
+}
+
+
+impl BinaryDeserialize for EncodedMethodIndex {
+    const SIZE: usize = u32::SIZE;
+    fn deserialize<E, R>(reader: R) -> std::io::Result<Self>
+        where
+            E: binde::ByteOrder,
+            R: std::io::Read {
+        Ok(Self(binde::deserialize::<E, _, _>(reader)?))
+    }
+}
 
 #[derive(Debug, Copy, Clone, Hash, BinRead)]
 pub struct Token(pub u32);
