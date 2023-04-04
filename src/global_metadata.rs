@@ -119,6 +119,12 @@ pub struct Il2CppEventDefinition {
     pub token: Token,
 }
 
+impl Il2CppEventDefinition {
+    pub fn name<'md>(&self, metadata: &'md Metadata) -> &'md str {
+        &metadata.global_metadata.string[self.name_index]
+    }
+}
+
 /// Defined at `vm/GlobalMetadataFileInternals.h:154`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppMethodDefinition {
@@ -139,6 +145,15 @@ pub struct Il2CppMethodDefinition {
 }
 
 impl Il2CppMethodDefinition {
+    pub fn name<'md>(&self, metadata: &'md Metadata) -> &'md str {
+        &metadata.global_metadata.string[self.name_index]
+    }
+
+    pub fn parameters<'md>(&self, metadata: &'md Metadata) -> &'md [Il2CppParameterDefinition] {
+        let range = self.parameter_start.make_range(self.parameter_count as u32);
+        &metadata.global_metadata.parameters[range]
+    }
+
     pub fn full_name(&self, metadata: &Metadata) -> String {
         let mr = &metadata.runtime_metadata.metadata_registration;
         let gm = &metadata.global_metadata;
@@ -153,7 +168,7 @@ impl Il2CppMethodDefinition {
             full_name.push_str(&gc.full_name(metadata));
         }
         full_name.push('(');
-        for (i, param) in gm.parameters[self.parameter_start.make_range(self.parameter_count as u32)].iter().enumerate() {
+        for (i, param) in self.parameters(metadata).iter().enumerate() {
             if i > 0 {
                 full_name.push_str(", ");
             }
@@ -228,6 +243,50 @@ pub struct Il2CppTypeDefinition {
 }
 
 impl Il2CppTypeDefinition {
+    pub fn name<'md>(&self, metadata: &'md Metadata) -> &'md str {
+        &metadata.global_metadata.string[self.name_index]
+    }
+
+    pub fn methods<'md>(&self, metadata: &'md Metadata) -> &'md [Il2CppMethodDefinition] {
+        let range = self.method_start.make_range(self.method_count as u32);
+        &metadata.global_metadata.methods[range]
+    }
+
+    pub fn fields<'md>(&self, metadata: &'md Metadata) -> &'md [Il2CppFieldDefinition] {
+        let range = self.field_start.make_range(self.field_count as u32);
+        &metadata.global_metadata.fields[range]
+    }
+
+    pub fn events<'md>(&self, metadata: &'md Metadata) -> &'md [Il2CppEventDefinition] {
+        let range = self.event_start.make_range(self.event_count as u32);
+        &metadata.global_metadata.events[range]
+    }
+
+    pub fn properties<'md>(&self, metadata: &'md Metadata) -> &'md [Il2CppPropertyDefinition] {
+        let range = self.property_start.make_range(self.property_count as u32);
+        &metadata.global_metadata.properties[range]
+    }
+
+    pub fn nested_types<'md>(&self, metadata: &'md Metadata) -> &'md [TypeDefinitionIndex] {
+        let range = self.nested_types_start.make_range(self.nested_type_count as u32);
+        &metadata.global_metadata.nested_types[range]
+    }
+
+    pub fn interfaces<'md>(&self, metadata: &'md Metadata) -> &'md [TypeIndex] {
+        let range = self.interfaces_start.make_range(self.interfaces_count as u32);
+        &metadata.global_metadata.interfaces[range]
+    }
+
+    pub fn vtable<'md>(&self, metadata: &'md Metadata) -> &'md [EncodedMethodIndex] {
+        let range = self.vtable_start.make_range(self.vtable_count as u32);
+        &metadata.global_metadata.vtable_methods[range]
+    }
+
+    pub fn interface_offsets<'md>(&self, metadata: &'md Metadata) -> &'md [Il2CppInterfaceOffsetPair] {
+        let range = self.interface_offsets_start.make_range(self.interface_offsets_count as u32);
+        &metadata.global_metadata.interface_offsets[range]
+    }
+
     pub fn full_name(&self, metadata: &Metadata, with_generics: bool) -> String {
         let namespace = &metadata.global_metadata.string[self.namespace_index];
         let name = &metadata.global_metadata.string[self.name_index];
