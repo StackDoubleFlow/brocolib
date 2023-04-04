@@ -178,13 +178,12 @@ impl Il2CppMethodDefinition {
 
     pub fn full_name(&self, metadata: &Metadata) -> String {
         let mr = &metadata.runtime_metadata.metadata_registration;
-        let gm = &metadata.global_metadata;
         let mut full_name = String::new();
         full_name.push_str(&mr.types[self.return_type as usize].full_name(metadata));
         full_name.push(' ');
-        full_name.push_str(&gm.type_definitions[self.declaring_type].full_name(metadata, true));
+        full_name.push_str(&self.declaring_type(metadata).full_name(metadata, true));
         full_name.push_str("::");
-        full_name.push_str(&gm.string[self.name_index]);
+        full_name.push_str(self.name(metadata));
         if self.generic_container_index.is_valid() {
             let gc = self.generic_container(metadata);
             full_name.push_str(&gc.to_string(metadata));
@@ -196,7 +195,7 @@ impl Il2CppMethodDefinition {
             }
             full_name.push_str(&mr.types[param.type_index as usize].full_name(metadata));
             full_name.push(' ');
-            full_name.push_str(&gm.string[param.name_index]);
+            full_name.push_str(param.name(metadata));
         }
         full_name.push(')');
         full_name
@@ -282,8 +281,8 @@ impl Il2CppTypeDefinition {
     range_helper!(interface_offsets, interface_offsets_start, interface_offsets_count, Il2CppInterfaceOffsetPair);
 
     pub fn full_name(&self, metadata: &Metadata, with_generics: bool) -> String {
-        let namespace = &metadata.global_metadata.string[self.namespace_index];
-        let name = &metadata.global_metadata.string[self.name_index];
+        let namespace = self.namespace(metadata);
+        let name = self.name(metadata);
 
         if self.declaring_type_index != u32::MAX {
             return metadata.runtime_metadata.metadata_registration.types[self.declaring_type_index as usize].full_name(metadata) + "::" + name;
@@ -442,14 +441,13 @@ impl Il2CppGenericContainer {
     range_helper!(generic_parameters, generic_parameter_start, type_argc, Il2CppGenericParameter);
 
     fn to_string(&self, metadata: &Metadata) -> String {
-        let gm = &metadata.global_metadata;
         let mut full_name = String::new();
         full_name.push('<');
         for (i, param) in self.generic_parameters(metadata).iter().enumerate() {
             if i > 0 {
                 full_name.push_str(", ");
             }
-            full_name.push_str(&gm.string[param.name_index]);
+            full_name.push_str(param.name(metadata));
         }
         full_name.push('>');
         full_name
