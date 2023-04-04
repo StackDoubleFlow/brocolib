@@ -659,9 +659,9 @@ pub struct Il2CppGenericContext {
 
 /// A generic method instantiation.
 /// 
-/// It is not possible for both `class_inst_index` and `method_inst_index`
-/// to be invalid since if both the class and method are not generic, you
-/// cannot make a generic instance.
+/// It is not possible for both `class_inst_index` and `method_inst_index` to
+/// be invalid since if both the class and method are not generic, you cannot
+/// make a generic instance.
 /// 
 /// Defined at `il2cpp-metadata.h:67`
 #[derive(BinRead)]

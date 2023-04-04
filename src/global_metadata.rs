@@ -1,6 +1,7 @@
 //! Global metadata types.
 
 use crate::Metadata;
+use crate::elf::TypeData;
 use std::io::Cursor;
 use std::ops::Index;
 use std::str;
@@ -13,6 +14,26 @@ const VERSION: u32 = 29;
 
 // TODO
 type TypeIndex = u32;
+
+macro_rules! range_helper {
+    ($name:ident, $table:ident, $start:ident, $count:ident, $ty:ty) => {
+        pub fn $name<'md>(&self, metadata: &'md Metadata) -> &'md [$ty] {
+            let range = self.$start.make_range(self.$count as _);
+            &metadata.global_metadata.$table[range]
+        }
+    };
+    ($table:ident, $start:ident, $count:ident, $ty:ty) => {
+        range_helper!($table, $table, $start, $count, $ty);
+    };
+}
+
+macro_rules! field_helper {
+    ($name:ident, $table:ident, $field:ident, $ty:ty) => {
+        pub fn $name<'md>(&self, metadata: &'md Metadata) -> &'md $ty {
+            &metadata.global_metadata.$table[self.$field]
+        }
+    };
+}
 
 #[derive(Debug)]
 pub enum InvalidMethodIndex {
@@ -105,7 +126,11 @@ impl BinaryDeserialize for Token {
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppStringLiteral {
     pub length: u32,
-    pub data_index: StringLiteralIndex,
+    pub data_index: StringLiteralDataIndex,
+}
+
+impl Il2CppStringLiteral {
+    field_helper!(data, string_literal_data, data_index, str);
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:168`
@@ -120,9 +145,10 @@ pub struct Il2CppEventDefinition {
 }
 
 impl Il2CppEventDefinition {
-    pub fn name<'md>(&self, metadata: &'md Metadata) -> &'md str {
-        &metadata.global_metadata.string[self.name_index]
-    }
+    field_helper!(name, string, name_index, str);
+    field_helper!(add_method, methods, add, Il2CppMethodDefinition);
+    field_helper!(remove_method, methods, remove, Il2CppMethodDefinition);
+    field_helper!(raise_method, methods, raise, Il2CppMethodDefinition);
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:154`
@@ -145,14 +171,10 @@ pub struct Il2CppMethodDefinition {
 }
 
 impl Il2CppMethodDefinition {
-    pub fn name<'md>(&self, metadata: &'md Metadata) -> &'md str {
-        &metadata.global_metadata.string[self.name_index]
-    }
-
-    pub fn parameters<'md>(&self, metadata: &'md Metadata) -> &'md [Il2CppParameterDefinition] {
-        let range = self.parameter_start.make_range(self.parameter_count as u32);
-        &metadata.global_metadata.parameters[range]
-    }
+    field_helper!(name, string, name_index, str);
+    field_helper!(declaring_type, type_definitions, declaring_type, Il2CppTypeDefinition);
+    range_helper!(parameters, parameter_start, parameter_count, Il2CppParameterDefinition);
+    field_helper!(generic_container, generic_containers, generic_container_index, Il2CppGenericContainer);
 
     pub fn full_name(&self, metadata: &Metadata) -> String {
         let mr = &metadata.runtime_metadata.metadata_registration;
@@ -164,8 +186,8 @@ impl Il2CppMethodDefinition {
         full_name.push_str("::");
         full_name.push_str(&gm.string[self.name_index]);
         if self.generic_container_index.is_valid() {
-            let gc = &gm.generic_containers[self.generic_container_index];
-            full_name.push_str(&gc.full_name(metadata));
+            let gc = self.generic_container(metadata);
+            full_name.push_str(&gc.to_string(metadata));
         }
         full_name.push('(');
         for (i, param) in self.parameters(metadata).iter().enumerate() {
@@ -187,6 +209,10 @@ pub struct Il2CppParameterDefinition {
     pub name_index: StringIndex,
     pub token: Token,
     pub type_index: TypeIndex,
+}
+
+impl Il2CppParameterDefinition {
+    field_helper!(name, string, name_index, str);
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:66`
@@ -243,49 +269,17 @@ pub struct Il2CppTypeDefinition {
 }
 
 impl Il2CppTypeDefinition {
-    pub fn name<'md>(&self, metadata: &'md Metadata) -> &'md str {
-        &metadata.global_metadata.string[self.name_index]
-    }
-
-    pub fn methods<'md>(&self, metadata: &'md Metadata) -> &'md [Il2CppMethodDefinition] {
-        let range = self.method_start.make_range(self.method_count as u32);
-        &metadata.global_metadata.methods[range]
-    }
-
-    pub fn fields<'md>(&self, metadata: &'md Metadata) -> &'md [Il2CppFieldDefinition] {
-        let range = self.field_start.make_range(self.field_count as u32);
-        &metadata.global_metadata.fields[range]
-    }
-
-    pub fn events<'md>(&self, metadata: &'md Metadata) -> &'md [Il2CppEventDefinition] {
-        let range = self.event_start.make_range(self.event_count as u32);
-        &metadata.global_metadata.events[range]
-    }
-
-    pub fn properties<'md>(&self, metadata: &'md Metadata) -> &'md [Il2CppPropertyDefinition] {
-        let range = self.property_start.make_range(self.property_count as u32);
-        &metadata.global_metadata.properties[range]
-    }
-
-    pub fn nested_types<'md>(&self, metadata: &'md Metadata) -> &'md [TypeDefinitionIndex] {
-        let range = self.nested_types_start.make_range(self.nested_type_count as u32);
-        &metadata.global_metadata.nested_types[range]
-    }
-
-    pub fn interfaces<'md>(&self, metadata: &'md Metadata) -> &'md [TypeIndex] {
-        let range = self.interfaces_start.make_range(self.interfaces_count as u32);
-        &metadata.global_metadata.interfaces[range]
-    }
-
-    pub fn vtable<'md>(&self, metadata: &'md Metadata) -> &'md [EncodedMethodIndex] {
-        let range = self.vtable_start.make_range(self.vtable_count as u32);
-        &metadata.global_metadata.vtable_methods[range]
-    }
-
-    pub fn interface_offsets<'md>(&self, metadata: &'md Metadata) -> &'md [Il2CppInterfaceOffsetPair] {
-        let range = self.interface_offsets_start.make_range(self.interface_offsets_count as u32);
-        &metadata.global_metadata.interface_offsets[range]
-    }
+    field_helper!(name, string, name_index, str);
+    field_helper!(namespace, string, name_index, str);
+    field_helper!(generic_container, generic_containers, generic_container_index, Il2CppGenericContainer);
+    range_helper!(methods, method_start, method_count, Il2CppMethodDefinition);
+    range_helper!(fields, field_start, field_count, Il2CppFieldDefinition);
+    range_helper!(events, event_start, event_count, Il2CppEventDefinition);
+    range_helper!(properties, property_start, property_count, Il2CppPropertyDefinition);
+    range_helper!(nested_types, nested_types_start, nested_type_count, TypeDefinitionIndex);
+    range_helper!(interfaces, interfaces_start, interfaces_count, TypeIndex);
+    range_helper!(vtable_methods, vtable_start, vtable_count, EncodedMethodIndex);
+    range_helper!(interface_offsets, interface_offsets_start, interface_offsets_count, Il2CppInterfaceOffsetPair);
 
     pub fn full_name(&self, metadata: &Metadata, with_generics: bool) -> String {
         let namespace = &metadata.global_metadata.string[self.namespace_index];
@@ -305,7 +299,7 @@ impl Il2CppTypeDefinition {
         full_name.push_str(name);
         if self.generic_container_index.is_valid() && with_generics {
             let gc = &metadata.global_metadata.generic_containers[self.generic_container_index];
-            full_name.push_str(&gc.full_name(metadata));
+            full_name.push_str(&gc.to_string(metadata));
         }
         full_name
     }
@@ -330,12 +324,25 @@ pub struct Il2CppImageDefinition {
     pub custom_attribute_count: u32,
 }
 
+impl Il2CppImageDefinition {
+    field_helper!(name, string, name_index, str);
+    field_helper!(assembly, assemblies, assembly_index, Il2CppAssemblyDefinition);
+    range_helper!(types, type_definitions, type_start, type_count, Il2CppTypeDefinition);
+    range_helper!(exported_types, type_definitions, exported_type_start, exported_type_count, Il2CppTypeDefinition);
+    field_helper!(entry_point, methods, entry_point_index, Il2CppMethodDefinition);
+    range_helper!(custom_attributes, attribute_data_range, custom_attribute_start, custom_attribute_count, Il2CppCustomAttributeDataRange);
+}
+
 /// Defined at `vm/GlobalMetadataFileInternals.h:113`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppFieldDefinition {
     pub name_index: StringIndex,
     pub type_index: TypeIndex,
     pub token: Token,
+}
+
+impl Il2CppFieldDefinition {
+    field_helper!(name, string, name_index, str);
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:178`
@@ -349,12 +356,24 @@ pub struct Il2CppPropertyDefinition {
     pub token: Token,
 }
 
+impl Il2CppPropertyDefinition {
+    field_helper!(name, string, name_index, str);
+    field_helper!(get_method, methods, get, Il2CppMethodDefinition);
+    field_helper!(set_method, methods, set, Il2CppMethodDefinition);
+}
+
 /// Defined at `vm/GlobalMetadataFileInternals.h:147`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppParameterDefaultValue {
     pub parameter_index: ParameterIndex,
     pub type_index: TypeIndex,
     pub data_index: FieldAndParameterDefaultValueIndex,
+}
+
+impl Il2CppParameterDefaultValue {
+    field_helper!(parameter, parameters, parameter_index, Il2CppParameterDefinition);
+    // TODO: data type
+    field_helper!(data, field_and_parameter_default_value_data, data_index, u8);
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:120`
@@ -365,12 +384,22 @@ pub struct Il2CppFieldDefaultValue {
     pub data_index: FieldAndParameterDefaultValueIndex,
 }
 
+impl Il2CppFieldDefaultValue {
+    field_helper!(field, fields, field_index, Il2CppFieldDefinition);
+    // TODO: data type
+    field_helper!(data, field_and_parameter_default_value_data, data_index, u8);
+}
+
 /// Defined at `vm/GlobalMetadataFileInternals.h:127`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppFieldMarshaledSize {
     pub field_index: FieldIndex,
     pub type_index: TypeIndex,
     pub size: u32,
+}
+
+impl Il2CppFieldMarshaledSize {
+    field_helper!(field, fields, field_index, Il2CppFieldDefinition);
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:258`
@@ -386,6 +415,12 @@ pub struct Il2CppGenericParameter {
     /// The position in the generic parameter list.
     pub num: u16,
     pub flags: u16,
+}
+
+impl Il2CppGenericParameter {
+    field_helper!(owner, generic_containers, owner_index, Il2CppGenericContainer);
+    field_helper!(name, string, name_index, str);
+    range_helper!(constraints, generic_parameter_constraints, constraints_start, constraints_count, TypeIndex);
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:247`
@@ -404,11 +439,13 @@ pub struct Il2CppGenericContainer {
 }
 
 impl Il2CppGenericContainer {
-    fn full_name(&self, metadata: &Metadata) -> String {
+    range_helper!(generic_parameters, generic_parameter_start, type_argc, Il2CppGenericParameter);
+
+    fn to_string(&self, metadata: &Metadata) -> String {
         let gm = &metadata.global_metadata;
         let mut full_name = String::new();
         full_name.push('<');
-        for (i, param) in gm.generic_parameters[self.generic_parameter_start.make_range(self.type_argc)].iter().enumerate() {
+        for (i, param) in self.generic_parameters(metadata).iter().enumerate() {
             if i > 0 {
                 full_name.push_str(", ");
             }
@@ -445,14 +482,24 @@ pub struct Il2CppAssemblyNameDefinition {
     pub public_key_token: [u8; 8],
 }
 
+
+impl Il2CppAssemblyNameDefinition {
+    field_helper!(name, string, name_index, str);
+    // TODO: are culture and public_key valid utf-8?
+}
 /// Defined at `vm/GlobalMetadataFileInternals.h:226`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppAssemblyDefinition {
     pub image_index: ImageIndex,
     pub token: Token,
-    pub referenced_assembly_start: u32,
+    pub referenced_assembly_start: ReferencedAssemblyIndex,
     pub referenced_assembly_count: u32,
     pub aname: Il2CppAssemblyNameDefinition,
+}
+
+impl Il2CppAssemblyDefinition {
+    field_helper!(image, images, image_index, Il2CppImageDefinition);
+    range_helper!(referenced_assemblies, referenced_assembly_start, referenced_assembly_count, u32);
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:235`
@@ -481,7 +528,18 @@ pub struct Il2CppWindowsRuntimeTypeNamePair {
 pub struct Il2CppFieldRef {
     pub type_index: TypeIndex,
     /// local offset into type fields
-    pub field_index: FieldIndex,
+    pub field_index: u32,
+}
+
+impl Il2CppFieldRef {
+    pub fn resolve_field(&self, metadata: &Metadata) -> FieldIndex {
+        let ty_data = &metadata.runtime_metadata.metadata_registration.types[self.type_index as usize].data;
+        let TypeData::TypeDefinitionIndex(ty_def_idx) = ty_data else {
+            panic!("Bad Il2CppFieldRef type data type: {:?}", ty_data);
+        };
+        let ty_def = &metadata.global_metadata.type_definitions[*ty_def_idx];
+        FieldIndex::new(ty_def.field_start.0 + self.field_index)
+    }
 }
 
 #[derive(Debug, BinaryDeserialize)]
@@ -705,7 +763,7 @@ basic_table!(ImageTable: Il2CppImageDefinition, ImageIndex);
 basic_table!(AssemblyTable: Il2CppAssemblyDefinition, AssemblyIndex);
 basic_table!(FieldRefTable: Il2CppFieldRef, FieldRefIndex);
 // TODO: reference assemblies?
-basic_table!(ReferencedAssemblyTable: u32, ReferenceAssemblyIndex);
+basic_table!(ReferencedAssemblyTable: u32, ReferencedAssemblyIndex);
 basic_table!(AttributeDataRangeTable: Il2CppCustomAttributeDataRange, AttributeDataRangeIndex);
 // TODO: data?
 basic_table!(AttributeDataTable: u8, AttributeDataIndex);
