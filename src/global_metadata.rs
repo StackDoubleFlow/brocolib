@@ -15,6 +15,30 @@ const VERSION: u32 = 29;
 type TypeIndex = u32;
 type EncodedMethodIndex = u32;
 
+#[derive(Debug, Copy, Clone, Hash, BinRead)]
+pub struct Token(pub u32);
+
+impl Token {
+    pub fn ty(self) -> u32 {
+        // TODO: TokenType enum
+        self.0 & 0xFF000000
+    }
+
+    pub fn rid(self) -> u32 {
+        self.0 & 0x00FFFFFF
+    }
+}
+
+impl BinaryDeserialize for Token {
+    const SIZE: usize = u32::SIZE;
+    fn deserialize<E, R>(reader: R) -> std::io::Result<Self>
+        where
+            E: binde::ByteOrder,
+            R: std::io::Read {
+        Ok(Self(binde::deserialize::<E, _, _>(reader)?))
+    }
+}
+
 /// A C# string literal.
 /// 
 /// These are stored as UTF-8 in the metadata file and expanded to UTF-16 at
@@ -35,7 +59,7 @@ pub struct Il2CppEventDefinition {
     pub add: MethodIndex,
     pub remove: MethodIndex,
     pub raise: MethodIndex,
-    pub token: u32,
+    pub token: Token,
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:154`
@@ -46,7 +70,7 @@ pub struct Il2CppMethodDefinition {
     pub return_type: TypeIndex,
     pub parameter_start: ParameterIndex,
     pub generic_container_index: GenericContainerIndex,
-    pub token: u32,
+    pub token: Token,
 
     /// Method attributes. See `il2cpp-tabledefs.h`.
     pub flags: u16,
@@ -96,7 +120,7 @@ impl Il2CppMethodDefinition {
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppParameterDefinition {
     pub name_index: StringIndex,
-    pub token: u32,
+    pub token: Token,
     pub type_index: TypeIndex,
 }
 
@@ -150,7 +174,7 @@ pub struct Il2CppTypeDefinition {
     ///           32, 64, or 128) - the specified packing size (even for
     ///           explicit layouts)
     pub bitfield: u32,
-    pub token: u32,
+    pub token: Token,
 }
 
 impl Il2CppTypeDefinition {
@@ -187,7 +211,7 @@ pub struct Il2CppImageDefinition {
     pub exported_type_count: u32,
 
     pub entry_point_index: MethodIndex,
-    pub token: u32,
+    pub token: Token,
 
     pub custom_attribute_start: AttributeDataRangeIndex,
     pub custom_attribute_count: u32,
@@ -198,7 +222,7 @@ pub struct Il2CppImageDefinition {
 pub struct Il2CppFieldDefinition {
     pub name_index: StringIndex,
     pub type_index: TypeIndex,
-    pub token: u32,
+    pub token: Token,
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:178`
@@ -209,7 +233,7 @@ pub struct Il2CppPropertyDefinition {
     pub set: MethodIndex,
     /// See `il2cpp-tabledef.h`
     pub attrs: u32,
-    pub token: u32,
+    pub token: Token,
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:147`
@@ -296,7 +320,7 @@ pub struct Il2CppAssemblyNameDefinition {
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppAssemblyDefinition {
     pub image_index: ImageIndex,
-    pub token: u32,
+    pub token: Token,
     pub referenced_assembly_start: u32,
     pub referenced_assembly_count: u32,
     pub aname: Il2CppAssemblyNameDefinition,
@@ -305,7 +329,7 @@ pub struct Il2CppAssemblyDefinition {
 /// Defined at `vm/GlobalMetadataFileInternals.h:235`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppCustomAttributeDataRange {
-    pub token: u32,
+    pub token: Token,
     pub start_offset: u32,
 }
 

@@ -9,7 +9,7 @@
 //! [`RuntimeMetadata::read()`] and [`RuntimeMetadata::read_elf()`].
 
 use crate::Metadata;
-use crate::global_metadata::{GlobalMetadata, TypeDefinitionIndex, MethodIndex, GenericParameterIndex};
+use crate::global_metadata::{GlobalMetadata, TypeDefinitionIndex, MethodIndex, GenericParameterIndex, Token};
 use bad64::{disasm, DecodeError, Imm, Instruction, Op, Operand, Reg};
 use binread::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -230,7 +230,7 @@ impl<'elf, 'data> ElfReader<'elf, 'data> {
 /// Defined at `il2cpp-class-internals:570`
 #[derive(BinRead)]
 pub struct Il2CppTokenAdjustorThunkPair {
-    pub token: u32,
+    pub token: Token,
     #[br(align_before = 8)]
     pub adjustor_thunk: u64,
 }
@@ -245,7 +245,7 @@ pub struct Il2CppRange {
 /// Defined at `il2cpp-class-internals:556`
 #[derive(BinRead)]
 pub struct Il2CppTokenRangePair {
-    pub token: u32,
+    pub token: Token,
     pub range: Il2CppRange,
 }
 
