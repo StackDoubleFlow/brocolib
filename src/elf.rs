@@ -447,6 +447,7 @@ pub enum Il2CppTypeEnum {
     Byref,
     Valuetype,
     Class,
+    /// Class generic parameter
     Var,
     Array,
     Genericinst,
@@ -459,14 +460,21 @@ pub enum Il2CppTypeEnum {
     Fnptr,
     /// System.Object (object)
     Object,
+    /// Single-dimensioned zero-based array type
     Szarray,
+    /// Method generic parameter
     Mvar,
+    /// Required modifier
     CmodReqd,
+    /// Optional modifier
     CmodOpt,
     Internal,
     Modifier,
+    /// Sentinel for vararg method signature
     Sentinel,
+    /// Denotes a local variable points to a pinned object
     Pinned,
+    /// Used in custom attributes to specify an enum
     Enum
 }
 
@@ -517,14 +525,14 @@ impl Il2CppTypeEnum {
 #[derive(Clone, Copy, Debug)]
 pub enum TypeData {
     TypeDefinitionIndex(TypeDefinitionIndex),
-    /// For TypeEnum::Ptr and TypeEnum::Szarray
+    /// For [`Il2CppTypeEnum::Ptr`] and [`Il2CppTypeEnum::Szarray`]
     TypeIndex(usize),
-    /// For TypeEnum::Var and TypeEnum::Mvar
+    /// For [`Il2CppTypeEnum::Var`] and [`Il2CppTypeEnum::Mvar`]
     GenericParameterIndex(GenericParameterIndex),
-    /// For TypeEnum::Genericinst
+    /// For [`Il2CppTypeEnum::Genericinst`]
     GenericClassIndex(usize),
     // TODO
-    /// For TypeEnum::Array
+    /// For [`Il2CppTypeEnum::Array`]
     ArrayType,
 }
 
