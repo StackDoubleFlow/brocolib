@@ -4,7 +4,7 @@ use crate::Metadata;
 use crate::elf::TypeData;
 use std::io::Cursor;
 use std::ops::Index;
-use std::str;
+use std::{str, concat, stringify};
 use binread::BinRead;
 use binde::{BinaryDeserialize, LittleEndian};
 use thiserror::Error;
@@ -13,7 +13,7 @@ const SANITY: u32 = 0xFAB11BAF;
 const VERSION: u32 = 29;
 
 // TODO
-type TypeIndex = u32;
+pub type TypeIndex = u32;
 
 macro_rules! range_helper {
     ($name:ident, $table:ident, $start:ident, $count:ident, $ty:ty) => {
@@ -554,7 +554,7 @@ where
 }
 
 macro_rules! metadata {
-    ($($name:ident: $ty:ty,)*) => {
+    ($($(#[$($attrss:tt)*])* $name:ident: $ty:ty,)*) => {
         #[derive(Debug, BinaryDeserialize)]
         struct Il2CppGlobalMetadataHeader {
             sanity: u32,
@@ -567,6 +567,7 @@ macro_rules! metadata {
         #[derive(Debug)]
         pub struct GlobalMetadata<'a> {
             $(
+                $(#[$($attrss)*])*
                 pub $name: $ty,
             )*
         }
@@ -597,7 +598,12 @@ macro_rules! metadata {
 
 
 macro_rules! index_type {
-    ($name:ident, $ty:ty) => {
+    ($name:ident, $ty:ty, $for:ident) => {
+        #[doc = concat!(
+            "Index type for [`",
+            stringify!($for),
+            "`]."
+        )]
         #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, BinRead)]
         pub struct $name($ty);
 
@@ -637,6 +643,15 @@ macro_rules! index_type {
 
 macro_rules! basic_table {
     ($name:ident: $ty:ty, $idx_name:ident: $idx_ty:ty) => {
+        #[doc =
+            concat!(
+                "A metadata table of [`",
+                stringify!($ty),
+                "`]s.\n\nUse a [`",
+                stringify!($idx_name),
+                "`] to index into it."
+            )
+        ]
         #[derive(Debug, Default)]
         pub struct $name {
             table: Vec<$ty>,
@@ -659,7 +674,7 @@ macro_rules! basic_table {
             }
         }
 
-        index_type!($idx_name, $idx_ty);
+        index_type!($idx_name, $idx_ty, $name);
 
         impl Index<$idx_name> for $name {
             type Output = $ty;
@@ -697,6 +712,13 @@ macro_rules! basic_table {
 
 macro_rules! string_data_table {
     ($name:ident, $idx_name:ident) => {
+        #[doc =
+            concat!(
+                "A metadata table for string data.\n\nIndexing into it with a [`",
+                stringify!($idx_name),
+                "`] will yield string slices."
+            )
+        ]
         #[derive(Debug, Default)]
         pub struct $name<'data> {
             data: &'data [u8]
@@ -708,7 +730,7 @@ macro_rules! string_data_table {
             }
         }
 
-        index_type!($idx_name, u32);
+        index_type!($idx_name, u32, $name);
 
         impl<'data> Index<$idx_name> for $name<'data> {
             type Output = str;
@@ -776,6 +798,9 @@ basic_table!(ExportedTypeDefinitionTable: TypeDefinitionIndex, ExportedTypeDefin
 metadata! {
     string_literal: StringLiteralTable,
     string_literal_data: StringLiteralData<'a>,
+    /// String data for the metadata itself.
+    ///
+    /// For C# string literal data, see [`GlobalMetadata::string_literal_data`].
     string: StringData<'a>,
     events: EventTable,
     properties: PropertyTable,
@@ -784,6 +809,9 @@ metadata! {
     field_default_values: FieldDefaultValueTable,
     field_and_parameter_default_value_data: FieldAndParameterDefaultValueTable,
     field_marshaled_sizes: FieldMarshaledSizeTable,
+    /// C# method parameters.
+    /// 
+    /// This is normally indexed by a range returned from [`Il2CppMethodDefinition::parameters()`].
     parameters: ParameterTable,
     fields: FieldTable,
     generic_parameters: GenericParameterTable,
