@@ -1,4 +1,4 @@
-//! ELF runtime metadata types.
+//! ELF runtime metadata parsing.
 //! 
 //! For IL2CPP Unity games that are built for linux or linux-based platforms,
 //! you will find a shared object file named `libil2cpp.so`. This file contains
@@ -8,8 +8,8 @@
 //! To read metadata information from `libil2cpp.so`, see
 //! [`RuntimeMetadata::read()`] and [`RuntimeMetadata::read_elf()`].
 
-use crate::Metadata;
-use crate::global_metadata::{GlobalMetadata, TypeDefinitionIndex, MethodIndex, GenericParameterIndex, Token};
+use crate::global_metadata::{GlobalMetadata, TypeDefinitionIndex, GenericParameterIndex};
+use super::*;
 use bad64::{disasm, DecodeError, Imm, Instruction, Op, Operand, Reg};
 use binread::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -19,9 +19,6 @@ use std::collections::HashMap;
 use std::io::{self, Cursor};
 use std::str;
 use thiserror::Error;
-
-// TODO: use this instead of u64 everywhere
-pub type Il2CppMethodPointer = u64;
 
 pub type Elf<'data> = ElfFile64<'data, Endianness>;
 
@@ -227,50 +224,6 @@ impl<'elf, 'data> ElfReader<'elf, 'data> {
     }
 }
 
-/// Defined at `il2cpp-class-internals:570`
-#[derive(BinRead)]
-pub struct Il2CppTokenAdjustorThunkPair {
-    pub token: Token,
-    #[br(align_before = 8)]
-    pub adjustor_thunk: u64,
-}
-
-/// Defined at `il2cpp-class-internals:550`
-#[derive(BinRead)]
-pub struct Il2CppRange {
-    pub start: u32,
-    pub length: u32,
-}
-
-/// Defined at `il2cpp-class-internals:556`
-#[derive(BinRead)]
-pub struct Il2CppTokenRangePair {
-    pub token: Token,
-    pub range: Il2CppRange,
-}
-
-/// Defined at `il2cpp-metadata.h:69`
-#[derive(BinRead)]
-#[br(repr = u64)]
-pub enum Il2CppRGCTXDataType {
-    Invalid,
-    Type,
-    Class,
-    Method,
-    Array,
-    Constrained,
-}
-
-/// A runtime generic context.
-/// 
-/// Defined at `il2cpp-metadata.h:92`
-#[derive(BinRead)]
-pub struct Il2CppRGCTXDefinition {
-    pub ty: Il2CppRGCTXDataType,
-    // TODO
-    pub data: u64,
-}
-
 fn read_arr<T>(reader: &ElfReader, vaddr: u64, len: usize) -> Result<Vec<T>>
 where
     T: BinRead,
@@ -307,30 +260,6 @@ where
     }
 }
 
-/// Defined at `il2cpp-class-internals:582`
-pub struct Il2CppCodeGenModule<'data> {
-    /// Module names have `.dll` at the end
-    pub name: &'data str,
-    pub method_pointers: Vec<u64>,
-    pub adjustor_thunks: Vec<Il2CppTokenAdjustorThunkPair>,
-    pub invoker_indices: Vec<u32>,
-
-    // TODO:
-    // reverse_pinvoke_wrapper_indices: Vec<TokenIndexMethodTuple>,
-
-    pub rgctx_ranges: Vec<Il2CppTokenRangePair>,
-    pub rgctxs: Vec<Il2CppRGCTXDefinition>,
-
-    // TODO:
-    // debugger_metadata: Il2CppDebuggerMetadataRegistration,
-    // module_initializer: Il2CppMethodPointer,
-    // static_constructor_type_indices: Vec<TypeDefinitionIndex>,
-    // /// Per-assembly mode only
-    // metadata_registration: Option<Il2CppMetadataRegistration>,
-    // /// Per-assembly mode only
-    // code_registration: Option<Il2CppCodeRegistration>,
-}
-
 impl<'data> Il2CppCodeGenModule<'data> {
     fn read<'elf>(reader: &ElfReader<'elf, 'data>, vaddr: u64) -> Result<Self> {
         let mut cur = reader.make_cur(vaddr)?;
@@ -357,20 +286,6 @@ impl<'data> Il2CppCodeGenModule<'data> {
             rgctxs,
         })
     }
-}
-
-/// Defined at `il2cpp-class-internals:603`
-pub struct Il2CppCodeRegistration<'data> {
-    pub reverse_pinvoke_wrappers: Vec<u64>,
-    pub generic_method_pointers: Vec<u64>,
-    pub generic_adjustor_thunks: Vec<u64>,
-    pub invoker_pointers: Vec<u64>,
-    pub unresolved_virtual_call_pointers: Vec<u64>,
-
-    // TODO
-    // pub interop_data: Vec<InteropData>,
-    // pub windows_runtime_factory_table: Vec<WindowsRuntimeFactoryTableEntry>,
-    pub code_gen_modules: Vec<Il2CppCodeGenModule<'data>>,
 }
 
 impl<'data> Il2CppCodeRegistration<'data> {
@@ -407,147 +322,6 @@ impl<'data> Il2CppCodeRegistration<'data> {
     }
 }
 
-/// Corresponds to element type signatures.
-/// See ECMA-335, II.23.1.16
-/// 
-/// Defined at `il2cpp-blob.h:6`
-#[derive(Clone, Copy, Debug)]
-pub enum Il2CppTypeEnum {
-    /// End of list
-    End,
-    /// System.Void (void)
-    Void,
-    /// System.Boolean (bool)
-    Boolean,
-    /// System.Char (char)
-    Char,
-    /// System.SByte (sbyte)
-    I1,
-    /// System.Byte (byte)
-    U1,
-    /// System.Int16 (short)
-    I2,
-    /// System.UInt16 (ushort)
-    U2,
-    /// System.Int32 (int)
-    I4,
-    /// System.UInt32 (uint)
-    U4,
-    /// System.Int64 (long)
-    I8,
-    /// System.UInt64 (ulong)
-    U8,
-    /// System.Single (float)
-    R4,
-    /// System.Double (double)
-    R8,
-    /// System.String (string)
-    String,
-    Ptr,
-    Byref,
-    Valuetype,
-    Class,
-    /// Class generic parameter
-    Var,
-    Array,
-    Genericinst,
-    /// System.TypedReference
-    Typedbyref,
-    /// System.IntPtr
-    I,
-    /// System.UIntPtr
-    U,
-    Fnptr,
-    /// System.Object (object)
-    Object,
-    /// Single-dimensioned zero-based array type
-    Szarray,
-    /// Method generic parameter
-    Mvar,
-    /// Required modifier
-    CmodReqd,
-    /// Optional modifier
-    CmodOpt,
-    Internal,
-    Modifier,
-    /// Sentinel for vararg method signature
-    Sentinel,
-    /// Denotes a local variable points to a pinned object
-    Pinned,
-    /// Used in custom attributes to specify an enum
-    Enum
-}
-
-impl Il2CppTypeEnum {
-    fn from_ty(ty: u8) -> Result<Self> {
-        Ok(match ty {
-            0x00 => Il2CppTypeEnum::End,
-            0x01 => Il2CppTypeEnum::Void,
-            0x02 => Il2CppTypeEnum::Boolean,
-            0x03 => Il2CppTypeEnum::Char,
-            0x04 => Il2CppTypeEnum::I1,
-            0x05 => Il2CppTypeEnum::U1,
-            0x06 => Il2CppTypeEnum::I2,
-            0x07 => Il2CppTypeEnum::U2,
-            0x08 => Il2CppTypeEnum::I4,
-            0x09 => Il2CppTypeEnum::U4,
-            0x0a => Il2CppTypeEnum::I8,
-            0x0b => Il2CppTypeEnum::U8,
-            0x0c => Il2CppTypeEnum::R4,
-            0x0d => Il2CppTypeEnum::R8,
-            0x0e => Il2CppTypeEnum::String,
-            0x0f => Il2CppTypeEnum::Ptr,
-            0x10 => Il2CppTypeEnum::Byref,
-            0x11 => Il2CppTypeEnum::Valuetype,
-            0x12 => Il2CppTypeEnum::Class,
-            0x13 => Il2CppTypeEnum::Var,
-            0x14 => Il2CppTypeEnum::Array,
-            0x15 => Il2CppTypeEnum::Genericinst,
-            0x16 => Il2CppTypeEnum::Typedbyref,
-            0x18 => Il2CppTypeEnum::I,
-            0x19 => Il2CppTypeEnum::U,
-            0x1b => Il2CppTypeEnum::Fnptr,
-            0x1c => Il2CppTypeEnum::Object,
-            0x1d => Il2CppTypeEnum::Szarray,
-            0x1e => Il2CppTypeEnum::Mvar,
-            0x1f => Il2CppTypeEnum::CmodReqd,
-            0x20 => Il2CppTypeEnum::CmodOpt,
-            0x21 => Il2CppTypeEnum::Internal,
-            0x40 => Il2CppTypeEnum::Modifier,
-            0x41 => Il2CppTypeEnum::Sentinel,
-            0x45 => Il2CppTypeEnum::Pinned,
-            0x55 => Il2CppTypeEnum::Enum,
-            _ => return Err(Il2CppBinaryError::InvalidType(ty)),
-        })
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum TypeData {
-    TypeDefinitionIndex(TypeDefinitionIndex),
-    /// For [`Il2CppTypeEnum::Ptr`] and [`Il2CppTypeEnum::Szarray`]
-    TypeIndex(usize),
-    /// For [`Il2CppTypeEnum::Var`] and [`Il2CppTypeEnum::Mvar`]
-    GenericParameterIndex(GenericParameterIndex),
-    /// For [`Il2CppTypeEnum::Genericinst`]
-    GenericClassIndex(usize),
-    // TODO
-    /// For [`Il2CppTypeEnum::Array`]
-    ArrayType,
-}
-
-/// Defined at `il2cpp-runtime-metadata.h:48`
-#[derive(Clone, Copy, Debug)]
-pub struct Il2CppType {
-    pub data: TypeData,
-    /// Param attributes or field flags. See `il2cpp-tabledef.h`
-    pub attrs: u16,
-    pub ty: Il2CppTypeEnum,
-    pub byref: bool,
-    /// valid when included in a local var signature
-    pub pinned: bool,
-}
-
 impl Il2CppType {
     fn read(
         reader: &ElfReader,
@@ -559,7 +333,8 @@ impl Il2CppType {
 
         let raw_data = cur.read_u64::<LittleEndian>()?;
         let attrs = cur.read_u16::<LittleEndian>()?;
-        let ty = Il2CppTypeEnum::from_ty(cur.read_u8()?)?;
+        let ty_id = cur.read_u8()?;
+        let ty = Il2CppTypeEnum::from_ty(ty_id).ok_or(Il2CppBinaryError::InvalidType(ty_id))?;
         let bitfield = cur.read_u8()?;
 
         let data = match ty {
@@ -580,60 +355,6 @@ impl Il2CppType {
             pinned,
         })
     }
-
-    pub fn full_name(&self, metadata: &Metadata) -> String {
-        let mr = &metadata.runtime_metadata.metadata_registration;
-        let types = &mr.types;
-        let type_defs = &metadata.global_metadata.type_definitions;
-
-        String::from(match self.ty {
-            Il2CppTypeEnum::Void => "System.Void",
-            Il2CppTypeEnum::Boolean => "System.Boolean",
-            Il2CppTypeEnum::Char => "System.Char",
-            Il2CppTypeEnum::I1 => "System.SByte",
-            Il2CppTypeEnum::U1 => "System.Byte",
-            Il2CppTypeEnum::I2 => "System.Int16",
-            Il2CppTypeEnum::U2 => "System.UInt16",
-            Il2CppTypeEnum::I4 => "System.Int32",
-            Il2CppTypeEnum::U4 => "System.UInt32",
-            Il2CppTypeEnum::U8 => "System.Int64",
-            Il2CppTypeEnum::I8 => "System.UInt64",
-            Il2CppTypeEnum::R4 => "System.Float",
-            Il2CppTypeEnum::R8 => "System.Double",
-            Il2CppTypeEnum::String => "System.String",
-            Il2CppTypeEnum::Typedbyref => "System.TypedReference",
-            Il2CppTypeEnum::I => "System.IntPtr",
-            Il2CppTypeEnum::U => "System.UIntPtr",
-            Il2CppTypeEnum::Object => "System.Object",
-            Il2CppTypeEnum::Sentinel => "<<SENTINEL>>",
-            _ => return match (self.ty, self.data) {
-                (Il2CppTypeEnum::Var | Il2CppTypeEnum::Mvar, TypeData::GenericParameterIndex(idx)) => metadata.global_metadata.string[metadata.global_metadata.generic_parameters[idx].name_index].to_string(),
-                (Il2CppTypeEnum::Ptr, TypeData::TypeIndex(ty_idx)) => format!("{}*", types[ty_idx].full_name(metadata)),
-                (Il2CppTypeEnum::Szarray, TypeData::TypeIndex(ty_idx)) => format!("{}[]", types[ty_idx].full_name(metadata)),
-                (Il2CppTypeEnum::Class | Il2CppTypeEnum::Valuetype, TypeData::TypeDefinitionIndex(ty_idx)) => type_defs[ty_idx].full_name(metadata, false),
-                (Il2CppTypeEnum::Genericinst, TypeData::GenericClassIndex(gc)) => {
-                    let gc = &mr.generic_classes[gc];
-                    let inst = &mr.generic_insts[gc.context.class_inst_idx.unwrap()];
-                    let generic_args = inst.types.iter().map(|ty| types[*ty].full_name(metadata)).collect::<Vec<_>>().join(", ");
-                    format!("{}<{}>", types[gc.type_index].full_name(metadata), generic_args)
-                }
-                _ => format!("({:?}?)", self.ty)
-            }
-        })
-    }
-}
-
-/// A generic class instantiation.
-///
-/// Defined at `il2cpp-runtime-metadata.h:40`
-pub struct Il2CppGenericClass {
-    /// The generic type definition.
-    ///
-    /// Indices into the [`Il2CppMetadataRegistration::types`] field.
-    pub type_index: usize,
-
-    /// A context that contains the type instantiation doesn't contain any method instantiation.
-    pub context: Il2CppGenericContext,
 }
 
 impl Il2CppGenericClass {
@@ -656,38 +377,6 @@ impl Il2CppGenericClass {
     }
 }
 
-/// Defined at `il2cpp-runtime-metadata.h:27`
-pub struct Il2CppGenericContext {
-    /// Indices into the [`Il2CppMetadataRegistration::generic_insts`] field
-    pub class_inst_idx: Option<usize>,
-
-    /// Indices into the [`Il2CppMetadataRegistration::generic_insts`] field
-    pub method_inst_idx: Option<usize>,
-}
-
-/// A generic method instantiation.
-/// 
-/// It is not possible for both `class_inst_index` and `method_inst_index` to
-/// be invalid since if both the class and method are not generic, you cannot
-/// make a generic instance.
-/// 
-/// Defined at `il2cpp-metadata.h:67`
-#[derive(BinRead)]
-pub struct Il2CppMethodSpec {
-    /// The method definition.
-    pub method_definition_index: MethodIndex,
-
-    /// The class generic argument list (if class is generic).
-    ///
-    /// Indices into the [`Il2CppMetadataRegistration::generic_insts`] field
-    pub class_inst_index: u32,
-
-    /// The method generic argument list (if method is generic).
-    ///
-    /// Indices into the [`Il2CppMetadataRegistration::generic_insts`] field
-    pub method_inst_index: u32,
-}
-
 impl Il2CppGenericContext {
     fn read(cur: &mut Cursor<&[u8]>, generic_inst_map: &HashMap<u64, usize>) -> Result<Self> {
         Ok(Self {
@@ -701,14 +390,6 @@ impl Il2CppGenericContext {
     }
 }
 
-/// A list of types used for a generic instantiation.
-/// 
-/// Defined at `il2cpp-runtime-metadata.h:21`
-pub struct Il2CppGenericInst {
-    /// Indices into the [`Il2CppMetadataRegistration::types`] field
-    pub types: Vec<usize>,
-}
-
 impl Il2CppGenericInst {
     fn read(reader: &ElfReader, vaddr: u64, types_map: &HashMap<u64, usize>) -> Result<Self> {
         let mut cur = reader.make_cur(vaddr)?;
@@ -720,50 +401,6 @@ impl Il2CppGenericInst {
         }
         Ok(Self { types })
     }
-}
-
-#[derive(BinRead)]
-pub struct GenericMethodIndices {
-    /// Index for the [`Il2CppCodeRegistration::generic_method_pointers`] field
-    pub method_index: u32,
-
-    /// Index for the [`Il2CppCodeRegistration::invoker_pointers`] field
-    pub invoker_index: u32,
-
-    /// Index for the [`Il2CppCodeRegistration::generic_adjustor_thunks`] field
-    pub adjustor_thunk_index: u32,
-}
-
-/// Defined at `il2cpp-metadata.h:105`
-#[derive(BinRead)]
-pub struct Il2CppGenericMethodFunctionsDefinitions {
-    /// Index for [`Il2CppMetadataRegistration::method_specs`]
-    pub generic_method_index: u32,
-    pub indices: GenericMethodIndices,
-}
-
-/// Compiler calculated values
-/// 
-/// Defined at `il2cpp-class-internals:475`
-#[derive(BinRead)]
-pub struct Il2CppTypeDefinitionSizes {
-    pub instance_size: u32,
-    pub native_size: i32,
-    pub static_fields_size: u32,
-    pub thread_static_fields_size: u32,
-}
-
-/// Defined at `il2cpp-class-internals.h:622`
-pub struct Il2CppMetadataRegistration {
-    pub generic_classes: Vec<Il2CppGenericClass>,
-    pub generic_insts: Vec<Il2CppGenericInst>,
-    pub generic_method_table: Vec<Il2CppGenericMethodFunctionsDefinitions>,
-    pub types: Vec<Il2CppType>,
-    pub method_specs: Vec<Il2CppMethodSpec>,
-    pub field_offsets: Vec<Vec<u32>>,
-    pub type_definition_sizes: Vec<Il2CppTypeDefinitionSizes>,
-    // TODO:
-    // pub metadata_usages: ??
 }
 
 impl Il2CppMetadataRegistration {
@@ -839,11 +476,6 @@ impl Il2CppMetadataRegistration {
             type_definition_sizes,
         })
     }
-}
-
-pub struct RuntimeMetadata<'data> {
-    pub code_registration: Il2CppCodeRegistration<'data>,
-    pub metadata_registration: Il2CppMetadataRegistration,
 }
 
 impl<'data> RuntimeMetadata<'data> {

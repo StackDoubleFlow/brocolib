@@ -1,7 +1,7 @@
 //! Global metadata types.
 
 use crate::Metadata;
-use crate::elf::TypeData;
+use crate::runtime_metadata::TypeData;
 use std::io::Cursor;
 use std::ops::Index;
 use std::{str, concat, stringify};

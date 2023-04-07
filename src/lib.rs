@@ -5,10 +5,11 @@
 //! You can find these files in a Unity install at the following path:
 //! `UnityEditor/2021.3.16f1/Editor/Data/il2cpp/libil2cpp`
 
-pub mod elf;
 pub mod global_metadata;
+pub mod runtime_metadata;
 
-use elf::{Il2CppBinaryError, RuntimeMetadata};
+use runtime_metadata::elf::Il2CppBinaryError;
+use runtime_metadata::RuntimeMetadata;
 use global_metadata::{GlobalMetadata, MetadataDeserializeError};
 use thiserror::Error;
 
