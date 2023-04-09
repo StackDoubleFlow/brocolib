@@ -344,8 +344,9 @@ impl Il2CppType {
             Il2CppTypeEnum::Genericinst => TypeData::GenericClassIndex(generic_class_map[&raw_data]),
             _ => TypeData::TypeDefinitionIndex(TypeDefinitionIndex::new(raw_data as u32)),
         };
-        let byref = (bitfield >> 6) != 0;
-        let pinned = (bitfield >> 7) != 0;
+        let byref = (bitfield >> 5) != 0;
+        let pinned = (bitfield >> 6) != 0;
+        let valuetype = (bitfield >> 7) != 0;
 
         Ok(Il2CppType {
             data,
@@ -353,6 +354,7 @@ impl Il2CppType {
             ty,
             byref,
             pinned,
+            valuetype,
         })
     }
 }
@@ -472,8 +474,8 @@ impl Il2CppMetadataRegistration {
             generic_method_table,
             types,
             method_specs,
-            field_offsets,
-            type_definition_sizes,
+            field_offsets: Some(field_offsets),
+            type_definition_sizes: Some(type_definition_sizes),
         })
     }
 }

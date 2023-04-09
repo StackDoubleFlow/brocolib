@@ -1,12 +1,12 @@
+pub mod source;
+pub mod elf;
+
 use binread::BinRead;
 use crate::global_metadata::{Token, TypeDefinitionIndex, GenericParameterIndex, MethodIndex};
 use crate::Metadata;
 
-pub mod source;
-pub mod elf;
-
 /// Defined at `il2cpp-class-internals:570`
-#[derive(BinRead)]
+#[derive(BinRead, Debug)]
 pub struct Il2CppTokenAdjustorThunkPair {
     pub token: Token,
     #[br(align_before = 8)]
@@ -14,21 +14,21 @@ pub struct Il2CppTokenAdjustorThunkPair {
 }
 
 /// Defined at `il2cpp-class-internals:550`
-#[derive(BinRead)]
+#[derive(BinRead, Debug)]
 pub struct Il2CppRange {
     pub start: u32,
     pub length: u32,
 }
 
 /// Defined at `il2cpp-class-internals:556`
-#[derive(BinRead)]
+#[derive(BinRead, Debug)]
 pub struct Il2CppTokenRangePair {
     pub token: Token,
     pub range: Il2CppRange,
 }
 
 /// Defined at `il2cpp-metadata.h:69`
-#[derive(BinRead)]
+#[derive(BinRead, Debug)]
 #[br(repr = u64)]
 pub enum Il2CppRGCTXDataType {
     Invalid,
@@ -42,7 +42,7 @@ pub enum Il2CppRGCTXDataType {
 /// A runtime generic context.
 /// 
 /// Defined at `il2cpp-metadata.h:92`
-#[derive(BinRead)]
+#[derive(BinRead, Debug)]
 pub struct Il2CppRGCTXDefinition {
     pub ty: Il2CppRGCTXDataType,
     // TODO
@@ -50,6 +50,7 @@ pub struct Il2CppRGCTXDefinition {
 }
 
 /// Defined at `il2cpp-class-internals:582`
+#[derive(Debug)]
 pub struct Il2CppCodeGenModule<'data> {
     /// Module names have `.dll` at the end
     pub name: &'data str,
@@ -74,6 +75,7 @@ pub struct Il2CppCodeGenModule<'data> {
 }
 
 /// Defined at `il2cpp-class-internals:603`
+#[derive(Debug)]
 pub struct Il2CppCodeRegistration<'data> {
     pub reverse_pinvoke_wrappers: Vec<u64>,
     pub generic_method_pointers: Vec<u64>,
@@ -226,6 +228,7 @@ pub struct Il2CppType {
     pub byref: bool,
     /// valid when included in a local var signature
     pub pinned: bool,
+    pub valuetype: bool,
 }
 
 impl Il2CppType {
@@ -274,6 +277,7 @@ impl Il2CppType {
 /// A generic class instantiation.
 ///
 /// Defined at `il2cpp-runtime-metadata.h:40`
+#[derive(Debug, Clone)]
 pub struct Il2CppGenericClass {
     /// The generic type definition.
     ///
@@ -285,6 +289,7 @@ pub struct Il2CppGenericClass {
 }
 
 /// Defined at `il2cpp-runtime-metadata.h:27`
+#[derive(Debug, Clone)]
 pub struct Il2CppGenericContext {
     /// Indices into the [`Il2CppMetadataRegistration::generic_insts`] field
     pub class_inst_idx: Option<usize>,
@@ -300,7 +305,7 @@ pub struct Il2CppGenericContext {
 /// make a generic instance.
 /// 
 /// Defined at `il2cpp-metadata.h:67`
-#[derive(BinRead)]
+#[derive(BinRead, Debug)]
 pub struct Il2CppMethodSpec {
     /// The method definition.
     pub method_definition_index: MethodIndex,
@@ -319,12 +324,13 @@ pub struct Il2CppMethodSpec {
 /// A list of types used for a generic instantiation.
 /// 
 /// Defined at `il2cpp-runtime-metadata.h:21`
+#[derive(Debug)]
 pub struct Il2CppGenericInst {
     /// Indices into the [`Il2CppMetadataRegistration::types`] field
     pub types: Vec<usize>,
 }
 
-#[derive(BinRead)]
+#[derive(BinRead, Debug)]
 pub struct GenericMethodIndices {
     /// Index for the [`Il2CppCodeRegistration::generic_method_pointers`] field
     pub method_index: u32,
@@ -332,12 +338,12 @@ pub struct GenericMethodIndices {
     /// Index for the [`Il2CppCodeRegistration::invoker_pointers`] field
     pub invoker_index: u32,
 
-    /// Index for the [`Il2CppCodeRegistration::generic_adjustor_thunks`] field
+    /// Index for the [`Il2CppCodeRegistration::generic_adjustor_thunks`] field (optional)
     pub adjustor_thunk_index: u32,
 }
 
 /// Defined at `il2cpp-metadata.h:105`
-#[derive(BinRead)]
+#[derive(BinRead, Debug)]
 pub struct Il2CppGenericMethodFunctionsDefinitions {
     /// Index for [`Il2CppMetadataRegistration::method_specs`]
     pub generic_method_index: u32,
@@ -347,7 +353,7 @@ pub struct Il2CppGenericMethodFunctionsDefinitions {
 /// Compiler calculated values
 /// 
 /// Defined at `il2cpp-class-internals:475`
-#[derive(BinRead)]
+#[derive(BinRead, Debug)]
 pub struct Il2CppTypeDefinitionSizes {
     pub instance_size: u32,
     pub native_size: i32,
@@ -356,18 +362,25 @@ pub struct Il2CppTypeDefinitionSizes {
 }
 
 /// Defined at `il2cpp-class-internals.h:622`
+#[derive(Debug)]
 pub struct Il2CppMetadataRegistration {
     pub generic_classes: Vec<Il2CppGenericClass>,
     pub generic_insts: Vec<Il2CppGenericInst>,
     pub generic_method_table: Vec<Il2CppGenericMethodFunctionsDefinitions>,
     pub types: Vec<Il2CppType>,
     pub method_specs: Vec<Il2CppMethodSpec>,
-    pub field_offsets: Vec<Vec<u32>>,
-    pub type_definition_sizes: Vec<Il2CppTypeDefinitionSizes>,
+    /// Compiler calculated field offset values. Only exists when read from an
+    /// ELF. Since this is platform dependent, it cannot be read from C++
+    /// sources.
+    pub field_offsets: Option<Vec<Vec<u32>>>,
+    /// Compiler calculated size values. Only exists when read from an ELF.
+    /// Since this is platform dependent, it cannot be read from C++ sources.
+    pub type_definition_sizes: Option<Vec<Il2CppTypeDefinitionSizes>>,
     // TODO:
     // pub metadata_usages: ??
 }
 
+#[derive(Debug)]
 pub struct RuntimeMetadata<'data> {
     pub code_registration: Il2CppCodeRegistration<'data>,
     pub metadata_registration: Il2CppMetadataRegistration,
