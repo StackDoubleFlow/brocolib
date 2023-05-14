@@ -297,7 +297,7 @@ impl Il2CppTypeDefinition {
         full_name.push('.');
         full_name.push_str(name);
         if self.generic_container_index.is_valid() && with_generics {
-            let gc = &metadata.global_metadata.generic_containers[self.generic_container_index];
+            let gc = self.generic_container(metadata);
             full_name.push_str(&gc.to_string(metadata));
         }
         full_name

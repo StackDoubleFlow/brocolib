@@ -258,7 +258,7 @@ impl Il2CppType {
             Il2CppTypeEnum::Object => "System.Object",
             Il2CppTypeEnum::Sentinel => "<<SENTINEL>>",
             _ => return match (self.ty, self.data) {
-                (Il2CppTypeEnum::Var | Il2CppTypeEnum::Mvar, TypeData::GenericParameterIndex(idx)) => metadata.global_metadata.string[metadata.global_metadata.generic_parameters[idx].name_index].to_string(),
+                (Il2CppTypeEnum::Var | Il2CppTypeEnum::Mvar, TypeData::GenericParameterIndex(idx)) => metadata.global_metadata.generic_parameters[idx].name(metadata).to_string(),
                 (Il2CppTypeEnum::Ptr, TypeData::TypeIndex(ty_idx)) => format!("{}*", types[ty_idx].full_name(metadata)),
                 (Il2CppTypeEnum::Szarray, TypeData::TypeIndex(ty_idx)) => format!("{}[]", types[ty_idx].full_name(metadata)),
                 (Il2CppTypeEnum::Class | Il2CppTypeEnum::Valuetype, TypeData::TypeDefinitionIndex(ty_idx)) => type_defs[ty_idx].full_name(metadata, false),
