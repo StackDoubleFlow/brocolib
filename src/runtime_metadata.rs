@@ -93,7 +93,7 @@ pub struct Il2CppCodeRegistration<'data> {
 /// See ECMA-335, II.23.1.16
 /// 
 /// Defined at `il2cpp-blob.h:6`
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Il2CppTypeEnum {
     /// End of list
     End,
@@ -204,7 +204,7 @@ impl Il2CppTypeEnum {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum TypeData {
     TypeDefinitionIndex(TypeDefinitionIndex),
     /// For [`Il2CppTypeEnum::Ptr`] and [`Il2CppTypeEnum::Szarray`]
@@ -219,7 +219,7 @@ pub enum TypeData {
 }
 
 /// Defined at `il2cpp-runtime-metadata.h:48`
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Il2CppType {
     pub data: TypeData,
     /// Param attributes or field flags. See `il2cpp-tabledef.h`
