@@ -269,7 +269,7 @@ pub struct Il2CppTypeDefinition {
 
 impl Il2CppTypeDefinition {
     field_helper!(name, string, name_index, str);
-    field_helper!(namespace, string, name_index, str);
+    field_helper!(namespace, string, namespace_index, str);
     field_helper!(generic_container, generic_containers, generic_container_index, Il2CppGenericContainer);
     range_helper!(methods, method_start, method_count, Il2CppMethodDefinition);
     range_helper!(fields, field_start, field_count, Il2CppFieldDefinition);
@@ -297,7 +297,7 @@ impl Il2CppTypeDefinition {
         full_name.push('.');
         full_name.push_str(name);
         if self.generic_container_index.is_valid() && with_generics {
-            let gc = &metadata.global_metadata.generic_containers[self.generic_container_index];
+            let gc = self.generic_container(metadata);
             full_name.push_str(&gc.to_string(metadata));
         }
         full_name
