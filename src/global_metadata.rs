@@ -360,7 +360,7 @@ pub struct Il2CppPropertyDefinition {
 impl Il2CppPropertyDefinition {
     field_helper!(name, string, name_index, str);
 
-    fn get_method_index(&self, decl_type: &Il2CppTypeDefinition) -> MethodIndex {
+    pub fn get_method_index(&self, decl_type: &Il2CppTypeDefinition) -> MethodIndex {
         MethodIndex::new(decl_type.method_start.index() + self.get)
     }
 
@@ -369,7 +369,7 @@ impl Il2CppPropertyDefinition {
         &metadata.global_metadata.methods[idx]
     }
 
-    fn set_method_index(&self, decl_type: &Il2CppTypeDefinition) -> MethodIndex {
+    pub fn set_method_index(&self, decl_type: &Il2CppTypeDefinition) -> MethodIndex {
         MethodIndex::new(decl_type.method_start.index() + self.set)
     }
 
