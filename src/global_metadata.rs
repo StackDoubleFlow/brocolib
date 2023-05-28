@@ -348,8 +348,10 @@ impl Il2CppFieldDefinition {
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppPropertyDefinition {
     pub name_index: StringIndex,
-    pub get: MethodIndex,
-    pub set: MethodIndex,
+    /// Index into declaring type's method list
+    pub get: u32,
+    /// Index into declaring type's method list
+    pub set: u32,
     /// See `il2cpp-tabledef.h`
     pub attrs: u32,
     pub token: Token,
@@ -357,8 +359,24 @@ pub struct Il2CppPropertyDefinition {
 
 impl Il2CppPropertyDefinition {
     field_helper!(name, string, name_index, str);
-    field_helper!(get_method, methods, get, Il2CppMethodDefinition);
-    field_helper!(set_method, methods, set, Il2CppMethodDefinition);
+
+    fn get_method_index(&self, decl_type: &Il2CppTypeDefinition) -> MethodIndex {
+        MethodIndex::new(decl_type.method_start.index() + self.get)
+    }
+
+    pub fn get_method<'md>(&self, decl_type: &Il2CppTypeDefinition, metadata: &'md Metadata) -> &'md Il2CppMethodDefinition {
+        let idx = self.get_method_index(decl_type);
+        &metadata.global_metadata.methods[idx]
+    }
+
+    fn set_method_index(&self, decl_type: &Il2CppTypeDefinition) -> MethodIndex {
+        MethodIndex::new(decl_type.method_start.index() + self.set)
+    }
+
+    pub fn set_method<'md>(&self, decl_type: &Il2CppTypeDefinition, metadata: &'md Metadata) -> &'md Il2CppMethodDefinition {
+        let idx = self.set_method_index(decl_type);
+        &metadata.global_metadata.methods[idx]
+    }
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:147`
