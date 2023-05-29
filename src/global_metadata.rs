@@ -35,6 +35,17 @@ macro_rules! field_helper {
     };
 }
 
+macro_rules! field_helper_optional {
+    ($name:ident, $table:ident, $field:ident, $ty:ty) => {
+        pub fn $name<'md>(&self, metadata: &'md Metadata) -> Option<&'md $ty> {
+            match self.$field.is_valid() {
+                false => None,
+                true => Some(&metadata.global_metadata.$table[self.$field])
+            }
+        }
+    };
+}
+
 #[derive(Debug)]
 pub enum InvalidMethodIndex {
     NoData,
@@ -158,6 +169,7 @@ pub struct Il2CppMethodDefinition {
     pub declaring_type: TypeDefinitionIndex,
     pub return_type: TypeIndex,
     pub parameter_start: ParameterIndex,
+    /// Optional. Holds information about generic parameters.
     pub generic_container_index: GenericContainerIndex,
     pub token: Token,
 
@@ -174,7 +186,7 @@ impl Il2CppMethodDefinition {
     field_helper!(name, string, name_index, str);
     field_helper!(declaring_type, type_definitions, declaring_type, Il2CppTypeDefinition);
     range_helper!(parameters, parameter_start, parameter_count, Il2CppParameterDefinition);
-    field_helper!(generic_container, generic_containers, generic_container_index, Il2CppGenericContainer);
+    field_helper_optional!(generic_container, generic_containers, generic_container_index, Il2CppGenericContainer);
 
     pub fn full_name(&self, metadata: &Metadata) -> String {
         let mr = &metadata.runtime_metadata.metadata_registration;
@@ -184,8 +196,7 @@ impl Il2CppMethodDefinition {
         full_name.push_str(&self.declaring_type(metadata).full_name(metadata, true));
         full_name.push_str("::");
         full_name.push_str(self.name(metadata));
-        if self.generic_container_index.is_valid() {
-            let gc = self.generic_container(metadata);
+        if let Some(gc) = self.generic_container(metadata) {
             full_name.push_str(&gc.to_string(metadata));
         }
         full_name.push('(');
