@@ -277,7 +277,7 @@ impl Il2CppType {
 /// A generic class instantiation.
 ///
 /// Defined at `il2cpp-runtime-metadata.h:40`
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Il2CppGenericClass {
     /// The generic type definition.
     ///
@@ -289,7 +289,7 @@ pub struct Il2CppGenericClass {
 }
 
 /// Defined at `il2cpp-runtime-metadata.h:27`
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Il2CppGenericContext {
     /// Indices into the [`Il2CppMetadataRegistration::generic_insts`] field
     pub class_inst_idx: Option<usize>,
