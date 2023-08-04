@@ -297,7 +297,7 @@ impl Il2CppTypeDefinition {
 
 
         let mut full_name = String::new();
-        if namespace.is_empty() {
+        if !namespace.is_empty() {
             full_name.push_str(namespace);
             full_name.push('.');
         }
