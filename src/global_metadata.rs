@@ -469,7 +469,7 @@ pub struct Il2CppGenericContainer {
 impl Il2CppGenericContainer {
     range_helper!(generic_parameters, generic_parameter_start, type_argc, Il2CppGenericParameter);
 
-    fn to_string(&self, metadata: &Metadata) -> String {
+    pub fn to_string(&self, metadata: &Metadata) -> String {
         let mut full_name = String::new();
         full_name.push('<');
         for (i, param) in self.generic_parameters(metadata).iter().enumerate() {
