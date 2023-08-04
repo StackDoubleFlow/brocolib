@@ -303,7 +303,11 @@ impl Il2CppTypeDefinition {
         }
 
         if self.declaring_type_index != u32::MAX {
-            full_name.push(metadata.runtime_metadata.metadata_registration.types[self.declaring_type_index as usize].full_name(metadata) + "::");
+            let s = metadata.runtime_metadata.metadata_registration.types
+                [self.declaring_type_index as usize]
+                .full_name(metadata)
+                + "::";
+            full_name.push_str(s.as_str());
         }
 
         full_name.push_str(name);
