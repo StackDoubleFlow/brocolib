@@ -295,17 +295,17 @@ impl Il2CppTypeDefinition {
         let namespace = self.namespace(metadata);
         let name = self.name(metadata);
 
-        if self.declaring_type_index != u32::MAX {
-            return metadata.runtime_metadata.metadata_registration.types[self.declaring_type_index as usize].full_name(metadata) + "::" + name;
-        }
-
-        if namespace.is_empty() {
-            return name.to_string();
-        }
 
         let mut full_name = String::new();
-        full_name.push_str(namespace);
-        full_name.push('.');
+        if namespace.is_empty() {
+            full_name.push_str(namespace);
+            full_name.push('.');
+        }
+
+        if self.declaring_type_index != u32::MAX {
+            full_name.push(metadata.runtime_metadata.metadata_registration.types[self.declaring_type_index as usize].full_name(metadata) + "::");
+        }
+
         full_name.push_str(name);
         if self.generic_container_index.is_valid() && with_generics {
             let gc = self.generic_container(metadata);
