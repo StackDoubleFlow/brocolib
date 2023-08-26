@@ -295,17 +295,21 @@ impl Il2CppTypeDefinition {
         let namespace = self.namespace(metadata);
         let name = self.name(metadata);
 
-        if self.declaring_type_index != u32::MAX {
-            return metadata.runtime_metadata.metadata_registration.types[self.declaring_type_index as usize].full_name(metadata) + "::" + name;
-        }
-
-        if namespace.is_empty() {
-            return name.to_string();
-        }
 
         let mut full_name = String::new();
-        full_name.push_str(namespace);
-        full_name.push('.');
+        if !namespace.is_empty() {
+            full_name.push_str(namespace);
+            full_name.push('.');
+        }
+
+        if self.declaring_type_index != u32::MAX {
+            let s = metadata.runtime_metadata.metadata_registration.types
+                [self.declaring_type_index as usize]
+                .full_name(metadata)
+                + "::";
+            full_name.push_str(s.as_str());
+        }
+
         full_name.push_str(name);
         if self.generic_container_index.is_valid() && with_generics {
             let gc = self.generic_container(metadata);
@@ -469,7 +473,7 @@ pub struct Il2CppGenericContainer {
 impl Il2CppGenericContainer {
     range_helper!(generic_parameters, generic_parameter_start, type_argc, Il2CppGenericParameter);
 
-    fn to_string(&self, metadata: &Metadata) -> String {
+    pub fn to_string(&self, metadata: &Metadata) -> String {
         let mut full_name = String::new();
         full_name.push('<');
         for (i, param) in self.generic_parameters(metadata).iter().enumerate() {
