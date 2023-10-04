@@ -1,0 +1,4 @@
+(function() {var implementors = {
+"cstr_core":[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.72.1/core/ops/drop/trait.Drop.html\" title=\"trait core::ops::drop::Drop\">Drop</a> for <a class=\"struct\" href=\"cstr_core/struct.CString.html\" title=\"struct cstr_core::CString\">CString</a>"]],
+"flate2":[["impl&lt;W: <a class=\"trait\" href=\"https://doc.rust-lang.org/1.72.1/std/io/trait.Write.html\" title=\"trait std::io::Write\">Write</a>&gt; <a class=\"trait\" href=\"https://doc.rust-lang.org/1.72.1/core/ops/drop/trait.Drop.html\" title=\"trait core::ops::drop::Drop\">Drop</a> for <a class=\"struct\" href=\"flate2/write/struct.GzEncoder.html\" title=\"struct flate2::write::GzEncoder\">GzEncoder</a>&lt;W&gt;"]]
+};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

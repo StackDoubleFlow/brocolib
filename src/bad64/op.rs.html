@@ -1,0 +1,2477 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `/home/runner/.cargo/registry/src/index.crates.io-6f17d22bba15001f/bad64-0.6.0/src/op.rs`."><title>op.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceSerif4-Regular-46f98efaafac5295.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/FiraSans-Regular-018c141bf0843ffd.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/FiraSans-Medium-8f9a781e4970d388.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceCodePro-Regular-562dcc5011b6de7d.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceSerif4-Bold-a2c9cd1067f8b328.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../static.files/SourceCodePro-Semibold-d899c5a5c4aeb14a.ttf.woff2"><link rel="stylesheet" href="../../static.files/normalize-76eba96aa4d2e634.css"><link rel="stylesheet" href="../../static.files/rustdoc-9bb858ba049f1f21.css" id="mainThemeStyle"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="bad64" data-themes="" data-resource-suffix="" data-rustdoc-version="1.72.1 (d5c2e9c34 2023-09-13)" data-channel="1.72.1" data-search-js="search-f6292fe389d70017.js" data-settings-js="settings-de11bff964e9d4e5.js" data-settings-css="settings-8c76f75bfb6bd192.css" data-theme-light-css="light-0f8c037637f9eb3e.css" data-theme-dark-css="dark-1097f8e92a01e3cf.css" data-theme-ayu-css="ayu-614652228113ac93.css" ><script src="../../static.files/storage-59fd9b8ccb335783.js"></script><script defer src="../../static.files/source-script-106908c7a7964ba4.js"></script><script defer src="../../source-files.js"></script><script defer src="../../static.files/main-0795b7d26be81095.js"></script><noscript><link rel="stylesheet" media="(prefers-color-scheme:light)" href="../../static.files/light-0f8c037637f9eb3e.css"><link rel="stylesheet" media="(prefers-color-scheme:dark)" href="../../static.files/dark-1097f8e92a01e3cf.css"><link rel="stylesheet" href="../../static.files/noscript-13285aec31fa243e.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-16x16-8b506e7a72182f1c.png"><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-422f7d1d52889060.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-2c020d218678b618.svg"></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"></nav><main><nav class="sub"><a class="sub-logo-container" href="../../bad64/index.html"><img class="rust-logo" src="../../static.files/rust-logo-151179464ae7ed46.svg" alt="logo"></a><form class="search-form"><span></span><input class="search-input" name="search" aria-label="Run search in the documentation" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><a href="../../help.html">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../static.files/wheel-7b819b6101059cd0.svg"></a></div></form></nav><section id="main-content" class="content"><div class="example-wrap"><div data-nosnippet><pre class="src-line-numbers"><a href="#1" id="1">1</a>
+<a href="#2" id="2">2</a>
+<a href="#3" id="3">3</a>
+<a href="#4" id="4">4</a>
+<a href="#5" id="5">5</a>
+<a href="#6" id="6">6</a>
+<a href="#7" id="7">7</a>
+<a href="#8" id="8">8</a>
+<a href="#9" id="9">9</a>
+<a href="#10" id="10">10</a>
+<a href="#11" id="11">11</a>
+<a href="#12" id="12">12</a>
+<a href="#13" id="13">13</a>
+<a href="#14" id="14">14</a>
+<a href="#15" id="15">15</a>
+<a href="#16" id="16">16</a>
+<a href="#17" id="17">17</a>
+<a href="#18" id="18">18</a>
+<a href="#19" id="19">19</a>
+<a href="#20" id="20">20</a>
+<a href="#21" id="21">21</a>
+<a href="#22" id="22">22</a>
+<a href="#23" id="23">23</a>
+<a href="#24" id="24">24</a>
+<a href="#25" id="25">25</a>
+<a href="#26" id="26">26</a>
+<a href="#27" id="27">27</a>
+<a href="#28" id="28">28</a>
+<a href="#29" id="29">29</a>
+<a href="#30" id="30">30</a>
+<a href="#31" id="31">31</a>
+<a href="#32" id="32">32</a>
+<a href="#33" id="33">33</a>
+<a href="#34" id="34">34</a>
+<a href="#35" id="35">35</a>
+<a href="#36" id="36">36</a>
+<a href="#37" id="37">37</a>
+<a href="#38" id="38">38</a>
+<a href="#39" id="39">39</a>
+<a href="#40" id="40">40</a>
+<a href="#41" id="41">41</a>
+<a href="#42" id="42">42</a>
+<a href="#43" id="43">43</a>
+<a href="#44" id="44">44</a>
+<a href="#45" id="45">45</a>
+<a href="#46" id="46">46</a>
+<a href="#47" id="47">47</a>
+<a href="#48" id="48">48</a>
+<a href="#49" id="49">49</a>
+<a href="#50" id="50">50</a>
+<a href="#51" id="51">51</a>
+<a href="#52" id="52">52</a>
+<a href="#53" id="53">53</a>
+<a href="#54" id="54">54</a>
+<a href="#55" id="55">55</a>
+<a href="#56" id="56">56</a>
+<a href="#57" id="57">57</a>
+<a href="#58" id="58">58</a>
+<a href="#59" id="59">59</a>
+<a href="#60" id="60">60</a>
+<a href="#61" id="61">61</a>
+<a href="#62" id="62">62</a>
+<a href="#63" id="63">63</a>
+<a href="#64" id="64">64</a>
+<a href="#65" id="65">65</a>
+<a href="#66" id="66">66</a>
+<a href="#67" id="67">67</a>
+<a href="#68" id="68">68</a>
+<a href="#69" id="69">69</a>
+<a href="#70" id="70">70</a>
+<a href="#71" id="71">71</a>
+<a href="#72" id="72">72</a>
+<a href="#73" id="73">73</a>
+<a href="#74" id="74">74</a>
+<a href="#75" id="75">75</a>
+<a href="#76" id="76">76</a>
+<a href="#77" id="77">77</a>
+<a href="#78" id="78">78</a>
+<a href="#79" id="79">79</a>
+<a href="#80" id="80">80</a>
+<a href="#81" id="81">81</a>
+<a href="#82" id="82">82</a>
+<a href="#83" id="83">83</a>
+<a href="#84" id="84">84</a>
+<a href="#85" id="85">85</a>
+<a href="#86" id="86">86</a>
+<a href="#87" id="87">87</a>
+<a href="#88" id="88">88</a>
+<a href="#89" id="89">89</a>
+<a href="#90" id="90">90</a>
+<a href="#91" id="91">91</a>
+<a href="#92" id="92">92</a>
+<a href="#93" id="93">93</a>
+<a href="#94" id="94">94</a>
+<a href="#95" id="95">95</a>
+<a href="#96" id="96">96</a>
+<a href="#97" id="97">97</a>
+<a href="#98" id="98">98</a>
+<a href="#99" id="99">99</a>
+<a href="#100" id="100">100</a>
+<a href="#101" id="101">101</a>
+<a href="#102" id="102">102</a>
+<a href="#103" id="103">103</a>
+<a href="#104" id="104">104</a>
+<a href="#105" id="105">105</a>
+<a href="#106" id="106">106</a>
+<a href="#107" id="107">107</a>
+<a href="#108" id="108">108</a>
+<a href="#109" id="109">109</a>
+<a href="#110" id="110">110</a>
+<a href="#111" id="111">111</a>
+<a href="#112" id="112">112</a>
+<a href="#113" id="113">113</a>
+<a href="#114" id="114">114</a>
+<a href="#115" id="115">115</a>
+<a href="#116" id="116">116</a>
+<a href="#117" id="117">117</a>
+<a href="#118" id="118">118</a>
+<a href="#119" id="119">119</a>
+<a href="#120" id="120">120</a>
+<a href="#121" id="121">121</a>
+<a href="#122" id="122">122</a>
+<a href="#123" id="123">123</a>
+<a href="#124" id="124">124</a>
+<a href="#125" id="125">125</a>
+<a href="#126" id="126">126</a>
+<a href="#127" id="127">127</a>
+<a href="#128" id="128">128</a>
+<a href="#129" id="129">129</a>
+<a href="#130" id="130">130</a>
+<a href="#131" id="131">131</a>
+<a href="#132" id="132">132</a>
+<a href="#133" id="133">133</a>
+<a href="#134" id="134">134</a>
+<a href="#135" id="135">135</a>
+<a href="#136" id="136">136</a>
+<a href="#137" id="137">137</a>
+<a href="#138" id="138">138</a>
+<a href="#139" id="139">139</a>
+<a href="#140" id="140">140</a>
+<a href="#141" id="141">141</a>
+<a href="#142" id="142">142</a>
+<a href="#143" id="143">143</a>
+<a href="#144" id="144">144</a>
+<a href="#145" id="145">145</a>
+<a href="#146" id="146">146</a>
+<a href="#147" id="147">147</a>
+<a href="#148" id="148">148</a>
+<a href="#149" id="149">149</a>
+<a href="#150" id="150">150</a>
+<a href="#151" id="151">151</a>
+<a href="#152" id="152">152</a>
+<a href="#153" id="153">153</a>
+<a href="#154" id="154">154</a>
+<a href="#155" id="155">155</a>
+<a href="#156" id="156">156</a>
+<a href="#157" id="157">157</a>
+<a href="#158" id="158">158</a>
+<a href="#159" id="159">159</a>
+<a href="#160" id="160">160</a>
+<a href="#161" id="161">161</a>
+<a href="#162" id="162">162</a>
+<a href="#163" id="163">163</a>
+<a href="#164" id="164">164</a>
+<a href="#165" id="165">165</a>
+<a href="#166" id="166">166</a>
+<a href="#167" id="167">167</a>
+<a href="#168" id="168">168</a>
+<a href="#169" id="169">169</a>
+<a href="#170" id="170">170</a>
+<a href="#171" id="171">171</a>
+<a href="#172" id="172">172</a>
+<a href="#173" id="173">173</a>
+<a href="#174" id="174">174</a>
+<a href="#175" id="175">175</a>
+<a href="#176" id="176">176</a>
+<a href="#177" id="177">177</a>
+<a href="#178" id="178">178</a>
+<a href="#179" id="179">179</a>
+<a href="#180" id="180">180</a>
+<a href="#181" id="181">181</a>
+<a href="#182" id="182">182</a>
+<a href="#183" id="183">183</a>
+<a href="#184" id="184">184</a>
+<a href="#185" id="185">185</a>
+<a href="#186" id="186">186</a>
+<a href="#187" id="187">187</a>
+<a href="#188" id="188">188</a>
+<a href="#189" id="189">189</a>
+<a href="#190" id="190">190</a>
+<a href="#191" id="191">191</a>
+<a href="#192" id="192">192</a>
+<a href="#193" id="193">193</a>
+<a href="#194" id="194">194</a>
+<a href="#195" id="195">195</a>
+<a href="#196" id="196">196</a>
+<a href="#197" id="197">197</a>
+<a href="#198" id="198">198</a>
+<a href="#199" id="199">199</a>
+<a href="#200" id="200">200</a>
+<a href="#201" id="201">201</a>
+<a href="#202" id="202">202</a>
+<a href="#203" id="203">203</a>
+<a href="#204" id="204">204</a>
+<a href="#205" id="205">205</a>
+<a href="#206" id="206">206</a>
+<a href="#207" id="207">207</a>
+<a href="#208" id="208">208</a>
+<a href="#209" id="209">209</a>
+<a href="#210" id="210">210</a>
+<a href="#211" id="211">211</a>
+<a href="#212" id="212">212</a>
+<a href="#213" id="213">213</a>
+<a href="#214" id="214">214</a>
+<a href="#215" id="215">215</a>
+<a href="#216" id="216">216</a>
+<a href="#217" id="217">217</a>
+<a href="#218" id="218">218</a>
+<a href="#219" id="219">219</a>
+<a href="#220" id="220">220</a>
+<a href="#221" id="221">221</a>
+<a href="#222" id="222">222</a>
+<a href="#223" id="223">223</a>
+<a href="#224" id="224">224</a>
+<a href="#225" id="225">225</a>
+<a href="#226" id="226">226</a>
+<a href="#227" id="227">227</a>
+<a href="#228" id="228">228</a>
+<a href="#229" id="229">229</a>
+<a href="#230" id="230">230</a>
+<a href="#231" id="231">231</a>
+<a href="#232" id="232">232</a>
+<a href="#233" id="233">233</a>
+<a href="#234" id="234">234</a>
+<a href="#235" id="235">235</a>
+<a href="#236" id="236">236</a>
+<a href="#237" id="237">237</a>
+<a href="#238" id="238">238</a>
+<a href="#239" id="239">239</a>
+<a href="#240" id="240">240</a>
+<a href="#241" id="241">241</a>
+<a href="#242" id="242">242</a>
+<a href="#243" id="243">243</a>
+<a href="#244" id="244">244</a>
+<a href="#245" id="245">245</a>
+<a href="#246" id="246">246</a>
+<a href="#247" id="247">247</a>
+<a href="#248" id="248">248</a>
+<a href="#249" id="249">249</a>
+<a href="#250" id="250">250</a>
+<a href="#251" id="251">251</a>
+<a href="#252" id="252">252</a>
+<a href="#253" id="253">253</a>
+<a href="#254" id="254">254</a>
+<a href="#255" id="255">255</a>
+<a href="#256" id="256">256</a>
+<a href="#257" id="257">257</a>
+<a href="#258" id="258">258</a>
+<a href="#259" id="259">259</a>
+<a href="#260" id="260">260</a>
+<a href="#261" id="261">261</a>
+<a href="#262" id="262">262</a>
+<a href="#263" id="263">263</a>
+<a href="#264" id="264">264</a>
+<a href="#265" id="265">265</a>
+<a href="#266" id="266">266</a>
+<a href="#267" id="267">267</a>
+<a href="#268" id="268">268</a>
+<a href="#269" id="269">269</a>
+<a href="#270" id="270">270</a>
+<a href="#271" id="271">271</a>
+<a href="#272" id="272">272</a>
+<a href="#273" id="273">273</a>
+<a href="#274" id="274">274</a>
+<a href="#275" id="275">275</a>
+<a href="#276" id="276">276</a>
+<a href="#277" id="277">277</a>
+<a href="#278" id="278">278</a>
+<a href="#279" id="279">279</a>
+<a href="#280" id="280">280</a>
+<a href="#281" id="281">281</a>
+<a href="#282" id="282">282</a>
+<a href="#283" id="283">283</a>
+<a href="#284" id="284">284</a>
+<a href="#285" id="285">285</a>
+<a href="#286" id="286">286</a>
+<a href="#287" id="287">287</a>
+<a href="#288" id="288">288</a>
+<a href="#289" id="289">289</a>
+<a href="#290" id="290">290</a>
+<a href="#291" id="291">291</a>
+<a href="#292" id="292">292</a>
+<a href="#293" id="293">293</a>
+<a href="#294" id="294">294</a>
+<a href="#295" id="295">295</a>
+<a href="#296" id="296">296</a>
+<a href="#297" id="297">297</a>
+<a href="#298" id="298">298</a>
+<a href="#299" id="299">299</a>
+<a href="#300" id="300">300</a>
+<a href="#301" id="301">301</a>
+<a href="#302" id="302">302</a>
+<a href="#303" id="303">303</a>
+<a href="#304" id="304">304</a>
+<a href="#305" id="305">305</a>
+<a href="#306" id="306">306</a>
+<a href="#307" id="307">307</a>
+<a href="#308" id="308">308</a>
+<a href="#309" id="309">309</a>
+<a href="#310" id="310">310</a>
+<a href="#311" id="311">311</a>
+<a href="#312" id="312">312</a>
+<a href="#313" id="313">313</a>
+<a href="#314" id="314">314</a>
+<a href="#315" id="315">315</a>
+<a href="#316" id="316">316</a>
+<a href="#317" id="317">317</a>
+<a href="#318" id="318">318</a>
+<a href="#319" id="319">319</a>
+<a href="#320" id="320">320</a>
+<a href="#321" id="321">321</a>
+<a href="#322" id="322">322</a>
+<a href="#323" id="323">323</a>
+<a href="#324" id="324">324</a>
+<a href="#325" id="325">325</a>
+<a href="#326" id="326">326</a>
+<a href="#327" id="327">327</a>
+<a href="#328" id="328">328</a>
+<a href="#329" id="329">329</a>
+<a href="#330" id="330">330</a>
+<a href="#331" id="331">331</a>
+<a href="#332" id="332">332</a>
+<a href="#333" id="333">333</a>
+<a href="#334" id="334">334</a>
+<a href="#335" id="335">335</a>
+<a href="#336" id="336">336</a>
+<a href="#337" id="337">337</a>
+<a href="#338" id="338">338</a>
+<a href="#339" id="339">339</a>
+<a href="#340" id="340">340</a>
+<a href="#341" id="341">341</a>
+<a href="#342" id="342">342</a>
+<a href="#343" id="343">343</a>
+<a href="#344" id="344">344</a>
+<a href="#345" id="345">345</a>
+<a href="#346" id="346">346</a>
+<a href="#347" id="347">347</a>
+<a href="#348" id="348">348</a>
+<a href="#349" id="349">349</a>
+<a href="#350" id="350">350</a>
+<a href="#351" id="351">351</a>
+<a href="#352" id="352">352</a>
+<a href="#353" id="353">353</a>
+<a href="#354" id="354">354</a>
+<a href="#355" id="355">355</a>
+<a href="#356" id="356">356</a>
+<a href="#357" id="357">357</a>
+<a href="#358" id="358">358</a>
+<a href="#359" id="359">359</a>
+<a href="#360" id="360">360</a>
+<a href="#361" id="361">361</a>
+<a href="#362" id="362">362</a>
+<a href="#363" id="363">363</a>
+<a href="#364" id="364">364</a>
+<a href="#365" id="365">365</a>
+<a href="#366" id="366">366</a>
+<a href="#367" id="367">367</a>
+<a href="#368" id="368">368</a>
+<a href="#369" id="369">369</a>
+<a href="#370" id="370">370</a>
+<a href="#371" id="371">371</a>
+<a href="#372" id="372">372</a>
+<a href="#373" id="373">373</a>
+<a href="#374" id="374">374</a>
+<a href="#375" id="375">375</a>
+<a href="#376" id="376">376</a>
+<a href="#377" id="377">377</a>
+<a href="#378" id="378">378</a>
+<a href="#379" id="379">379</a>
+<a href="#380" id="380">380</a>
+<a href="#381" id="381">381</a>
+<a href="#382" id="382">382</a>
+<a href="#383" id="383">383</a>
+<a href="#384" id="384">384</a>
+<a href="#385" id="385">385</a>
+<a href="#386" id="386">386</a>
+<a href="#387" id="387">387</a>
+<a href="#388" id="388">388</a>
+<a href="#389" id="389">389</a>
+<a href="#390" id="390">390</a>
+<a href="#391" id="391">391</a>
+<a href="#392" id="392">392</a>
+<a href="#393" id="393">393</a>
+<a href="#394" id="394">394</a>
+<a href="#395" id="395">395</a>
+<a href="#396" id="396">396</a>
+<a href="#397" id="397">397</a>
+<a href="#398" id="398">398</a>
+<a href="#399" id="399">399</a>
+<a href="#400" id="400">400</a>
+<a href="#401" id="401">401</a>
+<a href="#402" id="402">402</a>
+<a href="#403" id="403">403</a>
+<a href="#404" id="404">404</a>
+<a href="#405" id="405">405</a>
+<a href="#406" id="406">406</a>
+<a href="#407" id="407">407</a>
+<a href="#408" id="408">408</a>
+<a href="#409" id="409">409</a>
+<a href="#410" id="410">410</a>
+<a href="#411" id="411">411</a>
+<a href="#412" id="412">412</a>
+<a href="#413" id="413">413</a>
+<a href="#414" id="414">414</a>
+<a href="#415" id="415">415</a>
+<a href="#416" id="416">416</a>
+<a href="#417" id="417">417</a>
+<a href="#418" id="418">418</a>
+<a href="#419" id="419">419</a>
+<a href="#420" id="420">420</a>
+<a href="#421" id="421">421</a>
+<a href="#422" id="422">422</a>
+<a href="#423" id="423">423</a>
+<a href="#424" id="424">424</a>
+<a href="#425" id="425">425</a>
+<a href="#426" id="426">426</a>
+<a href="#427" id="427">427</a>
+<a href="#428" id="428">428</a>
+<a href="#429" id="429">429</a>
+<a href="#430" id="430">430</a>
+<a href="#431" id="431">431</a>
+<a href="#432" id="432">432</a>
+<a href="#433" id="433">433</a>
+<a href="#434" id="434">434</a>
+<a href="#435" id="435">435</a>
+<a href="#436" id="436">436</a>
+<a href="#437" id="437">437</a>
+<a href="#438" id="438">438</a>
+<a href="#439" id="439">439</a>
+<a href="#440" id="440">440</a>
+<a href="#441" id="441">441</a>
+<a href="#442" id="442">442</a>
+<a href="#443" id="443">443</a>
+<a href="#444" id="444">444</a>
+<a href="#445" id="445">445</a>
+<a href="#446" id="446">446</a>
+<a href="#447" id="447">447</a>
+<a href="#448" id="448">448</a>
+<a href="#449" id="449">449</a>
+<a href="#450" id="450">450</a>
+<a href="#451" id="451">451</a>
+<a href="#452" id="452">452</a>
+<a href="#453" id="453">453</a>
+<a href="#454" id="454">454</a>
+<a href="#455" id="455">455</a>
+<a href="#456" id="456">456</a>
+<a href="#457" id="457">457</a>
+<a href="#458" id="458">458</a>
+<a href="#459" id="459">459</a>
+<a href="#460" id="460">460</a>
+<a href="#461" id="461">461</a>
+<a href="#462" id="462">462</a>
+<a href="#463" id="463">463</a>
+<a href="#464" id="464">464</a>
+<a href="#465" id="465">465</a>
+<a href="#466" id="466">466</a>
+<a href="#467" id="467">467</a>
+<a href="#468" id="468">468</a>
+<a href="#469" id="469">469</a>
+<a href="#470" id="470">470</a>
+<a href="#471" id="471">471</a>
+<a href="#472" id="472">472</a>
+<a href="#473" id="473">473</a>
+<a href="#474" id="474">474</a>
+<a href="#475" id="475">475</a>
+<a href="#476" id="476">476</a>
+<a href="#477" id="477">477</a>
+<a href="#478" id="478">478</a>
+<a href="#479" id="479">479</a>
+<a href="#480" id="480">480</a>
+<a href="#481" id="481">481</a>
+<a href="#482" id="482">482</a>
+<a href="#483" id="483">483</a>
+<a href="#484" id="484">484</a>
+<a href="#485" id="485">485</a>
+<a href="#486" id="486">486</a>
+<a href="#487" id="487">487</a>
+<a href="#488" id="488">488</a>
+<a href="#489" id="489">489</a>
+<a href="#490" id="490">490</a>
+<a href="#491" id="491">491</a>
+<a href="#492" id="492">492</a>
+<a href="#493" id="493">493</a>
+<a href="#494" id="494">494</a>
+<a href="#495" id="495">495</a>
+<a href="#496" id="496">496</a>
+<a href="#497" id="497">497</a>
+<a href="#498" id="498">498</a>
+<a href="#499" id="499">499</a>
+<a href="#500" id="500">500</a>
+<a href="#501" id="501">501</a>
+<a href="#502" id="502">502</a>
+<a href="#503" id="503">503</a>
+<a href="#504" id="504">504</a>
+<a href="#505" id="505">505</a>
+<a href="#506" id="506">506</a>
+<a href="#507" id="507">507</a>
+<a href="#508" id="508">508</a>
+<a href="#509" id="509">509</a>
+<a href="#510" id="510">510</a>
+<a href="#511" id="511">511</a>
+<a href="#512" id="512">512</a>
+<a href="#513" id="513">513</a>
+<a href="#514" id="514">514</a>
+<a href="#515" id="515">515</a>
+<a href="#516" id="516">516</a>
+<a href="#517" id="517">517</a>
+<a href="#518" id="518">518</a>
+<a href="#519" id="519">519</a>
+<a href="#520" id="520">520</a>
+<a href="#521" id="521">521</a>
+<a href="#522" id="522">522</a>
+<a href="#523" id="523">523</a>
+<a href="#524" id="524">524</a>
+<a href="#525" id="525">525</a>
+<a href="#526" id="526">526</a>
+<a href="#527" id="527">527</a>
+<a href="#528" id="528">528</a>
+<a href="#529" id="529">529</a>
+<a href="#530" id="530">530</a>
+<a href="#531" id="531">531</a>
+<a href="#532" id="532">532</a>
+<a href="#533" id="533">533</a>
+<a href="#534" id="534">534</a>
+<a href="#535" id="535">535</a>
+<a href="#536" id="536">536</a>
+<a href="#537" id="537">537</a>
+<a href="#538" id="538">538</a>
+<a href="#539" id="539">539</a>
+<a href="#540" id="540">540</a>
+<a href="#541" id="541">541</a>
+<a href="#542" id="542">542</a>
+<a href="#543" id="543">543</a>
+<a href="#544" id="544">544</a>
+<a href="#545" id="545">545</a>
+<a href="#546" id="546">546</a>
+<a href="#547" id="547">547</a>
+<a href="#548" id="548">548</a>
+<a href="#549" id="549">549</a>
+<a href="#550" id="550">550</a>
+<a href="#551" id="551">551</a>
+<a href="#552" id="552">552</a>
+<a href="#553" id="553">553</a>
+<a href="#554" id="554">554</a>
+<a href="#555" id="555">555</a>
+<a href="#556" id="556">556</a>
+<a href="#557" id="557">557</a>
+<a href="#558" id="558">558</a>
+<a href="#559" id="559">559</a>
+<a href="#560" id="560">560</a>
+<a href="#561" id="561">561</a>
+<a href="#562" id="562">562</a>
+<a href="#563" id="563">563</a>
+<a href="#564" id="564">564</a>
+<a href="#565" id="565">565</a>
+<a href="#566" id="566">566</a>
+<a href="#567" id="567">567</a>
+<a href="#568" id="568">568</a>
+<a href="#569" id="569">569</a>
+<a href="#570" id="570">570</a>
+<a href="#571" id="571">571</a>
+<a href="#572" id="572">572</a>
+<a href="#573" id="573">573</a>
+<a href="#574" id="574">574</a>
+<a href="#575" id="575">575</a>
+<a href="#576" id="576">576</a>
+<a href="#577" id="577">577</a>
+<a href="#578" id="578">578</a>
+<a href="#579" id="579">579</a>
+<a href="#580" id="580">580</a>
+<a href="#581" id="581">581</a>
+<a href="#582" id="582">582</a>
+<a href="#583" id="583">583</a>
+<a href="#584" id="584">584</a>
+<a href="#585" id="585">585</a>
+<a href="#586" id="586">586</a>
+<a href="#587" id="587">587</a>
+<a href="#588" id="588">588</a>
+<a href="#589" id="589">589</a>
+<a href="#590" id="590">590</a>
+<a href="#591" id="591">591</a>
+<a href="#592" id="592">592</a>
+<a href="#593" id="593">593</a>
+<a href="#594" id="594">594</a>
+<a href="#595" id="595">595</a>
+<a href="#596" id="596">596</a>
+<a href="#597" id="597">597</a>
+<a href="#598" id="598">598</a>
+<a href="#599" id="599">599</a>
+<a href="#600" id="600">600</a>
+<a href="#601" id="601">601</a>
+<a href="#602" id="602">602</a>
+<a href="#603" id="603">603</a>
+<a href="#604" id="604">604</a>
+<a href="#605" id="605">605</a>
+<a href="#606" id="606">606</a>
+<a href="#607" id="607">607</a>
+<a href="#608" id="608">608</a>
+<a href="#609" id="609">609</a>
+<a href="#610" id="610">610</a>
+<a href="#611" id="611">611</a>
+<a href="#612" id="612">612</a>
+<a href="#613" id="613">613</a>
+<a href="#614" id="614">614</a>
+<a href="#615" id="615">615</a>
+<a href="#616" id="616">616</a>
+<a href="#617" id="617">617</a>
+<a href="#618" id="618">618</a>
+<a href="#619" id="619">619</a>
+<a href="#620" id="620">620</a>
+<a href="#621" id="621">621</a>
+<a href="#622" id="622">622</a>
+<a href="#623" id="623">623</a>
+<a href="#624" id="624">624</a>
+<a href="#625" id="625">625</a>
+<a href="#626" id="626">626</a>
+<a href="#627" id="627">627</a>
+<a href="#628" id="628">628</a>
+<a href="#629" id="629">629</a>
+<a href="#630" id="630">630</a>
+<a href="#631" id="631">631</a>
+<a href="#632" id="632">632</a>
+<a href="#633" id="633">633</a>
+<a href="#634" id="634">634</a>
+<a href="#635" id="635">635</a>
+<a href="#636" id="636">636</a>
+<a href="#637" id="637">637</a>
+<a href="#638" id="638">638</a>
+<a href="#639" id="639">639</a>
+<a href="#640" id="640">640</a>
+<a href="#641" id="641">641</a>
+<a href="#642" id="642">642</a>
+<a href="#643" id="643">643</a>
+<a href="#644" id="644">644</a>
+<a href="#645" id="645">645</a>
+<a href="#646" id="646">646</a>
+<a href="#647" id="647">647</a>
+<a href="#648" id="648">648</a>
+<a href="#649" id="649">649</a>
+<a href="#650" id="650">650</a>
+<a href="#651" id="651">651</a>
+<a href="#652" id="652">652</a>
+<a href="#653" id="653">653</a>
+<a href="#654" id="654">654</a>
+<a href="#655" id="655">655</a>
+<a href="#656" id="656">656</a>
+<a href="#657" id="657">657</a>
+<a href="#658" id="658">658</a>
+<a href="#659" id="659">659</a>
+<a href="#660" id="660">660</a>
+<a href="#661" id="661">661</a>
+<a href="#662" id="662">662</a>
+<a href="#663" id="663">663</a>
+<a href="#664" id="664">664</a>
+<a href="#665" id="665">665</a>
+<a href="#666" id="666">666</a>
+<a href="#667" id="667">667</a>
+<a href="#668" id="668">668</a>
+<a href="#669" id="669">669</a>
+<a href="#670" id="670">670</a>
+<a href="#671" id="671">671</a>
+<a href="#672" id="672">672</a>
+<a href="#673" id="673">673</a>
+<a href="#674" id="674">674</a>
+<a href="#675" id="675">675</a>
+<a href="#676" id="676">676</a>
+<a href="#677" id="677">677</a>
+<a href="#678" id="678">678</a>
+<a href="#679" id="679">679</a>
+<a href="#680" id="680">680</a>
+<a href="#681" id="681">681</a>
+<a href="#682" id="682">682</a>
+<a href="#683" id="683">683</a>
+<a href="#684" id="684">684</a>
+<a href="#685" id="685">685</a>
+<a href="#686" id="686">686</a>
+<a href="#687" id="687">687</a>
+<a href="#688" id="688">688</a>
+<a href="#689" id="689">689</a>
+<a href="#690" id="690">690</a>
+<a href="#691" id="691">691</a>
+<a href="#692" id="692">692</a>
+<a href="#693" id="693">693</a>
+<a href="#694" id="694">694</a>
+<a href="#695" id="695">695</a>
+<a href="#696" id="696">696</a>
+<a href="#697" id="697">697</a>
+<a href="#698" id="698">698</a>
+<a href="#699" id="699">699</a>
+<a href="#700" id="700">700</a>
+<a href="#701" id="701">701</a>
+<a href="#702" id="702">702</a>
+<a href="#703" id="703">703</a>
+<a href="#704" id="704">704</a>
+<a href="#705" id="705">705</a>
+<a href="#706" id="706">706</a>
+<a href="#707" id="707">707</a>
+<a href="#708" id="708">708</a>
+<a href="#709" id="709">709</a>
+<a href="#710" id="710">710</a>
+<a href="#711" id="711">711</a>
+<a href="#712" id="712">712</a>
+<a href="#713" id="713">713</a>
+<a href="#714" id="714">714</a>
+<a href="#715" id="715">715</a>
+<a href="#716" id="716">716</a>
+<a href="#717" id="717">717</a>
+<a href="#718" id="718">718</a>
+<a href="#719" id="719">719</a>
+<a href="#720" id="720">720</a>
+<a href="#721" id="721">721</a>
+<a href="#722" id="722">722</a>
+<a href="#723" id="723">723</a>
+<a href="#724" id="724">724</a>
+<a href="#725" id="725">725</a>
+<a href="#726" id="726">726</a>
+<a href="#727" id="727">727</a>
+<a href="#728" id="728">728</a>
+<a href="#729" id="729">729</a>
+<a href="#730" id="730">730</a>
+<a href="#731" id="731">731</a>
+<a href="#732" id="732">732</a>
+<a href="#733" id="733">733</a>
+<a href="#734" id="734">734</a>
+<a href="#735" id="735">735</a>
+<a href="#736" id="736">736</a>
+<a href="#737" id="737">737</a>
+<a href="#738" id="738">738</a>
+<a href="#739" id="739">739</a>
+<a href="#740" id="740">740</a>
+<a href="#741" id="741">741</a>
+<a href="#742" id="742">742</a>
+<a href="#743" id="743">743</a>
+<a href="#744" id="744">744</a>
+<a href="#745" id="745">745</a>
+<a href="#746" id="746">746</a>
+<a href="#747" id="747">747</a>
+<a href="#748" id="748">748</a>
+<a href="#749" id="749">749</a>
+<a href="#750" id="750">750</a>
+<a href="#751" id="751">751</a>
+<a href="#752" id="752">752</a>
+<a href="#753" id="753">753</a>
+<a href="#754" id="754">754</a>
+<a href="#755" id="755">755</a>
+<a href="#756" id="756">756</a>
+<a href="#757" id="757">757</a>
+<a href="#758" id="758">758</a>
+<a href="#759" id="759">759</a>
+<a href="#760" id="760">760</a>
+<a href="#761" id="761">761</a>
+<a href="#762" id="762">762</a>
+<a href="#763" id="763">763</a>
+<a href="#764" id="764">764</a>
+<a href="#765" id="765">765</a>
+<a href="#766" id="766">766</a>
+<a href="#767" id="767">767</a>
+<a href="#768" id="768">768</a>
+<a href="#769" id="769">769</a>
+<a href="#770" id="770">770</a>
+<a href="#771" id="771">771</a>
+<a href="#772" id="772">772</a>
+<a href="#773" id="773">773</a>
+<a href="#774" id="774">774</a>
+<a href="#775" id="775">775</a>
+<a href="#776" id="776">776</a>
+<a href="#777" id="777">777</a>
+<a href="#778" id="778">778</a>
+<a href="#779" id="779">779</a>
+<a href="#780" id="780">780</a>
+<a href="#781" id="781">781</a>
+<a href="#782" id="782">782</a>
+<a href="#783" id="783">783</a>
+<a href="#784" id="784">784</a>
+<a href="#785" id="785">785</a>
+<a href="#786" id="786">786</a>
+<a href="#787" id="787">787</a>
+<a href="#788" id="788">788</a>
+<a href="#789" id="789">789</a>
+<a href="#790" id="790">790</a>
+<a href="#791" id="791">791</a>
+<a href="#792" id="792">792</a>
+<a href="#793" id="793">793</a>
+<a href="#794" id="794">794</a>
+<a href="#795" id="795">795</a>
+<a href="#796" id="796">796</a>
+<a href="#797" id="797">797</a>
+<a href="#798" id="798">798</a>
+<a href="#799" id="799">799</a>
+<a href="#800" id="800">800</a>
+<a href="#801" id="801">801</a>
+<a href="#802" id="802">802</a>
+<a href="#803" id="803">803</a>
+<a href="#804" id="804">804</a>
+<a href="#805" id="805">805</a>
+<a href="#806" id="806">806</a>
+<a href="#807" id="807">807</a>
+<a href="#808" id="808">808</a>
+<a href="#809" id="809">809</a>
+<a href="#810" id="810">810</a>
+<a href="#811" id="811">811</a>
+<a href="#812" id="812">812</a>
+<a href="#813" id="813">813</a>
+<a href="#814" id="814">814</a>
+<a href="#815" id="815">815</a>
+<a href="#816" id="816">816</a>
+<a href="#817" id="817">817</a>
+<a href="#818" id="818">818</a>
+<a href="#819" id="819">819</a>
+<a href="#820" id="820">820</a>
+<a href="#821" id="821">821</a>
+<a href="#822" id="822">822</a>
+<a href="#823" id="823">823</a>
+<a href="#824" id="824">824</a>
+<a href="#825" id="825">825</a>
+<a href="#826" id="826">826</a>
+<a href="#827" id="827">827</a>
+<a href="#828" id="828">828</a>
+<a href="#829" id="829">829</a>
+<a href="#830" id="830">830</a>
+<a href="#831" id="831">831</a>
+<a href="#832" id="832">832</a>
+<a href="#833" id="833">833</a>
+<a href="#834" id="834">834</a>
+<a href="#835" id="835">835</a>
+<a href="#836" id="836">836</a>
+<a href="#837" id="837">837</a>
+<a href="#838" id="838">838</a>
+<a href="#839" id="839">839</a>
+<a href="#840" id="840">840</a>
+<a href="#841" id="841">841</a>
+<a href="#842" id="842">842</a>
+<a href="#843" id="843">843</a>
+<a href="#844" id="844">844</a>
+<a href="#845" id="845">845</a>
+<a href="#846" id="846">846</a>
+<a href="#847" id="847">847</a>
+<a href="#848" id="848">848</a>
+<a href="#849" id="849">849</a>
+<a href="#850" id="850">850</a>
+<a href="#851" id="851">851</a>
+<a href="#852" id="852">852</a>
+<a href="#853" id="853">853</a>
+<a href="#854" id="854">854</a>
+<a href="#855" id="855">855</a>
+<a href="#856" id="856">856</a>
+<a href="#857" id="857">857</a>
+<a href="#858" id="858">858</a>
+<a href="#859" id="859">859</a>
+<a href="#860" id="860">860</a>
+<a href="#861" id="861">861</a>
+<a href="#862" id="862">862</a>
+<a href="#863" id="863">863</a>
+<a href="#864" id="864">864</a>
+<a href="#865" id="865">865</a>
+<a href="#866" id="866">866</a>
+<a href="#867" id="867">867</a>
+<a href="#868" id="868">868</a>
+<a href="#869" id="869">869</a>
+<a href="#870" id="870">870</a>
+<a href="#871" id="871">871</a>
+<a href="#872" id="872">872</a>
+<a href="#873" id="873">873</a>
+<a href="#874" id="874">874</a>
+<a href="#875" id="875">875</a>
+<a href="#876" id="876">876</a>
+<a href="#877" id="877">877</a>
+<a href="#878" id="878">878</a>
+<a href="#879" id="879">879</a>
+<a href="#880" id="880">880</a>
+<a href="#881" id="881">881</a>
+<a href="#882" id="882">882</a>
+<a href="#883" id="883">883</a>
+<a href="#884" id="884">884</a>
+<a href="#885" id="885">885</a>
+<a href="#886" id="886">886</a>
+<a href="#887" id="887">887</a>
+<a href="#888" id="888">888</a>
+<a href="#889" id="889">889</a>
+<a href="#890" id="890">890</a>
+<a href="#891" id="891">891</a>
+<a href="#892" id="892">892</a>
+<a href="#893" id="893">893</a>
+<a href="#894" id="894">894</a>
+<a href="#895" id="895">895</a>
+<a href="#896" id="896">896</a>
+<a href="#897" id="897">897</a>
+<a href="#898" id="898">898</a>
+<a href="#899" id="899">899</a>
+<a href="#900" id="900">900</a>
+<a href="#901" id="901">901</a>
+<a href="#902" id="902">902</a>
+<a href="#903" id="903">903</a>
+<a href="#904" id="904">904</a>
+<a href="#905" id="905">905</a>
+<a href="#906" id="906">906</a>
+<a href="#907" id="907">907</a>
+<a href="#908" id="908">908</a>
+<a href="#909" id="909">909</a>
+<a href="#910" id="910">910</a>
+<a href="#911" id="911">911</a>
+<a href="#912" id="912">912</a>
+<a href="#913" id="913">913</a>
+<a href="#914" id="914">914</a>
+<a href="#915" id="915">915</a>
+<a href="#916" id="916">916</a>
+<a href="#917" id="917">917</a>
+<a href="#918" id="918">918</a>
+<a href="#919" id="919">919</a>
+<a href="#920" id="920">920</a>
+<a href="#921" id="921">921</a>
+<a href="#922" id="922">922</a>
+<a href="#923" id="923">923</a>
+<a href="#924" id="924">924</a>
+<a href="#925" id="925">925</a>
+<a href="#926" id="926">926</a>
+<a href="#927" id="927">927</a>
+<a href="#928" id="928">928</a>
+<a href="#929" id="929">929</a>
+<a href="#930" id="930">930</a>
+<a href="#931" id="931">931</a>
+<a href="#932" id="932">932</a>
+<a href="#933" id="933">933</a>
+<a href="#934" id="934">934</a>
+<a href="#935" id="935">935</a>
+<a href="#936" id="936">936</a>
+<a href="#937" id="937">937</a>
+<a href="#938" id="938">938</a>
+<a href="#939" id="939">939</a>
+<a href="#940" id="940">940</a>
+<a href="#941" id="941">941</a>
+<a href="#942" id="942">942</a>
+<a href="#943" id="943">943</a>
+<a href="#944" id="944">944</a>
+<a href="#945" id="945">945</a>
+<a href="#946" id="946">946</a>
+<a href="#947" id="947">947</a>
+<a href="#948" id="948">948</a>
+<a href="#949" id="949">949</a>
+<a href="#950" id="950">950</a>
+<a href="#951" id="951">951</a>
+<a href="#952" id="952">952</a>
+<a href="#953" id="953">953</a>
+<a href="#954" id="954">954</a>
+<a href="#955" id="955">955</a>
+<a href="#956" id="956">956</a>
+<a href="#957" id="957">957</a>
+<a href="#958" id="958">958</a>
+<a href="#959" id="959">959</a>
+<a href="#960" id="960">960</a>
+<a href="#961" id="961">961</a>
+<a href="#962" id="962">962</a>
+<a href="#963" id="963">963</a>
+<a href="#964" id="964">964</a>
+<a href="#965" id="965">965</a>
+<a href="#966" id="966">966</a>
+<a href="#967" id="967">967</a>
+<a href="#968" id="968">968</a>
+<a href="#969" id="969">969</a>
+<a href="#970" id="970">970</a>
+<a href="#971" id="971">971</a>
+<a href="#972" id="972">972</a>
+<a href="#973" id="973">973</a>
+<a href="#974" id="974">974</a>
+<a href="#975" id="975">975</a>
+<a href="#976" id="976">976</a>
+<a href="#977" id="977">977</a>
+<a href="#978" id="978">978</a>
+<a href="#979" id="979">979</a>
+<a href="#980" id="980">980</a>
+<a href="#981" id="981">981</a>
+<a href="#982" id="982">982</a>
+<a href="#983" id="983">983</a>
+<a href="#984" id="984">984</a>
+<a href="#985" id="985">985</a>
+<a href="#986" id="986">986</a>
+<a href="#987" id="987">987</a>
+<a href="#988" id="988">988</a>
+<a href="#989" id="989">989</a>
+<a href="#990" id="990">990</a>
+<a href="#991" id="991">991</a>
+<a href="#992" id="992">992</a>
+<a href="#993" id="993">993</a>
+<a href="#994" id="994">994</a>
+<a href="#995" id="995">995</a>
+<a href="#996" id="996">996</a>
+<a href="#997" id="997">997</a>
+<a href="#998" id="998">998</a>
+<a href="#999" id="999">999</a>
+<a href="#1000" id="1000">1000</a>
+<a href="#1001" id="1001">1001</a>
+<a href="#1002" id="1002">1002</a>
+<a href="#1003" id="1003">1003</a>
+<a href="#1004" id="1004">1004</a>
+<a href="#1005" id="1005">1005</a>
+<a href="#1006" id="1006">1006</a>
+<a href="#1007" id="1007">1007</a>
+<a href="#1008" id="1008">1008</a>
+<a href="#1009" id="1009">1009</a>
+<a href="#1010" id="1010">1010</a>
+<a href="#1011" id="1011">1011</a>
+<a href="#1012" id="1012">1012</a>
+<a href="#1013" id="1013">1013</a>
+<a href="#1014" id="1014">1014</a>
+<a href="#1015" id="1015">1015</a>
+<a href="#1016" id="1016">1016</a>
+<a href="#1017" id="1017">1017</a>
+<a href="#1018" id="1018">1018</a>
+<a href="#1019" id="1019">1019</a>
+<a href="#1020" id="1020">1020</a>
+<a href="#1021" id="1021">1021</a>
+<a href="#1022" id="1022">1022</a>
+<a href="#1023" id="1023">1023</a>
+<a href="#1024" id="1024">1024</a>
+<a href="#1025" id="1025">1025</a>
+<a href="#1026" id="1026">1026</a>
+<a href="#1027" id="1027">1027</a>
+<a href="#1028" id="1028">1028</a>
+<a href="#1029" id="1029">1029</a>
+<a href="#1030" id="1030">1030</a>
+<a href="#1031" id="1031">1031</a>
+<a href="#1032" id="1032">1032</a>
+<a href="#1033" id="1033">1033</a>
+<a href="#1034" id="1034">1034</a>
+<a href="#1035" id="1035">1035</a>
+<a href="#1036" id="1036">1036</a>
+<a href="#1037" id="1037">1037</a>
+<a href="#1038" id="1038">1038</a>
+<a href="#1039" id="1039">1039</a>
+<a href="#1040" id="1040">1040</a>
+<a href="#1041" id="1041">1041</a>
+<a href="#1042" id="1042">1042</a>
+<a href="#1043" id="1043">1043</a>
+<a href="#1044" id="1044">1044</a>
+<a href="#1045" id="1045">1045</a>
+<a href="#1046" id="1046">1046</a>
+<a href="#1047" id="1047">1047</a>
+<a href="#1048" id="1048">1048</a>
+<a href="#1049" id="1049">1049</a>
+<a href="#1050" id="1050">1050</a>
+<a href="#1051" id="1051">1051</a>
+<a href="#1052" id="1052">1052</a>
+<a href="#1053" id="1053">1053</a>
+<a href="#1054" id="1054">1054</a>
+<a href="#1055" id="1055">1055</a>
+<a href="#1056" id="1056">1056</a>
+<a href="#1057" id="1057">1057</a>
+<a href="#1058" id="1058">1058</a>
+<a href="#1059" id="1059">1059</a>
+<a href="#1060" id="1060">1060</a>
+<a href="#1061" id="1061">1061</a>
+<a href="#1062" id="1062">1062</a>
+<a href="#1063" id="1063">1063</a>
+<a href="#1064" id="1064">1064</a>
+<a href="#1065" id="1065">1065</a>
+<a href="#1066" id="1066">1066</a>
+<a href="#1067" id="1067">1067</a>
+<a href="#1068" id="1068">1068</a>
+<a href="#1069" id="1069">1069</a>
+<a href="#1070" id="1070">1070</a>
+<a href="#1071" id="1071">1071</a>
+<a href="#1072" id="1072">1072</a>
+<a href="#1073" id="1073">1073</a>
+<a href="#1074" id="1074">1074</a>
+<a href="#1075" id="1075">1075</a>
+<a href="#1076" id="1076">1076</a>
+<a href="#1077" id="1077">1077</a>
+<a href="#1078" id="1078">1078</a>
+<a href="#1079" id="1079">1079</a>
+<a href="#1080" id="1080">1080</a>
+<a href="#1081" id="1081">1081</a>
+<a href="#1082" id="1082">1082</a>
+<a href="#1083" id="1083">1083</a>
+<a href="#1084" id="1084">1084</a>
+<a href="#1085" id="1085">1085</a>
+<a href="#1086" id="1086">1086</a>
+<a href="#1087" id="1087">1087</a>
+<a href="#1088" id="1088">1088</a>
+<a href="#1089" id="1089">1089</a>
+<a href="#1090" id="1090">1090</a>
+<a href="#1091" id="1091">1091</a>
+<a href="#1092" id="1092">1092</a>
+<a href="#1093" id="1093">1093</a>
+<a href="#1094" id="1094">1094</a>
+<a href="#1095" id="1095">1095</a>
+<a href="#1096" id="1096">1096</a>
+<a href="#1097" id="1097">1097</a>
+<a href="#1098" id="1098">1098</a>
+<a href="#1099" id="1099">1099</a>
+<a href="#1100" id="1100">1100</a>
+<a href="#1101" id="1101">1101</a>
+<a href="#1102" id="1102">1102</a>
+<a href="#1103" id="1103">1103</a>
+<a href="#1104" id="1104">1104</a>
+<a href="#1105" id="1105">1105</a>
+<a href="#1106" id="1106">1106</a>
+<a href="#1107" id="1107">1107</a>
+<a href="#1108" id="1108">1108</a>
+<a href="#1109" id="1109">1109</a>
+<a href="#1110" id="1110">1110</a>
+<a href="#1111" id="1111">1111</a>
+<a href="#1112" id="1112">1112</a>
+<a href="#1113" id="1113">1113</a>
+<a href="#1114" id="1114">1114</a>
+<a href="#1115" id="1115">1115</a>
+<a href="#1116" id="1116">1116</a>
+<a href="#1117" id="1117">1117</a>
+<a href="#1118" id="1118">1118</a>
+<a href="#1119" id="1119">1119</a>
+<a href="#1120" id="1120">1120</a>
+<a href="#1121" id="1121">1121</a>
+<a href="#1122" id="1122">1122</a>
+<a href="#1123" id="1123">1123</a>
+<a href="#1124" id="1124">1124</a>
+<a href="#1125" id="1125">1125</a>
+<a href="#1126" id="1126">1126</a>
+<a href="#1127" id="1127">1127</a>
+<a href="#1128" id="1128">1128</a>
+<a href="#1129" id="1129">1129</a>
+<a href="#1130" id="1130">1130</a>
+<a href="#1131" id="1131">1131</a>
+<a href="#1132" id="1132">1132</a>
+<a href="#1133" id="1133">1133</a>
+<a href="#1134" id="1134">1134</a>
+<a href="#1135" id="1135">1135</a>
+<a href="#1136" id="1136">1136</a>
+<a href="#1137" id="1137">1137</a>
+<a href="#1138" id="1138">1138</a>
+<a href="#1139" id="1139">1139</a>
+<a href="#1140" id="1140">1140</a>
+<a href="#1141" id="1141">1141</a>
+<a href="#1142" id="1142">1142</a>
+<a href="#1143" id="1143">1143</a>
+<a href="#1144" id="1144">1144</a>
+<a href="#1145" id="1145">1145</a>
+<a href="#1146" id="1146">1146</a>
+<a href="#1147" id="1147">1147</a>
+<a href="#1148" id="1148">1148</a>
+<a href="#1149" id="1149">1149</a>
+<a href="#1150" id="1150">1150</a>
+<a href="#1151" id="1151">1151</a>
+<a href="#1152" id="1152">1152</a>
+<a href="#1153" id="1153">1153</a>
+<a href="#1154" id="1154">1154</a>
+<a href="#1155" id="1155">1155</a>
+<a href="#1156" id="1156">1156</a>
+<a href="#1157" id="1157">1157</a>
+<a href="#1158" id="1158">1158</a>
+<a href="#1159" id="1159">1159</a>
+<a href="#1160" id="1160">1160</a>
+<a href="#1161" id="1161">1161</a>
+<a href="#1162" id="1162">1162</a>
+<a href="#1163" id="1163">1163</a>
+<a href="#1164" id="1164">1164</a>
+<a href="#1165" id="1165">1165</a>
+<a href="#1166" id="1166">1166</a>
+<a href="#1167" id="1167">1167</a>
+<a href="#1168" id="1168">1168</a>
+<a href="#1169" id="1169">1169</a>
+<a href="#1170" id="1170">1170</a>
+<a href="#1171" id="1171">1171</a>
+<a href="#1172" id="1172">1172</a>
+<a href="#1173" id="1173">1173</a>
+<a href="#1174" id="1174">1174</a>
+<a href="#1175" id="1175">1175</a>
+<a href="#1176" id="1176">1176</a>
+<a href="#1177" id="1177">1177</a>
+<a href="#1178" id="1178">1178</a>
+<a href="#1179" id="1179">1179</a>
+<a href="#1180" id="1180">1180</a>
+<a href="#1181" id="1181">1181</a>
+<a href="#1182" id="1182">1182</a>
+<a href="#1183" id="1183">1183</a>
+<a href="#1184" id="1184">1184</a>
+<a href="#1185" id="1185">1185</a>
+<a href="#1186" id="1186">1186</a>
+<a href="#1187" id="1187">1187</a>
+<a href="#1188" id="1188">1188</a>
+<a href="#1189" id="1189">1189</a>
+<a href="#1190" id="1190">1190</a>
+<a href="#1191" id="1191">1191</a>
+<a href="#1192" id="1192">1192</a>
+<a href="#1193" id="1193">1193</a>
+<a href="#1194" id="1194">1194</a>
+<a href="#1195" id="1195">1195</a>
+<a href="#1196" id="1196">1196</a>
+<a href="#1197" id="1197">1197</a>
+<a href="#1198" id="1198">1198</a>
+<a href="#1199" id="1199">1199</a>
+<a href="#1200" id="1200">1200</a>
+<a href="#1201" id="1201">1201</a>
+<a href="#1202" id="1202">1202</a>
+<a href="#1203" id="1203">1203</a>
+<a href="#1204" id="1204">1204</a>
+<a href="#1205" id="1205">1205</a>
+<a href="#1206" id="1206">1206</a>
+<a href="#1207" id="1207">1207</a>
+<a href="#1208" id="1208">1208</a>
+<a href="#1209" id="1209">1209</a>
+<a href="#1210" id="1210">1210</a>
+<a href="#1211" id="1211">1211</a>
+<a href="#1212" id="1212">1212</a>
+<a href="#1213" id="1213">1213</a>
+<a href="#1214" id="1214">1214</a>
+<a href="#1215" id="1215">1215</a>
+<a href="#1216" id="1216">1216</a>
+<a href="#1217" id="1217">1217</a>
+<a href="#1218" id="1218">1218</a>
+<a href="#1219" id="1219">1219</a>
+<a href="#1220" id="1220">1220</a>
+<a href="#1221" id="1221">1221</a>
+<a href="#1222" id="1222">1222</a>
+<a href="#1223" id="1223">1223</a>
+<a href="#1224" id="1224">1224</a>
+<a href="#1225" id="1225">1225</a>
+<a href="#1226" id="1226">1226</a>
+<a href="#1227" id="1227">1227</a>
+<a href="#1228" id="1228">1228</a>
+<a href="#1229" id="1229">1229</a>
+<a href="#1230" id="1230">1230</a>
+<a href="#1231" id="1231">1231</a>
+<a href="#1232" id="1232">1232</a>
+<a href="#1233" id="1233">1233</a>
+<a href="#1234" id="1234">1234</a>
+<a href="#1235" id="1235">1235</a>
+<a href="#1236" id="1236">1236</a>
+<a href="#1237" id="1237">1237</a>
+<a href="#1238" id="1238">1238</a>
+</pre></div><pre class="rust"><code><span class="kw">use </span>core::fmt;
+
+<span class="kw">use </span>bad64_sys::<span class="kw-2">*</span>;
+
+<span class="kw">use </span>cstr_core::CStr;
+<span class="kw">use </span>num_traits::ToPrimitive;
+
+<span class="comment">// %s/^pub const \(Operation_ARM64_\(\w\+\)\): Operation = \d\+;/    \2 = \1 as u32,/g
+
+</span><span class="doccomment">/// An instruction operation
+</span><span class="attr">#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq, FromPrimitive, ToPrimitive)]
+#[repr(u32)]
+#[allow(non_camel_case_types)]
+</span><span class="kw">pub enum </span>Op {
+    ABS = Operation_ARM64_ABS <span class="kw">as </span>u32,
+    ADC = Operation_ARM64_ADC <span class="kw">as </span>u32,
+    ADCLB = Operation_ARM64_ADCLB <span class="kw">as </span>u32,
+    ADCLT = Operation_ARM64_ADCLT <span class="kw">as </span>u32,
+    ADCS = Operation_ARM64_ADCS <span class="kw">as </span>u32,
+    ADD = Operation_ARM64_ADD <span class="kw">as </span>u32,
+    ADDG = Operation_ARM64_ADDG <span class="kw">as </span>u32,
+    ADDHA = Operation_ARM64_ADDHA <span class="kw">as </span>u32,
+    ADDHN = Operation_ARM64_ADDHN <span class="kw">as </span>u32,
+    ADDHN2 = Operation_ARM64_ADDHN2 <span class="kw">as </span>u32,
+    ADDHNB = Operation_ARM64_ADDHNB <span class="kw">as </span>u32,
+    ADDHNT = Operation_ARM64_ADDHNT <span class="kw">as </span>u32,
+    ADDP = Operation_ARM64_ADDP <span class="kw">as </span>u32,
+    ADDPL = Operation_ARM64_ADDPL <span class="kw">as </span>u32,
+    ADDS = Operation_ARM64_ADDS <span class="kw">as </span>u32,
+    ADDV = Operation_ARM64_ADDV <span class="kw">as </span>u32,
+    ADDVA = Operation_ARM64_ADDVA <span class="kw">as </span>u32,
+    ADDVL = Operation_ARM64_ADDVL <span class="kw">as </span>u32,
+    ADR = Operation_ARM64_ADR <span class="kw">as </span>u32,
+    ADRP = Operation_ARM64_ADRP <span class="kw">as </span>u32,
+    AESD = Operation_ARM64_AESD <span class="kw">as </span>u32,
+    AESE = Operation_ARM64_AESE <span class="kw">as </span>u32,
+    AESIMC = Operation_ARM64_AESIMC <span class="kw">as </span>u32,
+    AESMC = Operation_ARM64_AESMC <span class="kw">as </span>u32,
+    AND = Operation_ARM64_AND <span class="kw">as </span>u32,
+    ANDS = Operation_ARM64_ANDS <span class="kw">as </span>u32,
+    ANDV = Operation_ARM64_ANDV <span class="kw">as </span>u32,
+    ASR = Operation_ARM64_ASR <span class="kw">as </span>u32,
+    ASRD = Operation_ARM64_ASRD <span class="kw">as </span>u32,
+    ASRR = Operation_ARM64_ASRR <span class="kw">as </span>u32,
+    ASRV = Operation_ARM64_ASRV <span class="kw">as </span>u32,
+    AT = Operation_ARM64_AT <span class="kw">as </span>u32,
+    AUTDA = Operation_ARM64_AUTDA <span class="kw">as </span>u32,
+    AUTDB = Operation_ARM64_AUTDB <span class="kw">as </span>u32,
+    AUTDZA = Operation_ARM64_AUTDZA <span class="kw">as </span>u32,
+    AUTDZB = Operation_ARM64_AUTDZB <span class="kw">as </span>u32,
+    AUTIA = Operation_ARM64_AUTIA <span class="kw">as </span>u32,
+    AUTIA1716 = Operation_ARM64_AUTIA1716 <span class="kw">as </span>u32,
+    AUTIASP = Operation_ARM64_AUTIASP <span class="kw">as </span>u32,
+    AUTIAZ = Operation_ARM64_AUTIAZ <span class="kw">as </span>u32,
+    AUTIB = Operation_ARM64_AUTIB <span class="kw">as </span>u32,
+    AUTIB1716 = Operation_ARM64_AUTIB1716 <span class="kw">as </span>u32,
+    AUTIBSP = Operation_ARM64_AUTIBSP <span class="kw">as </span>u32,
+    AUTIBZ = Operation_ARM64_AUTIBZ <span class="kw">as </span>u32,
+    AUTIZA = Operation_ARM64_AUTIZA <span class="kw">as </span>u32,
+    AUTIZB = Operation_ARM64_AUTIZB <span class="kw">as </span>u32,
+    AXFLAG = Operation_ARM64_AXFLAG <span class="kw">as </span>u32,
+    B = Operation_ARM64_B <span class="kw">as </span>u32,
+    BCAX = Operation_ARM64_BCAX <span class="kw">as </span>u32,
+    BDEP = Operation_ARM64_BDEP <span class="kw">as </span>u32,
+    BEXT = Operation_ARM64_BEXT <span class="kw">as </span>u32,
+    BFC = Operation_ARM64_BFC <span class="kw">as </span>u32,
+    BFCVT = Operation_ARM64_BFCVT <span class="kw">as </span>u32,
+    BFCVTN = Operation_ARM64_BFCVTN <span class="kw">as </span>u32,
+    BFCVTN2 = Operation_ARM64_BFCVTN2 <span class="kw">as </span>u32,
+    BFCVTNT = Operation_ARM64_BFCVTNT <span class="kw">as </span>u32,
+    BFDOT = Operation_ARM64_BFDOT <span class="kw">as </span>u32,
+    BFI = Operation_ARM64_BFI <span class="kw">as </span>u32,
+    BFM = Operation_ARM64_BFM <span class="kw">as </span>u32,
+    BFMLAL = Operation_ARM64_BFMLAL <span class="kw">as </span>u32,
+    BFMLALB = Operation_ARM64_BFMLALB <span class="kw">as </span>u32,
+    BFMLALT = Operation_ARM64_BFMLALT <span class="kw">as </span>u32,
+    BFMMLA = Operation_ARM64_BFMMLA <span class="kw">as </span>u32,
+    BFMOPA = Operation_ARM64_BFMOPA <span class="kw">as </span>u32,
+    BFMOPS = Operation_ARM64_BFMOPS <span class="kw">as </span>u32,
+    BFXIL = Operation_ARM64_BFXIL <span class="kw">as </span>u32,
+    BGRP = Operation_ARM64_BGRP <span class="kw">as </span>u32,
+    BIC = Operation_ARM64_BIC <span class="kw">as </span>u32,
+    BICS = Operation_ARM64_BICS <span class="kw">as </span>u32,
+    BIF = Operation_ARM64_BIF <span class="kw">as </span>u32,
+    BIT = Operation_ARM64_BIT <span class="kw">as </span>u32,
+    BL = Operation_ARM64_BL <span class="kw">as </span>u32,
+    BLR = Operation_ARM64_BLR <span class="kw">as </span>u32,
+    BLRAA = Operation_ARM64_BLRAA <span class="kw">as </span>u32,
+    BLRAAZ = Operation_ARM64_BLRAAZ <span class="kw">as </span>u32,
+    BLRAB = Operation_ARM64_BLRAB <span class="kw">as </span>u32,
+    BLRABZ = Operation_ARM64_BLRABZ <span class="kw">as </span>u32,
+    BR = Operation_ARM64_BR <span class="kw">as </span>u32,
+    BRAA = Operation_ARM64_BRAA <span class="kw">as </span>u32,
+    BRAAZ = Operation_ARM64_BRAAZ <span class="kw">as </span>u32,
+    BRAB = Operation_ARM64_BRAB <span class="kw">as </span>u32,
+    BRABZ = Operation_ARM64_BRABZ <span class="kw">as </span>u32,
+    BRK = Operation_ARM64_BRK <span class="kw">as </span>u32,
+    BRKA = Operation_ARM64_BRKA <span class="kw">as </span>u32,
+    BRKAS = Operation_ARM64_BRKAS <span class="kw">as </span>u32,
+    BRKB = Operation_ARM64_BRKB <span class="kw">as </span>u32,
+    BRKBS = Operation_ARM64_BRKBS <span class="kw">as </span>u32,
+    BRKN = Operation_ARM64_BRKN <span class="kw">as </span>u32,
+    BRKNS = Operation_ARM64_BRKNS <span class="kw">as </span>u32,
+    BRKPA = Operation_ARM64_BRKPA <span class="kw">as </span>u32,
+    BRKPAS = Operation_ARM64_BRKPAS <span class="kw">as </span>u32,
+    BRKPB = Operation_ARM64_BRKPB <span class="kw">as </span>u32,
+    BRKPBS = Operation_ARM64_BRKPBS <span class="kw">as </span>u32,
+    BSL = Operation_ARM64_BSL <span class="kw">as </span>u32,
+    BSL1N = Operation_ARM64_BSL1N <span class="kw">as </span>u32,
+    BSL2N = Operation_ARM64_BSL2N <span class="kw">as </span>u32,
+    BTI = Operation_ARM64_BTI <span class="kw">as </span>u32,
+    B_AL = Operation_ARM64_B_AL <span class="kw">as </span>u32,
+    B_CC = Operation_ARM64_B_CC <span class="kw">as </span>u32,
+    B_CS = Operation_ARM64_B_CS <span class="kw">as </span>u32,
+    B_EQ = Operation_ARM64_B_EQ <span class="kw">as </span>u32,
+    B_GE = Operation_ARM64_B_GE <span class="kw">as </span>u32,
+    B_GT = Operation_ARM64_B_GT <span class="kw">as </span>u32,
+    B_HI = Operation_ARM64_B_HI <span class="kw">as </span>u32,
+    B_LE = Operation_ARM64_B_LE <span class="kw">as </span>u32,
+    B_LS = Operation_ARM64_B_LS <span class="kw">as </span>u32,
+    B_LT = Operation_ARM64_B_LT <span class="kw">as </span>u32,
+    B_MI = Operation_ARM64_B_MI <span class="kw">as </span>u32,
+    B_NE = Operation_ARM64_B_NE <span class="kw">as </span>u32,
+    B_NV = Operation_ARM64_B_NV <span class="kw">as </span>u32,
+    B_PL = Operation_ARM64_B_PL <span class="kw">as </span>u32,
+    B_VC = Operation_ARM64_B_VC <span class="kw">as </span>u32,
+    B_VS = Operation_ARM64_B_VS <span class="kw">as </span>u32,
+    CADD = Operation_ARM64_CADD <span class="kw">as </span>u32,
+    CAS = Operation_ARM64_CAS <span class="kw">as </span>u32,
+    CASA = Operation_ARM64_CASA <span class="kw">as </span>u32,
+    CASAB = Operation_ARM64_CASAB <span class="kw">as </span>u32,
+    CASAH = Operation_ARM64_CASAH <span class="kw">as </span>u32,
+    CASAL = Operation_ARM64_CASAL <span class="kw">as </span>u32,
+    CASALB = Operation_ARM64_CASALB <span class="kw">as </span>u32,
+    CASALH = Operation_ARM64_CASALH <span class="kw">as </span>u32,
+    CASB = Operation_ARM64_CASB <span class="kw">as </span>u32,
+    CASH = Operation_ARM64_CASH <span class="kw">as </span>u32,
+    CASL = Operation_ARM64_CASL <span class="kw">as </span>u32,
+    CASLB = Operation_ARM64_CASLB <span class="kw">as </span>u32,
+    CASLH = Operation_ARM64_CASLH <span class="kw">as </span>u32,
+    CASP = Operation_ARM64_CASP <span class="kw">as </span>u32,
+    CASPA = Operation_ARM64_CASPA <span class="kw">as </span>u32,
+    CASPAL = Operation_ARM64_CASPAL <span class="kw">as </span>u32,
+    CASPL = Operation_ARM64_CASPL <span class="kw">as </span>u32,
+    CBNZ = Operation_ARM64_CBNZ <span class="kw">as </span>u32,
+    CBZ = Operation_ARM64_CBZ <span class="kw">as </span>u32,
+    CCMN = Operation_ARM64_CCMN <span class="kw">as </span>u32,
+    CCMP = Operation_ARM64_CCMP <span class="kw">as </span>u32,
+    CDOT = Operation_ARM64_CDOT <span class="kw">as </span>u32,
+    CFINV = Operation_ARM64_CFINV <span class="kw">as </span>u32,
+    CFP = Operation_ARM64_CFP <span class="kw">as </span>u32,
+    CINC = Operation_ARM64_CINC <span class="kw">as </span>u32,
+    CINV = Operation_ARM64_CINV <span class="kw">as </span>u32,
+    CLASTA = Operation_ARM64_CLASTA <span class="kw">as </span>u32,
+    CLASTB = Operation_ARM64_CLASTB <span class="kw">as </span>u32,
+    CLREX = Operation_ARM64_CLREX <span class="kw">as </span>u32,
+    CLS = Operation_ARM64_CLS <span class="kw">as </span>u32,
+    CLZ = Operation_ARM64_CLZ <span class="kw">as </span>u32,
+    CMEQ = Operation_ARM64_CMEQ <span class="kw">as </span>u32,
+    CMGE = Operation_ARM64_CMGE <span class="kw">as </span>u32,
+    CMGT = Operation_ARM64_CMGT <span class="kw">as </span>u32,
+    CMHI = Operation_ARM64_CMHI <span class="kw">as </span>u32,
+    CMHS = Operation_ARM64_CMHS <span class="kw">as </span>u32,
+    CMLA = Operation_ARM64_CMLA <span class="kw">as </span>u32,
+    CMLE = Operation_ARM64_CMLE <span class="kw">as </span>u32,
+    CMLT = Operation_ARM64_CMLT <span class="kw">as </span>u32,
+    CMN = Operation_ARM64_CMN <span class="kw">as </span>u32,
+    CMP = Operation_ARM64_CMP <span class="kw">as </span>u32,
+    CMPEQ = Operation_ARM64_CMPEQ <span class="kw">as </span>u32,
+    CMPGE = Operation_ARM64_CMPGE <span class="kw">as </span>u32,
+    CMPGT = Operation_ARM64_CMPGT <span class="kw">as </span>u32,
+    CMPHI = Operation_ARM64_CMPHI <span class="kw">as </span>u32,
+    CMPHS = Operation_ARM64_CMPHS <span class="kw">as </span>u32,
+    CMPLE = Operation_ARM64_CMPLE <span class="kw">as </span>u32,
+    CMPLO = Operation_ARM64_CMPLO <span class="kw">as </span>u32,
+    CMPLS = Operation_ARM64_CMPLS <span class="kw">as </span>u32,
+    CMPLT = Operation_ARM64_CMPLT <span class="kw">as </span>u32,
+    CMPNE = Operation_ARM64_CMPNE <span class="kw">as </span>u32,
+    CMPP = Operation_ARM64_CMPP <span class="kw">as </span>u32,
+    CMTST = Operation_ARM64_CMTST <span class="kw">as </span>u32,
+    CNEG = Operation_ARM64_CNEG <span class="kw">as </span>u32,
+    CNOT = Operation_ARM64_CNOT <span class="kw">as </span>u32,
+    CNT = Operation_ARM64_CNT <span class="kw">as </span>u32,
+    CNTB = Operation_ARM64_CNTB <span class="kw">as </span>u32,
+    CNTD = Operation_ARM64_CNTD <span class="kw">as </span>u32,
+    CNTH = Operation_ARM64_CNTH <span class="kw">as </span>u32,
+    CNTP = Operation_ARM64_CNTP <span class="kw">as </span>u32,
+    CNTW = Operation_ARM64_CNTW <span class="kw">as </span>u32,
+    COMPACT = Operation_ARM64_COMPACT <span class="kw">as </span>u32,
+    CPP = Operation_ARM64_CPP <span class="kw">as </span>u32,
+    CPY = Operation_ARM64_CPY <span class="kw">as </span>u32,
+    CRC32B = Operation_ARM64_CRC32B <span class="kw">as </span>u32,
+    CRC32CB = Operation_ARM64_CRC32CB <span class="kw">as </span>u32,
+    CRC32CH = Operation_ARM64_CRC32CH <span class="kw">as </span>u32,
+    CRC32CW = Operation_ARM64_CRC32CW <span class="kw">as </span>u32,
+    CRC32CX = Operation_ARM64_CRC32CX <span class="kw">as </span>u32,
+    CRC32H = Operation_ARM64_CRC32H <span class="kw">as </span>u32,
+    CRC32W = Operation_ARM64_CRC32W <span class="kw">as </span>u32,
+    CRC32X = Operation_ARM64_CRC32X <span class="kw">as </span>u32,
+    CSDB = Operation_ARM64_CSDB <span class="kw">as </span>u32,
+    CSEL = Operation_ARM64_CSEL <span class="kw">as </span>u32,
+    CSET = Operation_ARM64_CSET <span class="kw">as </span>u32,
+    CSETM = Operation_ARM64_CSETM <span class="kw">as </span>u32,
+    CSINC = Operation_ARM64_CSINC <span class="kw">as </span>u32,
+    CSINV = Operation_ARM64_CSINV <span class="kw">as </span>u32,
+    CSNEG = Operation_ARM64_CSNEG <span class="kw">as </span>u32,
+    CTERMEQ = Operation_ARM64_CTERMEQ <span class="kw">as </span>u32,
+    CTERMNE = Operation_ARM64_CTERMNE <span class="kw">as </span>u32,
+    DC = Operation_ARM64_DC <span class="kw">as </span>u32,
+    DCPS1 = Operation_ARM64_DCPS1 <span class="kw">as </span>u32,
+    DCPS2 = Operation_ARM64_DCPS2 <span class="kw">as </span>u32,
+    DCPS3 = Operation_ARM64_DCPS3 <span class="kw">as </span>u32,
+    DECB = Operation_ARM64_DECB <span class="kw">as </span>u32,
+    DECD = Operation_ARM64_DECD <span class="kw">as </span>u32,
+    DECH = Operation_ARM64_DECH <span class="kw">as </span>u32,
+    DECP = Operation_ARM64_DECP <span class="kw">as </span>u32,
+    DECW = Operation_ARM64_DECW <span class="kw">as </span>u32,
+    DGH = Operation_ARM64_DGH <span class="kw">as </span>u32,
+    DMB = Operation_ARM64_DMB <span class="kw">as </span>u32,
+    DRPS = Operation_ARM64_DRPS <span class="kw">as </span>u32,
+    DSB = Operation_ARM64_DSB <span class="kw">as </span>u32,
+    DUP = Operation_ARM64_DUP <span class="kw">as </span>u32,
+    DUPM = Operation_ARM64_DUPM <span class="kw">as </span>u32,
+    DVP = Operation_ARM64_DVP <span class="kw">as </span>u32,
+    EON = Operation_ARM64_EON <span class="kw">as </span>u32,
+    EOR = Operation_ARM64_EOR <span class="kw">as </span>u32,
+    EOR3 = Operation_ARM64_EOR3 <span class="kw">as </span>u32,
+    EORBT = Operation_ARM64_EORBT <span class="kw">as </span>u32,
+    EORS = Operation_ARM64_EORS <span class="kw">as </span>u32,
+    EORTB = Operation_ARM64_EORTB <span class="kw">as </span>u32,
+    EORV = Operation_ARM64_EORV <span class="kw">as </span>u32,
+    ERET = Operation_ARM64_ERET <span class="kw">as </span>u32,
+    ERETAA = Operation_ARM64_ERETAA <span class="kw">as </span>u32,
+    ERETAB = Operation_ARM64_ERETAB <span class="kw">as </span>u32,
+    ESB = Operation_ARM64_ESB <span class="kw">as </span>u32,
+    EXT = Operation_ARM64_EXT <span class="kw">as </span>u32,
+    EXTR = Operation_ARM64_EXTR <span class="kw">as </span>u32,
+    FABD = Operation_ARM64_FABD <span class="kw">as </span>u32,
+    FABS = Operation_ARM64_FABS <span class="kw">as </span>u32,
+    FACGE = Operation_ARM64_FACGE <span class="kw">as </span>u32,
+    FACGT = Operation_ARM64_FACGT <span class="kw">as </span>u32,
+    FACLE = Operation_ARM64_FACLE <span class="kw">as </span>u32,
+    FACLT = Operation_ARM64_FACLT <span class="kw">as </span>u32,
+    FADD = Operation_ARM64_FADD <span class="kw">as </span>u32,
+    FADDA = Operation_ARM64_FADDA <span class="kw">as </span>u32,
+    FADDP = Operation_ARM64_FADDP <span class="kw">as </span>u32,
+    FADDV = Operation_ARM64_FADDV <span class="kw">as </span>u32,
+    FCADD = Operation_ARM64_FCADD <span class="kw">as </span>u32,
+    FCCMP = Operation_ARM64_FCCMP <span class="kw">as </span>u32,
+    FCCMPE = Operation_ARM64_FCCMPE <span class="kw">as </span>u32,
+    FCMEQ = Operation_ARM64_FCMEQ <span class="kw">as </span>u32,
+    FCMGE = Operation_ARM64_FCMGE <span class="kw">as </span>u32,
+    FCMGT = Operation_ARM64_FCMGT <span class="kw">as </span>u32,
+    FCMLA = Operation_ARM64_FCMLA <span class="kw">as </span>u32,
+    FCMLE = Operation_ARM64_FCMLE <span class="kw">as </span>u32,
+    FCMLT = Operation_ARM64_FCMLT <span class="kw">as </span>u32,
+    FCMNE = Operation_ARM64_FCMNE <span class="kw">as </span>u32,
+    FCMP = Operation_ARM64_FCMP <span class="kw">as </span>u32,
+    FCMPE = Operation_ARM64_FCMPE <span class="kw">as </span>u32,
+    FCMUO = Operation_ARM64_FCMUO <span class="kw">as </span>u32,
+    FCPY = Operation_ARM64_FCPY <span class="kw">as </span>u32,
+    FCSEL = Operation_ARM64_FCSEL <span class="kw">as </span>u32,
+    FCVT = Operation_ARM64_FCVT <span class="kw">as </span>u32,
+    FCVTAS = Operation_ARM64_FCVTAS <span class="kw">as </span>u32,
+    FCVTAU = Operation_ARM64_FCVTAU <span class="kw">as </span>u32,
+    FCVTL = Operation_ARM64_FCVTL <span class="kw">as </span>u32,
+    FCVTL2 = Operation_ARM64_FCVTL2 <span class="kw">as </span>u32,
+    FCVTLT = Operation_ARM64_FCVTLT <span class="kw">as </span>u32,
+    FCVTMS = Operation_ARM64_FCVTMS <span class="kw">as </span>u32,
+    FCVTMU = Operation_ARM64_FCVTMU <span class="kw">as </span>u32,
+    FCVTN = Operation_ARM64_FCVTN <span class="kw">as </span>u32,
+    FCVTN2 = Operation_ARM64_FCVTN2 <span class="kw">as </span>u32,
+    FCVTNS = Operation_ARM64_FCVTNS <span class="kw">as </span>u32,
+    FCVTNT = Operation_ARM64_FCVTNT <span class="kw">as </span>u32,
+    FCVTNU = Operation_ARM64_FCVTNU <span class="kw">as </span>u32,
+    FCVTPS = Operation_ARM64_FCVTPS <span class="kw">as </span>u32,
+    FCVTPU = Operation_ARM64_FCVTPU <span class="kw">as </span>u32,
+    FCVTX = Operation_ARM64_FCVTX <span class="kw">as </span>u32,
+    FCVTXN = Operation_ARM64_FCVTXN <span class="kw">as </span>u32,
+    FCVTXN2 = Operation_ARM64_FCVTXN2 <span class="kw">as </span>u32,
+    FCVTXNT = Operation_ARM64_FCVTXNT <span class="kw">as </span>u32,
+    FCVTZS = Operation_ARM64_FCVTZS <span class="kw">as </span>u32,
+    FCVTZU = Operation_ARM64_FCVTZU <span class="kw">as </span>u32,
+    FDIV = Operation_ARM64_FDIV <span class="kw">as </span>u32,
+    FDIVR = Operation_ARM64_FDIVR <span class="kw">as </span>u32,
+    FDUP = Operation_ARM64_FDUP <span class="kw">as </span>u32,
+    FEXPA = Operation_ARM64_FEXPA <span class="kw">as </span>u32,
+    FJCVTZS = Operation_ARM64_FJCVTZS <span class="kw">as </span>u32,
+    FLOGB = Operation_ARM64_FLOGB <span class="kw">as </span>u32,
+    FMAD = Operation_ARM64_FMAD <span class="kw">as </span>u32,
+    FMADD = Operation_ARM64_FMADD <span class="kw">as </span>u32,
+    FMAX = Operation_ARM64_FMAX <span class="kw">as </span>u32,
+    FMAXNM = Operation_ARM64_FMAXNM <span class="kw">as </span>u32,
+    FMAXNMP = Operation_ARM64_FMAXNMP <span class="kw">as </span>u32,
+    FMAXNMV = Operation_ARM64_FMAXNMV <span class="kw">as </span>u32,
+    FMAXP = Operation_ARM64_FMAXP <span class="kw">as </span>u32,
+    FMAXV = Operation_ARM64_FMAXV <span class="kw">as </span>u32,
+    FMIN = Operation_ARM64_FMIN <span class="kw">as </span>u32,
+    FMINNM = Operation_ARM64_FMINNM <span class="kw">as </span>u32,
+    FMINNMP = Operation_ARM64_FMINNMP <span class="kw">as </span>u32,
+    FMINNMV = Operation_ARM64_FMINNMV <span class="kw">as </span>u32,
+    FMINP = Operation_ARM64_FMINP <span class="kw">as </span>u32,
+    FMINV = Operation_ARM64_FMINV <span class="kw">as </span>u32,
+    FMLA = Operation_ARM64_FMLA <span class="kw">as </span>u32,
+    FMLAL = Operation_ARM64_FMLAL <span class="kw">as </span>u32,
+    FMLAL2 = Operation_ARM64_FMLAL2 <span class="kw">as </span>u32,
+    FMLALB = Operation_ARM64_FMLALB <span class="kw">as </span>u32,
+    FMLALT = Operation_ARM64_FMLALT <span class="kw">as </span>u32,
+    FMLS = Operation_ARM64_FMLS <span class="kw">as </span>u32,
+    FMLSL = Operation_ARM64_FMLSL <span class="kw">as </span>u32,
+    FMLSL2 = Operation_ARM64_FMLSL2 <span class="kw">as </span>u32,
+    FMLSLB = Operation_ARM64_FMLSLB <span class="kw">as </span>u32,
+    FMLSLT = Operation_ARM64_FMLSLT <span class="kw">as </span>u32,
+    FMMLA = Operation_ARM64_FMMLA <span class="kw">as </span>u32,
+    FMOPA = Operation_ARM64_FMOPA <span class="kw">as </span>u32,
+    FMOPS = Operation_ARM64_FMOPS <span class="kw">as </span>u32,
+    FMOV = Operation_ARM64_FMOV <span class="kw">as </span>u32,
+    FMSB = Operation_ARM64_FMSB <span class="kw">as </span>u32,
+    FMSUB = Operation_ARM64_FMSUB <span class="kw">as </span>u32,
+    FMUL = Operation_ARM64_FMUL <span class="kw">as </span>u32,
+    FMULX = Operation_ARM64_FMULX <span class="kw">as </span>u32,
+    FNEG = Operation_ARM64_FNEG <span class="kw">as </span>u32,
+    FNMAD = Operation_ARM64_FNMAD <span class="kw">as </span>u32,
+    FNMADD = Operation_ARM64_FNMADD <span class="kw">as </span>u32,
+    FNMLA = Operation_ARM64_FNMLA <span class="kw">as </span>u32,
+    FNMLS = Operation_ARM64_FNMLS <span class="kw">as </span>u32,
+    FNMSB = Operation_ARM64_FNMSB <span class="kw">as </span>u32,
+    FNMSUB = Operation_ARM64_FNMSUB <span class="kw">as </span>u32,
+    FNMUL = Operation_ARM64_FNMUL <span class="kw">as </span>u32,
+    FRECPE = Operation_ARM64_FRECPE <span class="kw">as </span>u32,
+    FRECPS = Operation_ARM64_FRECPS <span class="kw">as </span>u32,
+    FRECPX = Operation_ARM64_FRECPX <span class="kw">as </span>u32,
+    FRINT32X = Operation_ARM64_FRINT32X <span class="kw">as </span>u32,
+    FRINT32Z = Operation_ARM64_FRINT32Z <span class="kw">as </span>u32,
+    FRINT64X = Operation_ARM64_FRINT64X <span class="kw">as </span>u32,
+    FRINT64Z = Operation_ARM64_FRINT64Z <span class="kw">as </span>u32,
+    FRINTA = Operation_ARM64_FRINTA <span class="kw">as </span>u32,
+    FRINTI = Operation_ARM64_FRINTI <span class="kw">as </span>u32,
+    FRINTM = Operation_ARM64_FRINTM <span class="kw">as </span>u32,
+    FRINTN = Operation_ARM64_FRINTN <span class="kw">as </span>u32,
+    FRINTP = Operation_ARM64_FRINTP <span class="kw">as </span>u32,
+    FRINTX = Operation_ARM64_FRINTX <span class="kw">as </span>u32,
+    FRINTZ = Operation_ARM64_FRINTZ <span class="kw">as </span>u32,
+    FRSQRTE = Operation_ARM64_FRSQRTE <span class="kw">as </span>u32,
+    FRSQRTS = Operation_ARM64_FRSQRTS <span class="kw">as </span>u32,
+    FSCALE = Operation_ARM64_FSCALE <span class="kw">as </span>u32,
+    FSQRT = Operation_ARM64_FSQRT <span class="kw">as </span>u32,
+    FSUB = Operation_ARM64_FSUB <span class="kw">as </span>u32,
+    FSUBR = Operation_ARM64_FSUBR <span class="kw">as </span>u32,
+    FTMAD = Operation_ARM64_FTMAD <span class="kw">as </span>u32,
+    FTSMUL = Operation_ARM64_FTSMUL <span class="kw">as </span>u32,
+    FTSSEL = Operation_ARM64_FTSSEL <span class="kw">as </span>u32,
+    GMI = Operation_ARM64_GMI <span class="kw">as </span>u32,
+    HINT = Operation_ARM64_HINT <span class="kw">as </span>u32,
+    HISTCNT = Operation_ARM64_HISTCNT <span class="kw">as </span>u32,
+    HISTSEG = Operation_ARM64_HISTSEG <span class="kw">as </span>u32,
+    HLT = Operation_ARM64_HLT <span class="kw">as </span>u32,
+    HVC = Operation_ARM64_HVC <span class="kw">as </span>u32,
+    IC = Operation_ARM64_IC <span class="kw">as </span>u32,
+    INCB = Operation_ARM64_INCB <span class="kw">as </span>u32,
+    INCD = Operation_ARM64_INCD <span class="kw">as </span>u32,
+    INCH = Operation_ARM64_INCH <span class="kw">as </span>u32,
+    INCP = Operation_ARM64_INCP <span class="kw">as </span>u32,
+    INCW = Operation_ARM64_INCW <span class="kw">as </span>u32,
+    INDEX = Operation_ARM64_INDEX <span class="kw">as </span>u32,
+    INS = Operation_ARM64_INS <span class="kw">as </span>u32,
+    INSR = Operation_ARM64_INSR <span class="kw">as </span>u32,
+    IRG = Operation_ARM64_IRG <span class="kw">as </span>u32,
+    ISB = Operation_ARM64_ISB <span class="kw">as </span>u32,
+    LASTA = Operation_ARM64_LASTA <span class="kw">as </span>u32,
+    LASTB = Operation_ARM64_LASTB <span class="kw">as </span>u32,
+    LD1 = Operation_ARM64_LD1 <span class="kw">as </span>u32,
+    LD1B = Operation_ARM64_LD1B <span class="kw">as </span>u32,
+    LD1D = Operation_ARM64_LD1D <span class="kw">as </span>u32,
+    LD1H = Operation_ARM64_LD1H <span class="kw">as </span>u32,
+    LD1Q = Operation_ARM64_LD1Q <span class="kw">as </span>u32,
+    LD1R = Operation_ARM64_LD1R <span class="kw">as </span>u32,
+    LD1RB = Operation_ARM64_LD1RB <span class="kw">as </span>u32,
+    LD1RD = Operation_ARM64_LD1RD <span class="kw">as </span>u32,
+    LD1RH = Operation_ARM64_LD1RH <span class="kw">as </span>u32,
+    LD1ROB = Operation_ARM64_LD1ROB <span class="kw">as </span>u32,
+    LD1ROD = Operation_ARM64_LD1ROD <span class="kw">as </span>u32,
+    LD1ROH = Operation_ARM64_LD1ROH <span class="kw">as </span>u32,
+    LD1ROW = Operation_ARM64_LD1ROW <span class="kw">as </span>u32,
+    LD1RQB = Operation_ARM64_LD1RQB <span class="kw">as </span>u32,
+    LD1RQD = Operation_ARM64_LD1RQD <span class="kw">as </span>u32,
+    LD1RQH = Operation_ARM64_LD1RQH <span class="kw">as </span>u32,
+    LD1RQW = Operation_ARM64_LD1RQW <span class="kw">as </span>u32,
+    LD1RSB = Operation_ARM64_LD1RSB <span class="kw">as </span>u32,
+    LD1RSH = Operation_ARM64_LD1RSH <span class="kw">as </span>u32,
+    LD1RSW = Operation_ARM64_LD1RSW <span class="kw">as </span>u32,
+    LD1RW = Operation_ARM64_LD1RW <span class="kw">as </span>u32,
+    LD1SB = Operation_ARM64_LD1SB <span class="kw">as </span>u32,
+    LD1SH = Operation_ARM64_LD1SH <span class="kw">as </span>u32,
+    LD1SW = Operation_ARM64_LD1SW <span class="kw">as </span>u32,
+    LD1W = Operation_ARM64_LD1W <span class="kw">as </span>u32,
+    LD2 = Operation_ARM64_LD2 <span class="kw">as </span>u32,
+    LD2B = Operation_ARM64_LD2B <span class="kw">as </span>u32,
+    LD2D = Operation_ARM64_LD2D <span class="kw">as </span>u32,
+    LD2H = Operation_ARM64_LD2H <span class="kw">as </span>u32,
+    LD2R = Operation_ARM64_LD2R <span class="kw">as </span>u32,
+    LD2W = Operation_ARM64_LD2W <span class="kw">as </span>u32,
+    LD3 = Operation_ARM64_LD3 <span class="kw">as </span>u32,
+    LD3B = Operation_ARM64_LD3B <span class="kw">as </span>u32,
+    LD3D = Operation_ARM64_LD3D <span class="kw">as </span>u32,
+    LD3H = Operation_ARM64_LD3H <span class="kw">as </span>u32,
+    LD3R = Operation_ARM64_LD3R <span class="kw">as </span>u32,
+    LD3W = Operation_ARM64_LD3W <span class="kw">as </span>u32,
+    LD4 = Operation_ARM64_LD4 <span class="kw">as </span>u32,
+    LD4B = Operation_ARM64_LD4B <span class="kw">as </span>u32,
+    LD4D = Operation_ARM64_LD4D <span class="kw">as </span>u32,
+    LD4H = Operation_ARM64_LD4H <span class="kw">as </span>u32,
+    LD4R = Operation_ARM64_LD4R <span class="kw">as </span>u32,
+    LD4W = Operation_ARM64_LD4W <span class="kw">as </span>u32,
+    LD64B = Operation_ARM64_LD64B <span class="kw">as </span>u32,
+    LDADD = Operation_ARM64_LDADD <span class="kw">as </span>u32,
+    LDADDA = Operation_ARM64_LDADDA <span class="kw">as </span>u32,
+    LDADDAB = Operation_ARM64_LDADDAB <span class="kw">as </span>u32,
+    LDADDAH = Operation_ARM64_LDADDAH <span class="kw">as </span>u32,
+    LDADDAL = Operation_ARM64_LDADDAL <span class="kw">as </span>u32,
+    LDADDALB = Operation_ARM64_LDADDALB <span class="kw">as </span>u32,
+    LDADDALH = Operation_ARM64_LDADDALH <span class="kw">as </span>u32,
+    LDADDB = Operation_ARM64_LDADDB <span class="kw">as </span>u32,
+    LDADDH = Operation_ARM64_LDADDH <span class="kw">as </span>u32,
+    LDADDL = Operation_ARM64_LDADDL <span class="kw">as </span>u32,
+    LDADDLB = Operation_ARM64_LDADDLB <span class="kw">as </span>u32,
+    LDADDLH = Operation_ARM64_LDADDLH <span class="kw">as </span>u32,
+    LDAPR = Operation_ARM64_LDAPR <span class="kw">as </span>u32,
+    LDAPRB = Operation_ARM64_LDAPRB <span class="kw">as </span>u32,
+    LDAPRH = Operation_ARM64_LDAPRH <span class="kw">as </span>u32,
+    LDAPUR = Operation_ARM64_LDAPUR <span class="kw">as </span>u32,
+    LDAPURB = Operation_ARM64_LDAPURB <span class="kw">as </span>u32,
+    LDAPURH = Operation_ARM64_LDAPURH <span class="kw">as </span>u32,
+    LDAPURSB = Operation_ARM64_LDAPURSB <span class="kw">as </span>u32,
+    LDAPURSH = Operation_ARM64_LDAPURSH <span class="kw">as </span>u32,
+    LDAPURSW = Operation_ARM64_LDAPURSW <span class="kw">as </span>u32,
+    LDAR = Operation_ARM64_LDAR <span class="kw">as </span>u32,
+    LDARB = Operation_ARM64_LDARB <span class="kw">as </span>u32,
+    LDARH = Operation_ARM64_LDARH <span class="kw">as </span>u32,
+    LDAXP = Operation_ARM64_LDAXP <span class="kw">as </span>u32,
+    LDAXR = Operation_ARM64_LDAXR <span class="kw">as </span>u32,
+    LDAXRB = Operation_ARM64_LDAXRB <span class="kw">as </span>u32,
+    LDAXRH = Operation_ARM64_LDAXRH <span class="kw">as </span>u32,
+    LDCLR = Operation_ARM64_LDCLR <span class="kw">as </span>u32,
+    LDCLRA = Operation_ARM64_LDCLRA <span class="kw">as </span>u32,
+    LDCLRAB = Operation_ARM64_LDCLRAB <span class="kw">as </span>u32,
+    LDCLRAH = Operation_ARM64_LDCLRAH <span class="kw">as </span>u32,
+    LDCLRAL = Operation_ARM64_LDCLRAL <span class="kw">as </span>u32,
+    LDCLRALB = Operation_ARM64_LDCLRALB <span class="kw">as </span>u32,
+    LDCLRALH = Operation_ARM64_LDCLRALH <span class="kw">as </span>u32,
+    LDCLRB = Operation_ARM64_LDCLRB <span class="kw">as </span>u32,
+    LDCLRH = Operation_ARM64_LDCLRH <span class="kw">as </span>u32,
+    LDCLRL = Operation_ARM64_LDCLRL <span class="kw">as </span>u32,
+    LDCLRLB = Operation_ARM64_LDCLRLB <span class="kw">as </span>u32,
+    LDCLRLH = Operation_ARM64_LDCLRLH <span class="kw">as </span>u32,
+    LDEOR = Operation_ARM64_LDEOR <span class="kw">as </span>u32,
+    LDEORA = Operation_ARM64_LDEORA <span class="kw">as </span>u32,
+    LDEORAB = Operation_ARM64_LDEORAB <span class="kw">as </span>u32,
+    LDEORAH = Operation_ARM64_LDEORAH <span class="kw">as </span>u32,
+    LDEORAL = Operation_ARM64_LDEORAL <span class="kw">as </span>u32,
+    LDEORALB = Operation_ARM64_LDEORALB <span class="kw">as </span>u32,
+    LDEORALH = Operation_ARM64_LDEORALH <span class="kw">as </span>u32,
+    LDEORB = Operation_ARM64_LDEORB <span class="kw">as </span>u32,
+    LDEORH = Operation_ARM64_LDEORH <span class="kw">as </span>u32,
+    LDEORL = Operation_ARM64_LDEORL <span class="kw">as </span>u32,
+    LDEORLB = Operation_ARM64_LDEORLB <span class="kw">as </span>u32,
+    LDEORLH = Operation_ARM64_LDEORLH <span class="kw">as </span>u32,
+    LDFF1B = Operation_ARM64_LDFF1B <span class="kw">as </span>u32,
+    LDFF1D = Operation_ARM64_LDFF1D <span class="kw">as </span>u32,
+    LDFF1H = Operation_ARM64_LDFF1H <span class="kw">as </span>u32,
+    LDFF1SB = Operation_ARM64_LDFF1SB <span class="kw">as </span>u32,
+    LDFF1SH = Operation_ARM64_LDFF1SH <span class="kw">as </span>u32,
+    LDFF1SW = Operation_ARM64_LDFF1SW <span class="kw">as </span>u32,
+    LDFF1W = Operation_ARM64_LDFF1W <span class="kw">as </span>u32,
+    LDG = Operation_ARM64_LDG <span class="kw">as </span>u32,
+    LDGM = Operation_ARM64_LDGM <span class="kw">as </span>u32,
+    LDLAR = Operation_ARM64_LDLAR <span class="kw">as </span>u32,
+    LDLARB = Operation_ARM64_LDLARB <span class="kw">as </span>u32,
+    LDLARH = Operation_ARM64_LDLARH <span class="kw">as </span>u32,
+    LDNF1B = Operation_ARM64_LDNF1B <span class="kw">as </span>u32,
+    LDNF1D = Operation_ARM64_LDNF1D <span class="kw">as </span>u32,
+    LDNF1H = Operation_ARM64_LDNF1H <span class="kw">as </span>u32,
+    LDNF1SB = Operation_ARM64_LDNF1SB <span class="kw">as </span>u32,
+    LDNF1SH = Operation_ARM64_LDNF1SH <span class="kw">as </span>u32,
+    LDNF1SW = Operation_ARM64_LDNF1SW <span class="kw">as </span>u32,
+    LDNF1W = Operation_ARM64_LDNF1W <span class="kw">as </span>u32,
+    LDNP = Operation_ARM64_LDNP <span class="kw">as </span>u32,
+    LDNT1B = Operation_ARM64_LDNT1B <span class="kw">as </span>u32,
+    LDNT1D = Operation_ARM64_LDNT1D <span class="kw">as </span>u32,
+    LDNT1H = Operation_ARM64_LDNT1H <span class="kw">as </span>u32,
+    LDNT1SB = Operation_ARM64_LDNT1SB <span class="kw">as </span>u32,
+    LDNT1SH = Operation_ARM64_LDNT1SH <span class="kw">as </span>u32,
+    LDNT1SW = Operation_ARM64_LDNT1SW <span class="kw">as </span>u32,
+    LDNT1W = Operation_ARM64_LDNT1W <span class="kw">as </span>u32,
+    LDP = Operation_ARM64_LDP <span class="kw">as </span>u32,
+    LDPSW = Operation_ARM64_LDPSW <span class="kw">as </span>u32,
+    LDR = Operation_ARM64_LDR <span class="kw">as </span>u32,
+    LDRAA = Operation_ARM64_LDRAA <span class="kw">as </span>u32,
+    LDRAB = Operation_ARM64_LDRAB <span class="kw">as </span>u32,
+    LDRB = Operation_ARM64_LDRB <span class="kw">as </span>u32,
+    LDRH = Operation_ARM64_LDRH <span class="kw">as </span>u32,
+    LDRSB = Operation_ARM64_LDRSB <span class="kw">as </span>u32,
+    LDRSH = Operation_ARM64_LDRSH <span class="kw">as </span>u32,
+    LDRSW = Operation_ARM64_LDRSW <span class="kw">as </span>u32,
+    LDSET = Operation_ARM64_LDSET <span class="kw">as </span>u32,
+    LDSETA = Operation_ARM64_LDSETA <span class="kw">as </span>u32,
+    LDSETAB = Operation_ARM64_LDSETAB <span class="kw">as </span>u32,
+    LDSETAH = Operation_ARM64_LDSETAH <span class="kw">as </span>u32,
+    LDSETAL = Operation_ARM64_LDSETAL <span class="kw">as </span>u32,
+    LDSETALB = Operation_ARM64_LDSETALB <span class="kw">as </span>u32,
+    LDSETALH = Operation_ARM64_LDSETALH <span class="kw">as </span>u32,
+    LDSETB = Operation_ARM64_LDSETB <span class="kw">as </span>u32,
+    LDSETH = Operation_ARM64_LDSETH <span class="kw">as </span>u32,
+    LDSETL = Operation_ARM64_LDSETL <span class="kw">as </span>u32,
+    LDSETLB = Operation_ARM64_LDSETLB <span class="kw">as </span>u32,
+    LDSETLH = Operation_ARM64_LDSETLH <span class="kw">as </span>u32,
+    LDSMAX = Operation_ARM64_LDSMAX <span class="kw">as </span>u32,
+    LDSMAXA = Operation_ARM64_LDSMAXA <span class="kw">as </span>u32,
+    LDSMAXAB = Operation_ARM64_LDSMAXAB <span class="kw">as </span>u32,
+    LDSMAXAH = Operation_ARM64_LDSMAXAH <span class="kw">as </span>u32,
+    LDSMAXAL = Operation_ARM64_LDSMAXAL <span class="kw">as </span>u32,
+    LDSMAXALB = Operation_ARM64_LDSMAXALB <span class="kw">as </span>u32,
+    LDSMAXALH = Operation_ARM64_LDSMAXALH <span class="kw">as </span>u32,
+    LDSMAXB = Operation_ARM64_LDSMAXB <span class="kw">as </span>u32,
+    LDSMAXH = Operation_ARM64_LDSMAXH <span class="kw">as </span>u32,
+    LDSMAXL = Operation_ARM64_LDSMAXL <span class="kw">as </span>u32,
+    LDSMAXLB = Operation_ARM64_LDSMAXLB <span class="kw">as </span>u32,
+    LDSMAXLH = Operation_ARM64_LDSMAXLH <span class="kw">as </span>u32,
+    LDSMIN = Operation_ARM64_LDSMIN <span class="kw">as </span>u32,
+    LDSMINA = Operation_ARM64_LDSMINA <span class="kw">as </span>u32,
+    LDSMINAB = Operation_ARM64_LDSMINAB <span class="kw">as </span>u32,
+    LDSMINAH = Operation_ARM64_LDSMINAH <span class="kw">as </span>u32,
+    LDSMINAL = Operation_ARM64_LDSMINAL <span class="kw">as </span>u32,
+    LDSMINALB = Operation_ARM64_LDSMINALB <span class="kw">as </span>u32,
+    LDSMINALH = Operation_ARM64_LDSMINALH <span class="kw">as </span>u32,
+    LDSMINB = Operation_ARM64_LDSMINB <span class="kw">as </span>u32,
+    LDSMINH = Operation_ARM64_LDSMINH <span class="kw">as </span>u32,
+    LDSMINL = Operation_ARM64_LDSMINL <span class="kw">as </span>u32,
+    LDSMINLB = Operation_ARM64_LDSMINLB <span class="kw">as </span>u32,
+    LDSMINLH = Operation_ARM64_LDSMINLH <span class="kw">as </span>u32,
+    LDTR = Operation_ARM64_LDTR <span class="kw">as </span>u32,
+    LDTRB = Operation_ARM64_LDTRB <span class="kw">as </span>u32,
+    LDTRH = Operation_ARM64_LDTRH <span class="kw">as </span>u32,
+    LDTRSB = Operation_ARM64_LDTRSB <span class="kw">as </span>u32,
+    LDTRSH = Operation_ARM64_LDTRSH <span class="kw">as </span>u32,
+    LDTRSW = Operation_ARM64_LDTRSW <span class="kw">as </span>u32,
+    LDUMAX = Operation_ARM64_LDUMAX <span class="kw">as </span>u32,
+    LDUMAXA = Operation_ARM64_LDUMAXA <span class="kw">as </span>u32,
+    LDUMAXAB = Operation_ARM64_LDUMAXAB <span class="kw">as </span>u32,
+    LDUMAXAH = Operation_ARM64_LDUMAXAH <span class="kw">as </span>u32,
+    LDUMAXAL = Operation_ARM64_LDUMAXAL <span class="kw">as </span>u32,
+    LDUMAXALB = Operation_ARM64_LDUMAXALB <span class="kw">as </span>u32,
+    LDUMAXALH = Operation_ARM64_LDUMAXALH <span class="kw">as </span>u32,
+    LDUMAXB = Operation_ARM64_LDUMAXB <span class="kw">as </span>u32,
+    LDUMAXH = Operation_ARM64_LDUMAXH <span class="kw">as </span>u32,
+    LDUMAXL = Operation_ARM64_LDUMAXL <span class="kw">as </span>u32,
+    LDUMAXLB = Operation_ARM64_LDUMAXLB <span class="kw">as </span>u32,
+    LDUMAXLH = Operation_ARM64_LDUMAXLH <span class="kw">as </span>u32,
+    LDUMIN = Operation_ARM64_LDUMIN <span class="kw">as </span>u32,
+    LDUMINA = Operation_ARM64_LDUMINA <span class="kw">as </span>u32,
+    LDUMINAB = Operation_ARM64_LDUMINAB <span class="kw">as </span>u32,
+    LDUMINAH = Operation_ARM64_LDUMINAH <span class="kw">as </span>u32,
+    LDUMINAL = Operation_ARM64_LDUMINAL <span class="kw">as </span>u32,
+    LDUMINALB = Operation_ARM64_LDUMINALB <span class="kw">as </span>u32,
+    LDUMINALH = Operation_ARM64_LDUMINALH <span class="kw">as </span>u32,
+    LDUMINB = Operation_ARM64_LDUMINB <span class="kw">as </span>u32,
+    LDUMINH = Operation_ARM64_LDUMINH <span class="kw">as </span>u32,
+    LDUMINL = Operation_ARM64_LDUMINL <span class="kw">as </span>u32,
+    LDUMINLB = Operation_ARM64_LDUMINLB <span class="kw">as </span>u32,
+    LDUMINLH = Operation_ARM64_LDUMINLH <span class="kw">as </span>u32,
+    LDUR = Operation_ARM64_LDUR <span class="kw">as </span>u32,
+    LDURB = Operation_ARM64_LDURB <span class="kw">as </span>u32,
+    LDURH = Operation_ARM64_LDURH <span class="kw">as </span>u32,
+    LDURSB = Operation_ARM64_LDURSB <span class="kw">as </span>u32,
+    LDURSH = Operation_ARM64_LDURSH <span class="kw">as </span>u32,
+    LDURSW = Operation_ARM64_LDURSW <span class="kw">as </span>u32,
+    LDXP = Operation_ARM64_LDXP <span class="kw">as </span>u32,
+    LDXR = Operation_ARM64_LDXR <span class="kw">as </span>u32,
+    LDXRB = Operation_ARM64_LDXRB <span class="kw">as </span>u32,
+    LDXRH = Operation_ARM64_LDXRH <span class="kw">as </span>u32,
+    LSL = Operation_ARM64_LSL <span class="kw">as </span>u32,
+    LSLR = Operation_ARM64_LSLR <span class="kw">as </span>u32,
+    LSLV = Operation_ARM64_LSLV <span class="kw">as </span>u32,
+    LSR = Operation_ARM64_LSR <span class="kw">as </span>u32,
+    LSRR = Operation_ARM64_LSRR <span class="kw">as </span>u32,
+    LSRV = Operation_ARM64_LSRV <span class="kw">as </span>u32,
+    MAD = Operation_ARM64_MAD <span class="kw">as </span>u32,
+    MADD = Operation_ARM64_MADD <span class="kw">as </span>u32,
+    MATCH = Operation_ARM64_MATCH <span class="kw">as </span>u32,
+    MLA = Operation_ARM64_MLA <span class="kw">as </span>u32,
+    MLS = Operation_ARM64_MLS <span class="kw">as </span>u32,
+    MNEG = Operation_ARM64_MNEG <span class="kw">as </span>u32,
+    MOV = Operation_ARM64_MOV <span class="kw">as </span>u32,
+    MOVA = Operation_ARM64_MOVA <span class="kw">as </span>u32,
+    MOVI = Operation_ARM64_MOVI <span class="kw">as </span>u32,
+    MOVK = Operation_ARM64_MOVK <span class="kw">as </span>u32,
+    MOVN = Operation_ARM64_MOVN <span class="kw">as </span>u32,
+    MOVPRFX = Operation_ARM64_MOVPRFX <span class="kw">as </span>u32,
+    MOVS = Operation_ARM64_MOVS <span class="kw">as </span>u32,
+    MOVZ = Operation_ARM64_MOVZ <span class="kw">as </span>u32,
+    MRS = Operation_ARM64_MRS <span class="kw">as </span>u32,
+    MSB = Operation_ARM64_MSB <span class="kw">as </span>u32,
+    MSR = Operation_ARM64_MSR <span class="kw">as </span>u32,
+    MSUB = Operation_ARM64_MSUB <span class="kw">as </span>u32,
+    MUL = Operation_ARM64_MUL <span class="kw">as </span>u32,
+    MVN = Operation_ARM64_MVN <span class="kw">as </span>u32,
+    MVNI = Operation_ARM64_MVNI <span class="kw">as </span>u32,
+    NAND = Operation_ARM64_NAND <span class="kw">as </span>u32,
+    NANDS = Operation_ARM64_NANDS <span class="kw">as </span>u32,
+    NBSL = Operation_ARM64_NBSL <span class="kw">as </span>u32,
+    NEG = Operation_ARM64_NEG <span class="kw">as </span>u32,
+    NEGS = Operation_ARM64_NEGS <span class="kw">as </span>u32,
+    NGC = Operation_ARM64_NGC <span class="kw">as </span>u32,
+    NGCS = Operation_ARM64_NGCS <span class="kw">as </span>u32,
+    NMATCH = Operation_ARM64_NMATCH <span class="kw">as </span>u32,
+    NOP = Operation_ARM64_NOP <span class="kw">as </span>u32,
+    NOR = Operation_ARM64_NOR <span class="kw">as </span>u32,
+    NORS = Operation_ARM64_NORS <span class="kw">as </span>u32,
+    NOT = Operation_ARM64_NOT <span class="kw">as </span>u32,
+    NOTS = Operation_ARM64_NOTS <span class="kw">as </span>u32,
+    ORN = Operation_ARM64_ORN <span class="kw">as </span>u32,
+    ORNS = Operation_ARM64_ORNS <span class="kw">as </span>u32,
+    ORR = Operation_ARM64_ORR <span class="kw">as </span>u32,
+    ORRS = Operation_ARM64_ORRS <span class="kw">as </span>u32,
+    ORV = Operation_ARM64_ORV <span class="kw">as </span>u32,
+    PACDA = Operation_ARM64_PACDA <span class="kw">as </span>u32,
+    PACDB = Operation_ARM64_PACDB <span class="kw">as </span>u32,
+    PACDZA = Operation_ARM64_PACDZA <span class="kw">as </span>u32,
+    PACDZB = Operation_ARM64_PACDZB <span class="kw">as </span>u32,
+    PACGA = Operation_ARM64_PACGA <span class="kw">as </span>u32,
+    PACIA = Operation_ARM64_PACIA <span class="kw">as </span>u32,
+    PACIA1716 = Operation_ARM64_PACIA1716 <span class="kw">as </span>u32,
+    PACIASP = Operation_ARM64_PACIASP <span class="kw">as </span>u32,
+    PACIAZ = Operation_ARM64_PACIAZ <span class="kw">as </span>u32,
+    PACIB = Operation_ARM64_PACIB <span class="kw">as </span>u32,
+    PACIB1716 = Operation_ARM64_PACIB1716 <span class="kw">as </span>u32,
+    PACIBSP = Operation_ARM64_PACIBSP <span class="kw">as </span>u32,
+    PACIBZ = Operation_ARM64_PACIBZ <span class="kw">as </span>u32,
+    PACIZA = Operation_ARM64_PACIZA <span class="kw">as </span>u32,
+    PACIZB = Operation_ARM64_PACIZB <span class="kw">as </span>u32,
+    PFALSE = Operation_ARM64_PFALSE <span class="kw">as </span>u32,
+    PFIRST = Operation_ARM64_PFIRST <span class="kw">as </span>u32,
+    PMUL = Operation_ARM64_PMUL <span class="kw">as </span>u32,
+    PMULL = Operation_ARM64_PMULL <span class="kw">as </span>u32,
+    PMULL2 = Operation_ARM64_PMULL2 <span class="kw">as </span>u32,
+    PMULLB = Operation_ARM64_PMULLB <span class="kw">as </span>u32,
+    PMULLT = Operation_ARM64_PMULLT <span class="kw">as </span>u32,
+    PNEXT = Operation_ARM64_PNEXT <span class="kw">as </span>u32,
+    PRFB = Operation_ARM64_PRFB <span class="kw">as </span>u32,
+    PRFD = Operation_ARM64_PRFD <span class="kw">as </span>u32,
+    PRFH = Operation_ARM64_PRFH <span class="kw">as </span>u32,
+    PRFM = Operation_ARM64_PRFM <span class="kw">as </span>u32,
+    PRFUM = Operation_ARM64_PRFUM <span class="kw">as </span>u32,
+    PRFW = Operation_ARM64_PRFW <span class="kw">as </span>u32,
+    PSB = Operation_ARM64_PSB <span class="kw">as </span>u32,
+    PSSBB = Operation_ARM64_PSSBB <span class="kw">as </span>u32,
+    PTEST = Operation_ARM64_PTEST <span class="kw">as </span>u32,
+    PTRUE = Operation_ARM64_PTRUE <span class="kw">as </span>u32,
+    PTRUES = Operation_ARM64_PTRUES <span class="kw">as </span>u32,
+    PUNPKHI = Operation_ARM64_PUNPKHI <span class="kw">as </span>u32,
+    PUNPKLO = Operation_ARM64_PUNPKLO <span class="kw">as </span>u32,
+    RADDHN = Operation_ARM64_RADDHN <span class="kw">as </span>u32,
+    RADDHN2 = Operation_ARM64_RADDHN2 <span class="kw">as </span>u32,
+    RADDHNB = Operation_ARM64_RADDHNB <span class="kw">as </span>u32,
+    RADDHNT = Operation_ARM64_RADDHNT <span class="kw">as </span>u32,
+    RAX1 = Operation_ARM64_RAX1 <span class="kw">as </span>u32,
+    RBIT = Operation_ARM64_RBIT <span class="kw">as </span>u32,
+    RDFFR = Operation_ARM64_RDFFR <span class="kw">as </span>u32,
+    RDFFRS = Operation_ARM64_RDFFRS <span class="kw">as </span>u32,
+    RDVL = Operation_ARM64_RDVL <span class="kw">as </span>u32,
+    RET = Operation_ARM64_RET <span class="kw">as </span>u32,
+    RETAA = Operation_ARM64_RETAA <span class="kw">as </span>u32,
+    RETAB = Operation_ARM64_RETAB <span class="kw">as </span>u32,
+    REV = Operation_ARM64_REV <span class="kw">as </span>u32,
+    REV16 = Operation_ARM64_REV16 <span class="kw">as </span>u32,
+    REV32 = Operation_ARM64_REV32 <span class="kw">as </span>u32,
+    REV64 = Operation_ARM64_REV64 <span class="kw">as </span>u32,
+    REVB = Operation_ARM64_REVB <span class="kw">as </span>u32,
+    REVD = Operation_ARM64_REVD <span class="kw">as </span>u32,
+    REVH = Operation_ARM64_REVH <span class="kw">as </span>u32,
+    REVW = Operation_ARM64_REVW <span class="kw">as </span>u32,
+    RMIF = Operation_ARM64_RMIF <span class="kw">as </span>u32,
+    ROR = Operation_ARM64_ROR <span class="kw">as </span>u32,
+    RORV = Operation_ARM64_RORV <span class="kw">as </span>u32,
+    RSHRN = Operation_ARM64_RSHRN <span class="kw">as </span>u32,
+    RSHRN2 = Operation_ARM64_RSHRN2 <span class="kw">as </span>u32,
+    RSHRNB = Operation_ARM64_RSHRNB <span class="kw">as </span>u32,
+    RSHRNT = Operation_ARM64_RSHRNT <span class="kw">as </span>u32,
+    RSUBHN = Operation_ARM64_RSUBHN <span class="kw">as </span>u32,
+    RSUBHN2 = Operation_ARM64_RSUBHN2 <span class="kw">as </span>u32,
+    RSUBHNB = Operation_ARM64_RSUBHNB <span class="kw">as </span>u32,
+    RSUBHNT = Operation_ARM64_RSUBHNT <span class="kw">as </span>u32,
+    SABA = Operation_ARM64_SABA <span class="kw">as </span>u32,
+    SABAL = Operation_ARM64_SABAL <span class="kw">as </span>u32,
+    SABAL2 = Operation_ARM64_SABAL2 <span class="kw">as </span>u32,
+    SABALB = Operation_ARM64_SABALB <span class="kw">as </span>u32,
+    SABALT = Operation_ARM64_SABALT <span class="kw">as </span>u32,
+    SABD = Operation_ARM64_SABD <span class="kw">as </span>u32,
+    SABDL = Operation_ARM64_SABDL <span class="kw">as </span>u32,
+    SABDL2 = Operation_ARM64_SABDL2 <span class="kw">as </span>u32,
+    SABDLB = Operation_ARM64_SABDLB <span class="kw">as </span>u32,
+    SABDLT = Operation_ARM64_SABDLT <span class="kw">as </span>u32,
+    SADALP = Operation_ARM64_SADALP <span class="kw">as </span>u32,
+    SADDL = Operation_ARM64_SADDL <span class="kw">as </span>u32,
+    SADDL2 = Operation_ARM64_SADDL2 <span class="kw">as </span>u32,
+    SADDLB = Operation_ARM64_SADDLB <span class="kw">as </span>u32,
+    SADDLBT = Operation_ARM64_SADDLBT <span class="kw">as </span>u32,
+    SADDLP = Operation_ARM64_SADDLP <span class="kw">as </span>u32,
+    SADDLT = Operation_ARM64_SADDLT <span class="kw">as </span>u32,
+    SADDLV = Operation_ARM64_SADDLV <span class="kw">as </span>u32,
+    SADDV = Operation_ARM64_SADDV <span class="kw">as </span>u32,
+    SADDW = Operation_ARM64_SADDW <span class="kw">as </span>u32,
+    SADDW2 = Operation_ARM64_SADDW2 <span class="kw">as </span>u32,
+    SADDWB = Operation_ARM64_SADDWB <span class="kw">as </span>u32,
+    SADDWT = Operation_ARM64_SADDWT <span class="kw">as </span>u32,
+    SB = Operation_ARM64_SB <span class="kw">as </span>u32,
+    SBC = Operation_ARM64_SBC <span class="kw">as </span>u32,
+    SBCLB = Operation_ARM64_SBCLB <span class="kw">as </span>u32,
+    SBCLT = Operation_ARM64_SBCLT <span class="kw">as </span>u32,
+    SBCS = Operation_ARM64_SBCS <span class="kw">as </span>u32,
+    SBFIZ = Operation_ARM64_SBFIZ <span class="kw">as </span>u32,
+    SBFM = Operation_ARM64_SBFM <span class="kw">as </span>u32,
+    SBFX = Operation_ARM64_SBFX <span class="kw">as </span>u32,
+    SCLAMP = Operation_ARM64_SCLAMP <span class="kw">as </span>u32,
+    SCVTF = Operation_ARM64_SCVTF <span class="kw">as </span>u32,
+    SDIV = Operation_ARM64_SDIV <span class="kw">as </span>u32,
+    SDIVR = Operation_ARM64_SDIVR <span class="kw">as </span>u32,
+    SDOT = Operation_ARM64_SDOT <span class="kw">as </span>u32,
+    SEL = Operation_ARM64_SEL <span class="kw">as </span>u32,
+    SETF16 = Operation_ARM64_SETF16 <span class="kw">as </span>u32,
+    SETF8 = Operation_ARM64_SETF8 <span class="kw">as </span>u32,
+    SETFFR = Operation_ARM64_SETFFR <span class="kw">as </span>u32,
+    SEV = Operation_ARM64_SEV <span class="kw">as </span>u32,
+    SEVL = Operation_ARM64_SEVL <span class="kw">as </span>u32,
+    SHA1C = Operation_ARM64_SHA1C <span class="kw">as </span>u32,
+    SHA1H = Operation_ARM64_SHA1H <span class="kw">as </span>u32,
+    SHA1M = Operation_ARM64_SHA1M <span class="kw">as </span>u32,
+    SHA1P = Operation_ARM64_SHA1P <span class="kw">as </span>u32,
+    SHA1SU0 = Operation_ARM64_SHA1SU0 <span class="kw">as </span>u32,
+    SHA1SU1 = Operation_ARM64_SHA1SU1 <span class="kw">as </span>u32,
+    SHA256H = Operation_ARM64_SHA256H <span class="kw">as </span>u32,
+    SHA256H2 = Operation_ARM64_SHA256H2 <span class="kw">as </span>u32,
+    SHA256SU0 = Operation_ARM64_SHA256SU0 <span class="kw">as </span>u32,
+    SHA256SU1 = Operation_ARM64_SHA256SU1 <span class="kw">as </span>u32,
+    SHA512H = Operation_ARM64_SHA512H <span class="kw">as </span>u32,
+    SHA512H2 = Operation_ARM64_SHA512H2 <span class="kw">as </span>u32,
+    SHA512SU0 = Operation_ARM64_SHA512SU0 <span class="kw">as </span>u32,
+    SHA512SU1 = Operation_ARM64_SHA512SU1 <span class="kw">as </span>u32,
+    SHADD = Operation_ARM64_SHADD <span class="kw">as </span>u32,
+    SHL = Operation_ARM64_SHL <span class="kw">as </span>u32,
+    SHLL = Operation_ARM64_SHLL <span class="kw">as </span>u32,
+    SHLL2 = Operation_ARM64_SHLL2 <span class="kw">as </span>u32,
+    SHRN = Operation_ARM64_SHRN <span class="kw">as </span>u32,
+    SHRN2 = Operation_ARM64_SHRN2 <span class="kw">as </span>u32,
+    SHRNB = Operation_ARM64_SHRNB <span class="kw">as </span>u32,
+    SHRNT = Operation_ARM64_SHRNT <span class="kw">as </span>u32,
+    SHSUB = Operation_ARM64_SHSUB <span class="kw">as </span>u32,
+    SHSUBR = Operation_ARM64_SHSUBR <span class="kw">as </span>u32,
+    SLI = Operation_ARM64_SLI <span class="kw">as </span>u32,
+    SM3PARTW1 = Operation_ARM64_SM3PARTW1 <span class="kw">as </span>u32,
+    SM3PARTW2 = Operation_ARM64_SM3PARTW2 <span class="kw">as </span>u32,
+    SM3SS1 = Operation_ARM64_SM3SS1 <span class="kw">as </span>u32,
+    SM3TT1A = Operation_ARM64_SM3TT1A <span class="kw">as </span>u32,
+    SM3TT1B = Operation_ARM64_SM3TT1B <span class="kw">as </span>u32,
+    SM3TT2A = Operation_ARM64_SM3TT2A <span class="kw">as </span>u32,
+    SM3TT2B = Operation_ARM64_SM3TT2B <span class="kw">as </span>u32,
+    SM4E = Operation_ARM64_SM4E <span class="kw">as </span>u32,
+    SM4EKEY = Operation_ARM64_SM4EKEY <span class="kw">as </span>u32,
+    SMADDL = Operation_ARM64_SMADDL <span class="kw">as </span>u32,
+    SMAX = Operation_ARM64_SMAX <span class="kw">as </span>u32,
+    SMAXP = Operation_ARM64_SMAXP <span class="kw">as </span>u32,
+    SMAXV = Operation_ARM64_SMAXV <span class="kw">as </span>u32,
+    SMC = Operation_ARM64_SMC <span class="kw">as </span>u32,
+    SMIN = Operation_ARM64_SMIN <span class="kw">as </span>u32,
+    SMINP = Operation_ARM64_SMINP <span class="kw">as </span>u32,
+    SMINV = Operation_ARM64_SMINV <span class="kw">as </span>u32,
+    SMLAL = Operation_ARM64_SMLAL <span class="kw">as </span>u32,
+    SMLAL2 = Operation_ARM64_SMLAL2 <span class="kw">as </span>u32,
+    SMLALB = Operation_ARM64_SMLALB <span class="kw">as </span>u32,
+    SMLALT = Operation_ARM64_SMLALT <span class="kw">as </span>u32,
+    SMLSL = Operation_ARM64_SMLSL <span class="kw">as </span>u32,
+    SMLSL2 = Operation_ARM64_SMLSL2 <span class="kw">as </span>u32,
+    SMLSLB = Operation_ARM64_SMLSLB <span class="kw">as </span>u32,
+    SMLSLT = Operation_ARM64_SMLSLT <span class="kw">as </span>u32,
+    SMMLA = Operation_ARM64_SMMLA <span class="kw">as </span>u32,
+    SMNEGL = Operation_ARM64_SMNEGL <span class="kw">as </span>u32,
+    SMOPA = Operation_ARM64_SMOPA <span class="kw">as </span>u32,
+    SMOPS = Operation_ARM64_SMOPS <span class="kw">as </span>u32,
+    SMOV = Operation_ARM64_SMOV <span class="kw">as </span>u32,
+    SMSTART = Operation_ARM64_SMSTART <span class="kw">as </span>u32,
+    SMSTOP = Operation_ARM64_SMSTOP <span class="kw">as </span>u32,
+    SMSUBL = Operation_ARM64_SMSUBL <span class="kw">as </span>u32,
+    SMULH = Operation_ARM64_SMULH <span class="kw">as </span>u32,
+    SMULL = Operation_ARM64_SMULL <span class="kw">as </span>u32,
+    SMULL2 = Operation_ARM64_SMULL2 <span class="kw">as </span>u32,
+    SMULLB = Operation_ARM64_SMULLB <span class="kw">as </span>u32,
+    SMULLT = Operation_ARM64_SMULLT <span class="kw">as </span>u32,
+    SPLICE = Operation_ARM64_SPLICE <span class="kw">as </span>u32,
+    SQABS = Operation_ARM64_SQABS <span class="kw">as </span>u32,
+    SQADD = Operation_ARM64_SQADD <span class="kw">as </span>u32,
+    SQCADD = Operation_ARM64_SQCADD <span class="kw">as </span>u32,
+    SQDECB = Operation_ARM64_SQDECB <span class="kw">as </span>u32,
+    SQDECD = Operation_ARM64_SQDECD <span class="kw">as </span>u32,
+    SQDECH = Operation_ARM64_SQDECH <span class="kw">as </span>u32,
+    SQDECP = Operation_ARM64_SQDECP <span class="kw">as </span>u32,
+    SQDECW = Operation_ARM64_SQDECW <span class="kw">as </span>u32,
+    SQDMLAL = Operation_ARM64_SQDMLAL <span class="kw">as </span>u32,
+    SQDMLAL2 = Operation_ARM64_SQDMLAL2 <span class="kw">as </span>u32,
+    SQDMLALB = Operation_ARM64_SQDMLALB <span class="kw">as </span>u32,
+    SQDMLALBT = Operation_ARM64_SQDMLALBT <span class="kw">as </span>u32,
+    SQDMLALT = Operation_ARM64_SQDMLALT <span class="kw">as </span>u32,
+    SQDMLSL = Operation_ARM64_SQDMLSL <span class="kw">as </span>u32,
+    SQDMLSL2 = Operation_ARM64_SQDMLSL2 <span class="kw">as </span>u32,
+    SQDMLSLB = Operation_ARM64_SQDMLSLB <span class="kw">as </span>u32,
+    SQDMLSLBT = Operation_ARM64_SQDMLSLBT <span class="kw">as </span>u32,
+    SQDMLSLT = Operation_ARM64_SQDMLSLT <span class="kw">as </span>u32,
+    SQDMULH = Operation_ARM64_SQDMULH <span class="kw">as </span>u32,
+    SQDMULL = Operation_ARM64_SQDMULL <span class="kw">as </span>u32,
+    SQDMULL2 = Operation_ARM64_SQDMULL2 <span class="kw">as </span>u32,
+    SQDMULLB = Operation_ARM64_SQDMULLB <span class="kw">as </span>u32,
+    SQDMULLT = Operation_ARM64_SQDMULLT <span class="kw">as </span>u32,
+    SQINCB = Operation_ARM64_SQINCB <span class="kw">as </span>u32,
+    SQINCD = Operation_ARM64_SQINCD <span class="kw">as </span>u32,
+    SQINCH = Operation_ARM64_SQINCH <span class="kw">as </span>u32,
+    SQINCP = Operation_ARM64_SQINCP <span class="kw">as </span>u32,
+    SQINCW = Operation_ARM64_SQINCW <span class="kw">as </span>u32,
+    SQNEG = Operation_ARM64_SQNEG <span class="kw">as </span>u32,
+    SQRDCMLAH = Operation_ARM64_SQRDCMLAH <span class="kw">as </span>u32,
+    SQRDMLAH = Operation_ARM64_SQRDMLAH <span class="kw">as </span>u32,
+    SQRDMLSH = Operation_ARM64_SQRDMLSH <span class="kw">as </span>u32,
+    SQRDMULH = Operation_ARM64_SQRDMULH <span class="kw">as </span>u32,
+    SQRSHL = Operation_ARM64_SQRSHL <span class="kw">as </span>u32,
+    SQRSHLR = Operation_ARM64_SQRSHLR <span class="kw">as </span>u32,
+    SQRSHRN = Operation_ARM64_SQRSHRN <span class="kw">as </span>u32,
+    SQRSHRN2 = Operation_ARM64_SQRSHRN2 <span class="kw">as </span>u32,
+    SQRSHRNB = Operation_ARM64_SQRSHRNB <span class="kw">as </span>u32,
+    SQRSHRNT = Operation_ARM64_SQRSHRNT <span class="kw">as </span>u32,
+    SQRSHRUN = Operation_ARM64_SQRSHRUN <span class="kw">as </span>u32,
+    SQRSHRUN2 = Operation_ARM64_SQRSHRUN2 <span class="kw">as </span>u32,
+    SQRSHRUNB = Operation_ARM64_SQRSHRUNB <span class="kw">as </span>u32,
+    SQRSHRUNT = Operation_ARM64_SQRSHRUNT <span class="kw">as </span>u32,
+    SQSHL = Operation_ARM64_SQSHL <span class="kw">as </span>u32,
+    SQSHLR = Operation_ARM64_SQSHLR <span class="kw">as </span>u32,
+    SQSHLU = Operation_ARM64_SQSHLU <span class="kw">as </span>u32,
+    SQSHRN = Operation_ARM64_SQSHRN <span class="kw">as </span>u32,
+    SQSHRN2 = Operation_ARM64_SQSHRN2 <span class="kw">as </span>u32,
+    SQSHRNB = Operation_ARM64_SQSHRNB <span class="kw">as </span>u32,
+    SQSHRNT = Operation_ARM64_SQSHRNT <span class="kw">as </span>u32,
+    SQSHRUN = Operation_ARM64_SQSHRUN <span class="kw">as </span>u32,
+    SQSHRUN2 = Operation_ARM64_SQSHRUN2 <span class="kw">as </span>u32,
+    SQSHRUNB = Operation_ARM64_SQSHRUNB <span class="kw">as </span>u32,
+    SQSHRUNT = Operation_ARM64_SQSHRUNT <span class="kw">as </span>u32,
+    SQSUB = Operation_ARM64_SQSUB <span class="kw">as </span>u32,
+    SQSUBR = Operation_ARM64_SQSUBR <span class="kw">as </span>u32,
+    SQXTN = Operation_ARM64_SQXTN <span class="kw">as </span>u32,
+    SQXTN2 = Operation_ARM64_SQXTN2 <span class="kw">as </span>u32,
+    SQXTNB = Operation_ARM64_SQXTNB <span class="kw">as </span>u32,
+    SQXTNT = Operation_ARM64_SQXTNT <span class="kw">as </span>u32,
+    SQXTUN = Operation_ARM64_SQXTUN <span class="kw">as </span>u32,
+    SQXTUN2 = Operation_ARM64_SQXTUN2 <span class="kw">as </span>u32,
+    SQXTUNB = Operation_ARM64_SQXTUNB <span class="kw">as </span>u32,
+    SQXTUNT = Operation_ARM64_SQXTUNT <span class="kw">as </span>u32,
+    SRHADD = Operation_ARM64_SRHADD <span class="kw">as </span>u32,
+    SRI = Operation_ARM64_SRI <span class="kw">as </span>u32,
+    SRSHL = Operation_ARM64_SRSHL <span class="kw">as </span>u32,
+    SRSHLR = Operation_ARM64_SRSHLR <span class="kw">as </span>u32,
+    SRSHR = Operation_ARM64_SRSHR <span class="kw">as </span>u32,
+    SRSRA = Operation_ARM64_SRSRA <span class="kw">as </span>u32,
+    SSBB = Operation_ARM64_SSBB <span class="kw">as </span>u32,
+    SSHL = Operation_ARM64_SSHL <span class="kw">as </span>u32,
+    SSHLL = Operation_ARM64_SSHLL <span class="kw">as </span>u32,
+    SSHLL2 = Operation_ARM64_SSHLL2 <span class="kw">as </span>u32,
+    SSHLLB = Operation_ARM64_SSHLLB <span class="kw">as </span>u32,
+    SSHLLT = Operation_ARM64_SSHLLT <span class="kw">as </span>u32,
+    SSHR = Operation_ARM64_SSHR <span class="kw">as </span>u32,
+    SSRA = Operation_ARM64_SSRA <span class="kw">as </span>u32,
+    SSUBL = Operation_ARM64_SSUBL <span class="kw">as </span>u32,
+    SSUBL2 = Operation_ARM64_SSUBL2 <span class="kw">as </span>u32,
+    SSUBLB = Operation_ARM64_SSUBLB <span class="kw">as </span>u32,
+    SSUBLBT = Operation_ARM64_SSUBLBT <span class="kw">as </span>u32,
+    SSUBLT = Operation_ARM64_SSUBLT <span class="kw">as </span>u32,
+    SSUBLTB = Operation_ARM64_SSUBLTB <span class="kw">as </span>u32,
+    SSUBW = Operation_ARM64_SSUBW <span class="kw">as </span>u32,
+    SSUBW2 = Operation_ARM64_SSUBW2 <span class="kw">as </span>u32,
+    SSUBWB = Operation_ARM64_SSUBWB <span class="kw">as </span>u32,
+    SSUBWT = Operation_ARM64_SSUBWT <span class="kw">as </span>u32,
+    ST1 = Operation_ARM64_ST1 <span class="kw">as </span>u32,
+    ST1B = Operation_ARM64_ST1B <span class="kw">as </span>u32,
+    ST1D = Operation_ARM64_ST1D <span class="kw">as </span>u32,
+    ST1H = Operation_ARM64_ST1H <span class="kw">as </span>u32,
+    ST1Q = Operation_ARM64_ST1Q <span class="kw">as </span>u32,
+    ST1W = Operation_ARM64_ST1W <span class="kw">as </span>u32,
+    ST2 = Operation_ARM64_ST2 <span class="kw">as </span>u32,
+    ST2B = Operation_ARM64_ST2B <span class="kw">as </span>u32,
+    ST2D = Operation_ARM64_ST2D <span class="kw">as </span>u32,
+    ST2G = Operation_ARM64_ST2G <span class="kw">as </span>u32,
+    ST2H = Operation_ARM64_ST2H <span class="kw">as </span>u32,
+    ST2W = Operation_ARM64_ST2W <span class="kw">as </span>u32,
+    ST3 = Operation_ARM64_ST3 <span class="kw">as </span>u32,
+    ST3B = Operation_ARM64_ST3B <span class="kw">as </span>u32,
+    ST3D = Operation_ARM64_ST3D <span class="kw">as </span>u32,
+    ST3H = Operation_ARM64_ST3H <span class="kw">as </span>u32,
+    ST3W = Operation_ARM64_ST3W <span class="kw">as </span>u32,
+    ST4 = Operation_ARM64_ST4 <span class="kw">as </span>u32,
+    ST4B = Operation_ARM64_ST4B <span class="kw">as </span>u32,
+    ST4D = Operation_ARM64_ST4D <span class="kw">as </span>u32,
+    ST4H = Operation_ARM64_ST4H <span class="kw">as </span>u32,
+    ST4W = Operation_ARM64_ST4W <span class="kw">as </span>u32,
+    ST64B = Operation_ARM64_ST64B <span class="kw">as </span>u32,
+    ST64BV = Operation_ARM64_ST64BV <span class="kw">as </span>u32,
+    ST64BV0 = Operation_ARM64_ST64BV0 <span class="kw">as </span>u32,
+    STADD = Operation_ARM64_STADD <span class="kw">as </span>u32,
+    STADDB = Operation_ARM64_STADDB <span class="kw">as </span>u32,
+    STADDH = Operation_ARM64_STADDH <span class="kw">as </span>u32,
+    STADDL = Operation_ARM64_STADDL <span class="kw">as </span>u32,
+    STADDLB = Operation_ARM64_STADDLB <span class="kw">as </span>u32,
+    STADDLH = Operation_ARM64_STADDLH <span class="kw">as </span>u32,
+    STCLR = Operation_ARM64_STCLR <span class="kw">as </span>u32,
+    STCLRB = Operation_ARM64_STCLRB <span class="kw">as </span>u32,
+    STCLRH = Operation_ARM64_STCLRH <span class="kw">as </span>u32,
+    STCLRL = Operation_ARM64_STCLRL <span class="kw">as </span>u32,
+    STCLRLB = Operation_ARM64_STCLRLB <span class="kw">as </span>u32,
+    STCLRLH = Operation_ARM64_STCLRLH <span class="kw">as </span>u32,
+    STEOR = Operation_ARM64_STEOR <span class="kw">as </span>u32,
+    STEORB = Operation_ARM64_STEORB <span class="kw">as </span>u32,
+    STEORH = Operation_ARM64_STEORH <span class="kw">as </span>u32,
+    STEORL = Operation_ARM64_STEORL <span class="kw">as </span>u32,
+    STEORLB = Operation_ARM64_STEORLB <span class="kw">as </span>u32,
+    STEORLH = Operation_ARM64_STEORLH <span class="kw">as </span>u32,
+    STG = Operation_ARM64_STG <span class="kw">as </span>u32,
+    STGM = Operation_ARM64_STGM <span class="kw">as </span>u32,
+    STGP = Operation_ARM64_STGP <span class="kw">as </span>u32,
+    STLLR = Operation_ARM64_STLLR <span class="kw">as </span>u32,
+    STLLRB = Operation_ARM64_STLLRB <span class="kw">as </span>u32,
+    STLLRH = Operation_ARM64_STLLRH <span class="kw">as </span>u32,
+    STLR = Operation_ARM64_STLR <span class="kw">as </span>u32,
+    STLRB = Operation_ARM64_STLRB <span class="kw">as </span>u32,
+    STLRH = Operation_ARM64_STLRH <span class="kw">as </span>u32,
+    STLUR = Operation_ARM64_STLUR <span class="kw">as </span>u32,
+    STLURB = Operation_ARM64_STLURB <span class="kw">as </span>u32,
+    STLURH = Operation_ARM64_STLURH <span class="kw">as </span>u32,
+    STLXP = Operation_ARM64_STLXP <span class="kw">as </span>u32,
+    STLXR = Operation_ARM64_STLXR <span class="kw">as </span>u32,
+    STLXRB = Operation_ARM64_STLXRB <span class="kw">as </span>u32,
+    STLXRH = Operation_ARM64_STLXRH <span class="kw">as </span>u32,
+    STNP = Operation_ARM64_STNP <span class="kw">as </span>u32,
+    STNT1B = Operation_ARM64_STNT1B <span class="kw">as </span>u32,
+    STNT1D = Operation_ARM64_STNT1D <span class="kw">as </span>u32,
+    STNT1H = Operation_ARM64_STNT1H <span class="kw">as </span>u32,
+    STNT1W = Operation_ARM64_STNT1W <span class="kw">as </span>u32,
+    STP = Operation_ARM64_STP <span class="kw">as </span>u32,
+    STR = Operation_ARM64_STR <span class="kw">as </span>u32,
+    STRB = Operation_ARM64_STRB <span class="kw">as </span>u32,
+    STRH = Operation_ARM64_STRH <span class="kw">as </span>u32,
+    STSET = Operation_ARM64_STSET <span class="kw">as </span>u32,
+    STSETB = Operation_ARM64_STSETB <span class="kw">as </span>u32,
+    STSETH = Operation_ARM64_STSETH <span class="kw">as </span>u32,
+    STSETL = Operation_ARM64_STSETL <span class="kw">as </span>u32,
+    STSETLB = Operation_ARM64_STSETLB <span class="kw">as </span>u32,
+    STSETLH = Operation_ARM64_STSETLH <span class="kw">as </span>u32,
+    STSMAX = Operation_ARM64_STSMAX <span class="kw">as </span>u32,
+    STSMAXB = Operation_ARM64_STSMAXB <span class="kw">as </span>u32,
+    STSMAXH = Operation_ARM64_STSMAXH <span class="kw">as </span>u32,
+    STSMAXL = Operation_ARM64_STSMAXL <span class="kw">as </span>u32,
+    STSMAXLB = Operation_ARM64_STSMAXLB <span class="kw">as </span>u32,
+    STSMAXLH = Operation_ARM64_STSMAXLH <span class="kw">as </span>u32,
+    STSMIN = Operation_ARM64_STSMIN <span class="kw">as </span>u32,
+    STSMINB = Operation_ARM64_STSMINB <span class="kw">as </span>u32,
+    STSMINH = Operation_ARM64_STSMINH <span class="kw">as </span>u32,
+    STSMINL = Operation_ARM64_STSMINL <span class="kw">as </span>u32,
+    STSMINLB = Operation_ARM64_STSMINLB <span class="kw">as </span>u32,
+    STSMINLH = Operation_ARM64_STSMINLH <span class="kw">as </span>u32,
+    STTR = Operation_ARM64_STTR <span class="kw">as </span>u32,
+    STTRB = Operation_ARM64_STTRB <span class="kw">as </span>u32,
+    STTRH = Operation_ARM64_STTRH <span class="kw">as </span>u32,
+    STUMAX = Operation_ARM64_STUMAX <span class="kw">as </span>u32,
+    STUMAXB = Operation_ARM64_STUMAXB <span class="kw">as </span>u32,
+    STUMAXH = Operation_ARM64_STUMAXH <span class="kw">as </span>u32,
+    STUMAXL = Operation_ARM64_STUMAXL <span class="kw">as </span>u32,
+    STUMAXLB = Operation_ARM64_STUMAXLB <span class="kw">as </span>u32,
+    STUMAXLH = Operation_ARM64_STUMAXLH <span class="kw">as </span>u32,
+    STUMIN = Operation_ARM64_STUMIN <span class="kw">as </span>u32,
+    STUMINB = Operation_ARM64_STUMINB <span class="kw">as </span>u32,
+    STUMINH = Operation_ARM64_STUMINH <span class="kw">as </span>u32,
+    STUMINL = Operation_ARM64_STUMINL <span class="kw">as </span>u32,
+    STUMINLB = Operation_ARM64_STUMINLB <span class="kw">as </span>u32,
+    STUMINLH = Operation_ARM64_STUMINLH <span class="kw">as </span>u32,
+    STUR = Operation_ARM64_STUR <span class="kw">as </span>u32,
+    STURB = Operation_ARM64_STURB <span class="kw">as </span>u32,
+    STURH = Operation_ARM64_STURH <span class="kw">as </span>u32,
+    STXP = Operation_ARM64_STXP <span class="kw">as </span>u32,
+    STXR = Operation_ARM64_STXR <span class="kw">as </span>u32,
+    STXRB = Operation_ARM64_STXRB <span class="kw">as </span>u32,
+    STXRH = Operation_ARM64_STXRH <span class="kw">as </span>u32,
+    STZ2G = Operation_ARM64_STZ2G <span class="kw">as </span>u32,
+    STZG = Operation_ARM64_STZG <span class="kw">as </span>u32,
+    STZGM = Operation_ARM64_STZGM <span class="kw">as </span>u32,
+    SUB = Operation_ARM64_SUB <span class="kw">as </span>u32,
+    SUBG = Operation_ARM64_SUBG <span class="kw">as </span>u32,
+    SUBHN = Operation_ARM64_SUBHN <span class="kw">as </span>u32,
+    SUBHN2 = Operation_ARM64_SUBHN2 <span class="kw">as </span>u32,
+    SUBHNB = Operation_ARM64_SUBHNB <span class="kw">as </span>u32,
+    SUBHNT = Operation_ARM64_SUBHNT <span class="kw">as </span>u32,
+    SUBP = Operation_ARM64_SUBP <span class="kw">as </span>u32,
+    SUBPS = Operation_ARM64_SUBPS <span class="kw">as </span>u32,
+    SUBR = Operation_ARM64_SUBR <span class="kw">as </span>u32,
+    SUBS = Operation_ARM64_SUBS <span class="kw">as </span>u32,
+    SUDOT = Operation_ARM64_SUDOT <span class="kw">as </span>u32,
+    SUMOPA = Operation_ARM64_SUMOPA <span class="kw">as </span>u32,
+    SUMOPS = Operation_ARM64_SUMOPS <span class="kw">as </span>u32,
+    SUNPKHI = Operation_ARM64_SUNPKHI <span class="kw">as </span>u32,
+    SUNPKLO = Operation_ARM64_SUNPKLO <span class="kw">as </span>u32,
+    SUQADD = Operation_ARM64_SUQADD <span class="kw">as </span>u32,
+    SVC = Operation_ARM64_SVC <span class="kw">as </span>u32,
+    SWP = Operation_ARM64_SWP <span class="kw">as </span>u32,
+    SWPA = Operation_ARM64_SWPA <span class="kw">as </span>u32,
+    SWPAB = Operation_ARM64_SWPAB <span class="kw">as </span>u32,
+    SWPAH = Operation_ARM64_SWPAH <span class="kw">as </span>u32,
+    SWPAL = Operation_ARM64_SWPAL <span class="kw">as </span>u32,
+    SWPALB = Operation_ARM64_SWPALB <span class="kw">as </span>u32,
+    SWPALH = Operation_ARM64_SWPALH <span class="kw">as </span>u32,
+    SWPB = Operation_ARM64_SWPB <span class="kw">as </span>u32,
+    SWPH = Operation_ARM64_SWPH <span class="kw">as </span>u32,
+    SWPL = Operation_ARM64_SWPL <span class="kw">as </span>u32,
+    SWPLB = Operation_ARM64_SWPLB <span class="kw">as </span>u32,
+    SWPLH = Operation_ARM64_SWPLH <span class="kw">as </span>u32,
+    SXTB = Operation_ARM64_SXTB <span class="kw">as </span>u32,
+    SXTH = Operation_ARM64_SXTH <span class="kw">as </span>u32,
+    SXTL = Operation_ARM64_SXTL <span class="kw">as </span>u32,
+    SXTL2 = Operation_ARM64_SXTL2 <span class="kw">as </span>u32,
+    SXTW = Operation_ARM64_SXTW <span class="kw">as </span>u32,
+    SYS = Operation_ARM64_SYS <span class="kw">as </span>u32,
+    SYSL = Operation_ARM64_SYSL <span class="kw">as </span>u32,
+    TBL = Operation_ARM64_TBL <span class="kw">as </span>u32,
+    TBNZ = Operation_ARM64_TBNZ <span class="kw">as </span>u32,
+    TBX = Operation_ARM64_TBX <span class="kw">as </span>u32,
+    TBZ = Operation_ARM64_TBZ <span class="kw">as </span>u32,
+    TCANCEL = Operation_ARM64_TCANCEL <span class="kw">as </span>u32,
+    TCOMMIT = Operation_ARM64_TCOMMIT <span class="kw">as </span>u32,
+    TLBI = Operation_ARM64_TLBI <span class="kw">as </span>u32,
+    TRN1 = Operation_ARM64_TRN1 <span class="kw">as </span>u32,
+    TRN2 = Operation_ARM64_TRN2 <span class="kw">as </span>u32,
+    TSB = Operation_ARM64_TSB <span class="kw">as </span>u32,
+    TST = Operation_ARM64_TST <span class="kw">as </span>u32,
+    TSTART = Operation_ARM64_TSTART <span class="kw">as </span>u32,
+    TTEST = Operation_ARM64_TTEST <span class="kw">as </span>u32,
+    UABA = Operation_ARM64_UABA <span class="kw">as </span>u32,
+    UABAL = Operation_ARM64_UABAL <span class="kw">as </span>u32,
+    UABAL2 = Operation_ARM64_UABAL2 <span class="kw">as </span>u32,
+    UABALB = Operation_ARM64_UABALB <span class="kw">as </span>u32,
+    UABALT = Operation_ARM64_UABALT <span class="kw">as </span>u32,
+    UABD = Operation_ARM64_UABD <span class="kw">as </span>u32,
+    UABDL = Operation_ARM64_UABDL <span class="kw">as </span>u32,
+    UABDL2 = Operation_ARM64_UABDL2 <span class="kw">as </span>u32,
+    UABDLB = Operation_ARM64_UABDLB <span class="kw">as </span>u32,
+    UABDLT = Operation_ARM64_UABDLT <span class="kw">as </span>u32,
+    UADALP = Operation_ARM64_UADALP <span class="kw">as </span>u32,
+    UADDL = Operation_ARM64_UADDL <span class="kw">as </span>u32,
+    UADDL2 = Operation_ARM64_UADDL2 <span class="kw">as </span>u32,
+    UADDLB = Operation_ARM64_UADDLB <span class="kw">as </span>u32,
+    UADDLP = Operation_ARM64_UADDLP <span class="kw">as </span>u32,
+    UADDLT = Operation_ARM64_UADDLT <span class="kw">as </span>u32,
+    UADDLV = Operation_ARM64_UADDLV <span class="kw">as </span>u32,
+    UADDV = Operation_ARM64_UADDV <span class="kw">as </span>u32,
+    UADDW = Operation_ARM64_UADDW <span class="kw">as </span>u32,
+    UADDW2 = Operation_ARM64_UADDW2 <span class="kw">as </span>u32,
+    UADDWB = Operation_ARM64_UADDWB <span class="kw">as </span>u32,
+    UADDWT = Operation_ARM64_UADDWT <span class="kw">as </span>u32,
+    UBFIZ = Operation_ARM64_UBFIZ <span class="kw">as </span>u32,
+    UBFM = Operation_ARM64_UBFM <span class="kw">as </span>u32,
+    UBFX = Operation_ARM64_UBFX <span class="kw">as </span>u32,
+    UCLAMP = Operation_ARM64_UCLAMP <span class="kw">as </span>u32,
+    UCVTF = Operation_ARM64_UCVTF <span class="kw">as </span>u32,
+    UDF = Operation_ARM64_UDF <span class="kw">as </span>u32,
+    UDIV = Operation_ARM64_UDIV <span class="kw">as </span>u32,
+    UDIVR = Operation_ARM64_UDIVR <span class="kw">as </span>u32,
+    UDOT = Operation_ARM64_UDOT <span class="kw">as </span>u32,
+    UHADD = Operation_ARM64_UHADD <span class="kw">as </span>u32,
+    UHSUB = Operation_ARM64_UHSUB <span class="kw">as </span>u32,
+    UHSUBR = Operation_ARM64_UHSUBR <span class="kw">as </span>u32,
+    UMADDL = Operation_ARM64_UMADDL <span class="kw">as </span>u32,
+    UMAX = Operation_ARM64_UMAX <span class="kw">as </span>u32,
+    UMAXP = Operation_ARM64_UMAXP <span class="kw">as </span>u32,
+    UMAXV = Operation_ARM64_UMAXV <span class="kw">as </span>u32,
+    UMIN = Operation_ARM64_UMIN <span class="kw">as </span>u32,
+    UMINP = Operation_ARM64_UMINP <span class="kw">as </span>u32,
+    UMINV = Operation_ARM64_UMINV <span class="kw">as </span>u32,
+    UMLAL = Operation_ARM64_UMLAL <span class="kw">as </span>u32,
+    UMLAL2 = Operation_ARM64_UMLAL2 <span class="kw">as </span>u32,
+    UMLALB = Operation_ARM64_UMLALB <span class="kw">as </span>u32,
+    UMLALT = Operation_ARM64_UMLALT <span class="kw">as </span>u32,
+    UMLSL = Operation_ARM64_UMLSL <span class="kw">as </span>u32,
+    UMLSL2 = Operation_ARM64_UMLSL2 <span class="kw">as </span>u32,
+    UMLSLB = Operation_ARM64_UMLSLB <span class="kw">as </span>u32,
+    UMLSLT = Operation_ARM64_UMLSLT <span class="kw">as </span>u32,
+    UMMLA = Operation_ARM64_UMMLA <span class="kw">as </span>u32,
+    UMNEGL = Operation_ARM64_UMNEGL <span class="kw">as </span>u32,
+    UMOPA = Operation_ARM64_UMOPA <span class="kw">as </span>u32,
+    UMOPS = Operation_ARM64_UMOPS <span class="kw">as </span>u32,
+    UMOV = Operation_ARM64_UMOV <span class="kw">as </span>u32,
+    UMSUBL = Operation_ARM64_UMSUBL <span class="kw">as </span>u32,
+    UMULH = Operation_ARM64_UMULH <span class="kw">as </span>u32,
+    UMULL = Operation_ARM64_UMULL <span class="kw">as </span>u32,
+    UMULL2 = Operation_ARM64_UMULL2 <span class="kw">as </span>u32,
+    UMULLB = Operation_ARM64_UMULLB <span class="kw">as </span>u32,
+    UMULLT = Operation_ARM64_UMULLT <span class="kw">as </span>u32,
+    UQADD = Operation_ARM64_UQADD <span class="kw">as </span>u32,
+    UQDECB = Operation_ARM64_UQDECB <span class="kw">as </span>u32,
+    UQDECD = Operation_ARM64_UQDECD <span class="kw">as </span>u32,
+    UQDECH = Operation_ARM64_UQDECH <span class="kw">as </span>u32,
+    UQDECP = Operation_ARM64_UQDECP <span class="kw">as </span>u32,
+    UQDECW = Operation_ARM64_UQDECW <span class="kw">as </span>u32,
+    UQINCB = Operation_ARM64_UQINCB <span class="kw">as </span>u32,
+    UQINCD = Operation_ARM64_UQINCD <span class="kw">as </span>u32,
+    UQINCH = Operation_ARM64_UQINCH <span class="kw">as </span>u32,
+    UQINCP = Operation_ARM64_UQINCP <span class="kw">as </span>u32,
+    UQINCW = Operation_ARM64_UQINCW <span class="kw">as </span>u32,
+    UQRSHL = Operation_ARM64_UQRSHL <span class="kw">as </span>u32,
+    UQRSHLR = Operation_ARM64_UQRSHLR <span class="kw">as </span>u32,
+    UQRSHRN = Operation_ARM64_UQRSHRN <span class="kw">as </span>u32,
+    UQRSHRN2 = Operation_ARM64_UQRSHRN2 <span class="kw">as </span>u32,
+    UQRSHRNB = Operation_ARM64_UQRSHRNB <span class="kw">as </span>u32,
+    UQRSHRNT = Operation_ARM64_UQRSHRNT <span class="kw">as </span>u32,
+    UQSHL = Operation_ARM64_UQSHL <span class="kw">as </span>u32,
+    UQSHLR = Operation_ARM64_UQSHLR <span class="kw">as </span>u32,
+    UQSHRN = Operation_ARM64_UQSHRN <span class="kw">as </span>u32,
+    UQSHRN2 = Operation_ARM64_UQSHRN2 <span class="kw">as </span>u32,
+    UQSHRNB = Operation_ARM64_UQSHRNB <span class="kw">as </span>u32,
+    UQSHRNT = Operation_ARM64_UQSHRNT <span class="kw">as </span>u32,
+    UQSUB = Operation_ARM64_UQSUB <span class="kw">as </span>u32,
+    UQSUBR = Operation_ARM64_UQSUBR <span class="kw">as </span>u32,
+    UQXTN = Operation_ARM64_UQXTN <span class="kw">as </span>u32,
+    UQXTN2 = Operation_ARM64_UQXTN2 <span class="kw">as </span>u32,
+    UQXTNB = Operation_ARM64_UQXTNB <span class="kw">as </span>u32,
+    UQXTNT = Operation_ARM64_UQXTNT <span class="kw">as </span>u32,
+    URECPE = Operation_ARM64_URECPE <span class="kw">as </span>u32,
+    URHADD = Operation_ARM64_URHADD <span class="kw">as </span>u32,
+    URSHL = Operation_ARM64_URSHL <span class="kw">as </span>u32,
+    URSHLR = Operation_ARM64_URSHLR <span class="kw">as </span>u32,
+    URSHR = Operation_ARM64_URSHR <span class="kw">as </span>u32,
+    URSQRTE = Operation_ARM64_URSQRTE <span class="kw">as </span>u32,
+    URSRA = Operation_ARM64_URSRA <span class="kw">as </span>u32,
+    USDOT = Operation_ARM64_USDOT <span class="kw">as </span>u32,
+    USHL = Operation_ARM64_USHL <span class="kw">as </span>u32,
+    USHLL = Operation_ARM64_USHLL <span class="kw">as </span>u32,
+    USHLL2 = Operation_ARM64_USHLL2 <span class="kw">as </span>u32,
+    USHLLB = Operation_ARM64_USHLLB <span class="kw">as </span>u32,
+    USHLLT = Operation_ARM64_USHLLT <span class="kw">as </span>u32,
+    USHR = Operation_ARM64_USHR <span class="kw">as </span>u32,
+    USMMLA = Operation_ARM64_USMMLA <span class="kw">as </span>u32,
+    USMOPA = Operation_ARM64_USMOPA <span class="kw">as </span>u32,
+    USMOPS = Operation_ARM64_USMOPS <span class="kw">as </span>u32,
+    USQADD = Operation_ARM64_USQADD <span class="kw">as </span>u32,
+    USRA = Operation_ARM64_USRA <span class="kw">as </span>u32,
+    USUBL = Operation_ARM64_USUBL <span class="kw">as </span>u32,
+    USUBL2 = Operation_ARM64_USUBL2 <span class="kw">as </span>u32,
+    USUBLB = Operation_ARM64_USUBLB <span class="kw">as </span>u32,
+    USUBLT = Operation_ARM64_USUBLT <span class="kw">as </span>u32,
+    USUBW = Operation_ARM64_USUBW <span class="kw">as </span>u32,
+    USUBW2 = Operation_ARM64_USUBW2 <span class="kw">as </span>u32,
+    USUBWB = Operation_ARM64_USUBWB <span class="kw">as </span>u32,
+    USUBWT = Operation_ARM64_USUBWT <span class="kw">as </span>u32,
+    UUNPKHI = Operation_ARM64_UUNPKHI <span class="kw">as </span>u32,
+    UUNPKLO = Operation_ARM64_UUNPKLO <span class="kw">as </span>u32,
+    UXTB = Operation_ARM64_UXTB <span class="kw">as </span>u32,
+    UXTH = Operation_ARM64_UXTH <span class="kw">as </span>u32,
+    UXTL = Operation_ARM64_UXTL <span class="kw">as </span>u32,
+    UXTL2 = Operation_ARM64_UXTL2 <span class="kw">as </span>u32,
+    UXTW = Operation_ARM64_UXTW <span class="kw">as </span>u32,
+    UZP1 = Operation_ARM64_UZP1 <span class="kw">as </span>u32,
+    UZP2 = Operation_ARM64_UZP2 <span class="kw">as </span>u32,
+    WFE = Operation_ARM64_WFE <span class="kw">as </span>u32,
+    WFET = Operation_ARM64_WFET <span class="kw">as </span>u32,
+    WFI = Operation_ARM64_WFI <span class="kw">as </span>u32,
+    WFIT = Operation_ARM64_WFIT <span class="kw">as </span>u32,
+    WHILEGE = Operation_ARM64_WHILEGE <span class="kw">as </span>u32,
+    WHILEGT = Operation_ARM64_WHILEGT <span class="kw">as </span>u32,
+    WHILEHI = Operation_ARM64_WHILEHI <span class="kw">as </span>u32,
+    WHILEHS = Operation_ARM64_WHILEHS <span class="kw">as </span>u32,
+    WHILELE = Operation_ARM64_WHILELE <span class="kw">as </span>u32,
+    WHILELO = Operation_ARM64_WHILELO <span class="kw">as </span>u32,
+    WHILELS = Operation_ARM64_WHILELS <span class="kw">as </span>u32,
+    WHILELT = Operation_ARM64_WHILELT <span class="kw">as </span>u32,
+    WHILERW = Operation_ARM64_WHILERW <span class="kw">as </span>u32,
+    WHILEWR = Operation_ARM64_WHILEWR <span class="kw">as </span>u32,
+    WRFFR = Operation_ARM64_WRFFR <span class="kw">as </span>u32,
+    XAFLAG = Operation_ARM64_XAFLAG <span class="kw">as </span>u32,
+    XAR = Operation_ARM64_XAR <span class="kw">as </span>u32,
+    XPACD = Operation_ARM64_XPACD <span class="kw">as </span>u32,
+    XPACI = Operation_ARM64_XPACI <span class="kw">as </span>u32,
+    XPACLRI = Operation_ARM64_XPACLRI <span class="kw">as </span>u32,
+    XTN = Operation_ARM64_XTN <span class="kw">as </span>u32,
+    XTN2 = Operation_ARM64_XTN2 <span class="kw">as </span>u32,
+    YIELD = Operation_ARM64_YIELD <span class="kw">as </span>u32,
+    ZERO = Operation_ARM64_ZERO <span class="kw">as </span>u32,
+    ZIP1 = Operation_ARM64_ZIP1 <span class="kw">as </span>u32,
+    ZIP2 = Operation_ARM64_ZIP2 <span class="kw">as </span>u32,
+}
+
+<span class="comment">// this is a guard to try to detect if new instructions get added
+</span><span class="macro">const_assert_eq!</span>(Operation_ARM64_ZIP2, <span class="number">1183</span>);
+
+<span class="kw">impl </span>Op {
+    <span class="doccomment">/// Get the operation name
+    ///
+    /// This is an alias for the instruction mnemonic
+    ///
+    /// # Examples
+    /// ```
+    /// use bad64::{decode, Op};
+    ///
+    /// // nop
+    /// let decoded = decode(0xd503201f, 0x1000).unwrap();
+    ///
+    /// assert_eq!(decoded.op(), Op::NOP);
+    /// assert_eq!(decoded.op().mnem(), &quot;nop&quot;);
+    /// ```
+    </span><span class="kw">pub fn </span>mnem(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="lifetime">&#39;static </span>str {
+        <span class="attr">#[cfg(target_os = <span class="string">&quot;windows&quot;</span>)]
+        </span>{
+            <span class="kw">unsafe </span>{ CStr::from_ptr(operation_to_str(<span class="self">self</span>.to_i32().unwrap()) <span class="kw">as _</span>) }
+                .to_str()
+                .unwrap()
+        }
+        <span class="attr">#[cfg(not(target_os = <span class="string">&quot;windows&quot;</span>))]
+        </span>{
+            <span class="kw">unsafe </span>{ CStr::from_ptr(operation_to_str(<span class="self">self</span>.to_u32().unwrap()) <span class="kw">as _</span>) }
+                .to_str()
+                .unwrap()
+        }
+    }
+}
+
+<span class="kw">impl </span>fmt::Display <span class="kw">for </span>Op {
+    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>fmt::Formatter&lt;<span class="lifetime">&#39;_</span>&gt;) -&gt; fmt::Result {
+        <span class="macro">write!</span>(f, <span class="string">&quot;{}&quot;</span>, <span class="self">self</span>.mnem())
+    }
+}
+</code></pre></div></section></main></body></html>

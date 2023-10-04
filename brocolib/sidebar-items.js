@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["MetadataParseError"],"mod":["global_metadata","runtime_metadata"],"struct":["Metadata"]};
