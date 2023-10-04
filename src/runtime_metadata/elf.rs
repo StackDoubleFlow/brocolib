@@ -328,6 +328,8 @@ impl Il2CppType {
         vaddr: u64,
         type_map: &HashMap<u64, usize>,
         generic_class_map: &HashMap<u64, usize>,
+        array_types: &mut Vec<Il2CppArrayType>,
+        array_type_map: &mut HashMap<u64, usize>,
     ) -> Result<Il2CppType> {
         let mut cur = reader.make_cur(vaddr)?;
 
@@ -340,7 +342,17 @@ impl Il2CppType {
         let data = match ty {
             Il2CppTypeEnum::Var | Il2CppTypeEnum::Mvar => TypeData::GenericParameterIndex(GenericParameterIndex::new(raw_data as u32)),
             Il2CppTypeEnum::Ptr | Il2CppTypeEnum::Szarray => TypeData::TypeIndex(type_map[&raw_data]),
-            Il2CppTypeEnum::Array => TypeData::ArrayType,
+            Il2CppTypeEnum::Array => TypeData::ArrayType({
+                match array_type_map.get(&raw_data) {
+                    Some(idx) => *idx,
+                    None => {
+                        let idx = array_types.len();
+                        array_types.push(Il2CppArrayType::read(reader, raw_data, type_map)?);
+                        array_type_map.insert(raw_data, idx);
+                        idx
+                    }
+                }
+            }),
             Il2CppTypeEnum::Genericinst => TypeData::GenericClassIndex(generic_class_map[&raw_data]),
             _ => TypeData::TypeDefinitionIndex(TypeDefinitionIndex::new(raw_data as u32)),
         };
@@ -405,6 +417,30 @@ impl Il2CppGenericInst {
     }
 }
 
+impl Il2CppArrayType {
+    fn read(reader: &ElfReader, vaddr: u64, types_map: &HashMap<u64, usize>) -> Result<Self> {
+        let mut cur = reader.make_cur(vaddr)?;
+
+        let elem_ty_ptr = cur.read_u64::<LittleEndian>()?;
+        let elem_ty = types_map[&elem_ty_ptr];
+
+        let rank = cur.read_u8()?;
+        let num_sizes = cur.read_u8()?;
+        let num_lobounds = cur.read_u8()?;
+
+        let _padding = cur.read_u32::<LittleEndian>()?;
+        let _padding = cur.read_u8()?;
+
+        let sizes_ptr = cur.read_u64::<LittleEndian>()?;
+        let sizes = read_arr(reader, sizes_ptr, num_sizes as usize)?;
+
+        let lobounds_ptr = cur.read_u64::<LittleEndian>()?;
+        let lower_bounds = read_arr(reader, lobounds_ptr, num_lobounds as usize)?;
+
+        Ok(Self { elem_ty, rank, sizes, lower_bounds })
+    }
+}
+
 impl Il2CppMetadataRegistration {
     fn read(elf: &Elf, addr: u64, metadata: &GlobalMetadata) -> Result<Self> {
         let reader = ElfReader::new(elf);
@@ -436,8 +472,10 @@ impl Il2CppMetadataRegistration {
         }
 
         let mut types = Vec::with_capacity(type_addrs.len());
+        let mut array_types = Vec::new();
+        let mut array_type_map = HashMap::new();
         for addr in type_addrs {
-            types.push(Il2CppType::read(&reader, addr, &type_map, &generic_class_map)?);
+            types.push(Il2CppType::read(&reader, addr, &type_map, &generic_class_map, &mut array_types, &mut array_type_map)?);
         }
 
         let mut generic_insts = Vec::with_capacity(generic_inst_addrs.len());
@@ -473,6 +511,7 @@ impl Il2CppMetadataRegistration {
             generic_insts,
             generic_method_table,
             types,
+            array_types,
             method_specs,
             field_offsets: Some(field_offsets),
             type_definition_sizes: Some(type_definition_sizes),

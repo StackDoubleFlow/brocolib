@@ -49,6 +49,15 @@ pub struct Il2CppRGCTXDefinition {
     pub data: u64,
 }
 
+/// Defined at `il2cpp-runtime-metadata.h:11`
+#[derive(Debug)]
+pub struct Il2CppArrayType {
+    pub elem_ty: usize,
+    pub rank: u8,
+    pub sizes: Vec<u32>,
+    pub lower_bounds: Vec<u32>,
+}
+
 /// Defined at `il2cpp-class-internals:582`
 #[derive(Debug)]
 pub struct Il2CppCodeGenModule<'data> {
@@ -213,9 +222,8 @@ pub enum TypeData {
     GenericParameterIndex(GenericParameterIndex),
     /// For [`Il2CppTypeEnum::Genericinst`]
     GenericClassIndex(usize),
-    // TODO
     /// For [`Il2CppTypeEnum::Array`]
-    ArrayType,
+    ArrayType(usize),
 }
 
 /// Defined at `il2cpp-runtime-metadata.h:48`
@@ -261,6 +269,16 @@ impl Il2CppType {
                 (Il2CppTypeEnum::Var | Il2CppTypeEnum::Mvar, TypeData::GenericParameterIndex(idx)) => metadata.global_metadata.generic_parameters[idx].name(metadata).to_string(),
                 (Il2CppTypeEnum::Ptr, TypeData::TypeIndex(ty_idx)) => format!("{}*", types[ty_idx].full_name(metadata)),
                 (Il2CppTypeEnum::Szarray, TypeData::TypeIndex(ty_idx)) => format!("{}[]", types[ty_idx].full_name(metadata)),
+                (Il2CppTypeEnum::Array, TypeData::ArrayType(arr_ty_idx)) => {
+                    let arr_type = &mr.array_types[arr_ty_idx];
+                    let mut str = types[arr_type.elem_ty].full_name(metadata);
+                    str.push('[');
+                    for _ in 0..arr_type.rank - 1 {
+                        str.push(',');
+                    }
+                    str.push(']');
+                    str
+                },
                 (Il2CppTypeEnum::Class | Il2CppTypeEnum::Valuetype, TypeData::TypeDefinitionIndex(ty_idx)) => type_defs[ty_idx].full_name(metadata, false),
                 (Il2CppTypeEnum::Genericinst, TypeData::GenericClassIndex(gc)) => {
                     let gc = &mr.generic_classes[gc];
@@ -368,6 +386,9 @@ pub struct Il2CppMetadataRegistration {
     pub generic_insts: Vec<Il2CppGenericInst>,
     pub generic_method_table: Vec<Il2CppGenericMethodFunctionsDefinitions>,
     pub types: Vec<Il2CppType>,
+    /// This is not a real field in the metadata. It is here to provide the
+    /// ability to access array types by index instead of by pointer.
+    pub array_types: Vec<Il2CppArrayType>,
     pub method_specs: Vec<Il2CppMethodSpec>,
     /// Compiler calculated field offset values. Only exists when read from an
     /// ELF. Since this is platform dependent, it cannot be read from C++

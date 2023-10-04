@@ -153,7 +153,7 @@ impl Il2CppType {
         let data = match ty {
             Il2CppTypeEnum::Var | Il2CppTypeEnum::Mvar => TypeData::GenericParameterIndex(GenericParameterIndex::new(data_str.parse()?)),
             Il2CppTypeEnum::Ptr | Il2CppTypeEnum::Szarray => TypeData::TypeIndex(name_mappings.types[data_str]),
-            Il2CppTypeEnum::Array => TypeData::ArrayType,
+            Il2CppTypeEnum::Array => TypeData::ArrayType(todo!()),
             Il2CppTypeEnum::Genericinst => TypeData::GenericClassIndex(name_mappings.generic_classes[data_str]),
             _ => TypeData::TypeDefinitionIndex(TypeDefinitionIndex::new(data_str.parse()?)),
         };
@@ -399,6 +399,7 @@ impl Il2CppMetadataRegistration {
             generic_classes,
             generic_insts,
             generic_method_table,
+            array_types: Vec::new(), // TODO
             types,
             method_specs,
             field_offsets: None,
