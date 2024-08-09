@@ -9,7 +9,7 @@ edition = "2021"
 [dependencies]
 thiserror = "1"
 binde = { git = "https://github.com/StackDoubleFlow/binde" }
-bad64 = "0.6"
+bad64 = "0.9"
 byteorder = "1.4"
-object = "0.30"
+object = "0.36"
 binread = "2.2"
