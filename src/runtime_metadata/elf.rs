@@ -31,7 +31,7 @@ pub enum Il2CppBinaryError {
     #[error("error disassembling code")]
     Disassemble(DecodeError),
 
-    #[error("failed to convert vitual address {0:016x}")]
+    #[error("failed to convert vitual address 0x{0:016x}")]
     VAddrConv(u64),
 
     #[error("could not find il2cpp_init symbol in elf")]
@@ -184,8 +184,9 @@ fn find_registration(elf: &Elf) -> Result<(u64, u64)> {
         .find(|s| s.name() == Ok("il2cpp_init"))
         .ok_or(Il2CppBinaryError::MissingIl2CppInit)?
         .address();
-    let runtime_init = nth_bl(elf, il2cpp_init, 2)?;
+    let il2cpp_init_vaddr = vaddr_conv(elf, il2cpp_init)?;
 
+    let runtime_init = nth_bl(elf, il2cpp_init_vaddr, 2)?;
     let (blr_addr, blr_reg) =
         find_blr(elf, runtime_init, 200)?.ok_or(Il2CppBinaryError::MissingBlr)?;
     let instructions = try_disassemble(
