@@ -1,20 +1,20 @@
 //! ELF runtime metadata parsing.
-//! 
+//!
 //! For IL2CPP Unity games that are built for linux or linux-based platforms,
 //! you will find a shared object file named `libil2cpp.so`. This file contains
 //! the libil2cpp library, code generated from C#, as well as certain metadata
 //! information.
-//! 
+//!
 //! To read metadata information from `libil2cpp.so`, see
 //! [`RuntimeMetadata::read()`] and [`RuntimeMetadata::read_elf()`].
 
-use crate::global_metadata::{GlobalMetadata, TypeDefinitionIndex, GenericParameterIndex};
 use super::*;
+use crate::global_metadata::{GenericParameterIndex, GlobalMetadata, TypeDefinitionIndex};
 use bad64::{disasm, DecodeError, Imm, Instruction, Op, Operand, Reg};
 use binread::{BinRead, BinReaderExt};
-use byteorder::{LittleEndian, ReadBytesExt};
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use object::read::elf::ElfFile64;
-use object::{Endianness, Object, ObjectSection, ObjectSegment, ObjectSymbol};
+use object::{Endianness, Object, ObjectSection, ObjectSegment, ObjectSymbol, RelocationKind, RelocationTarget};
 use std::collections::HashMap;
 use std::io::{self, Cursor};
 use std::str;
@@ -96,7 +96,7 @@ pub fn vaddr_conv(elf: &Elf, vaddr: u64) -> Result<u64> {
     Err(Il2CppBinaryError::VAddrConv(vaddr))
 }
 
-fn analyze_reg_rel(elf: &Elf, instructions: &[Instruction]) -> HashMap<Reg, u64> {
+fn analyze_reg_rel(elf: &Elf, elf_rel: &[u8], instructions: &[Instruction]) -> HashMap<Reg, u64> {
     let mut map = HashMap::new();
     for ins in instructions {
         match (ins.op(), ins.operands()) {
@@ -128,8 +128,8 @@ fn analyze_reg_rel(elf: &Elf, instructions: &[Instruction]) -> HashMap<Reg, u64>
                 }
                 map.entry(*a).and_modify(|v| {
                     // TODO: propogate error
-                    let ptr = vaddr_conv(elf, (*v as i64 + imm) as u64).unwrap();
-                    *v = (&elf.data()[ptr as usize..ptr as usize + 8])
+                    let offset = vaddr_conv(elf, (*v as i64 + imm) as u64).unwrap();
+                    *v = (&elf_rel[offset as usize..offset as usize + 8])
                         .read_u64::<LittleEndian>()
                         .unwrap();
                 });
@@ -147,16 +147,17 @@ fn try_disassemble(code: &[u8], addr: u64) -> Result<Vec<Instruction>> {
 }
 
 fn nth_bl(elf: &Elf, addr: u64, n: usize) -> Result<u64> {
+    let offset = vaddr_conv(elf, addr)?;
     let mut count = 0;
 
     for i in 0.. {
-        let addr = addr + i * 4;
-        let code = &elf.data()[addr as usize..addr as usize + 4];
-        let ins = &try_disassemble(code, addr)?[0];
-        if let (Op::BL, [Operand::Label(Imm::Unsigned(addr))]) = (ins.op(), ins.operands()) {
+        let offset = offset + i * 4;
+        let code = &elf.data()[offset as usize..offset as usize + 4];
+        let ins = &try_disassemble(code, addr + i * 4)?[0];
+        if let (Op::BL, [Operand::Label(Imm::Unsigned(target))]) = (ins.op(), ins.operands()) {
             count += 1;
             if count == n {
-                return Ok(*addr);
+                return Ok(*target);
             }
         }
     }
@@ -166,38 +167,66 @@ fn nth_bl(elf: &Elf, addr: u64, n: usize) -> Result<u64> {
 
 /// Finds and returns the address of the first `blr` instruction it comes across starting from `addr`.
 fn find_blr(elf: &Elf, addr: u64, limit: usize) -> Result<Option<(u64, Reg)>> {
+    let offset = vaddr_conv(elf, addr)?;
     for i in 0..limit {
-        let addr = addr + i as u64 * 4;
-        let code = &elf.data()[addr as usize..addr as usize + 4];
-        let ins = &try_disassemble(code, addr)?[0];
+        let offset = offset + i as u64 * 4;
+        let code = &elf.data()[offset as usize..offset as usize + 4];
+        let ins = &try_disassemble(code, addr + i as u64 * 4)?[0];
         if let (Op::BLR, [Operand::Reg { reg, .. }]) = (ins.op(), ins.operands()) {
-            return Ok(Some((addr, *reg)));
+            return Ok(Some((offset, *reg)));
         }
     }
     Ok(None)
 }
 
+fn process_relocations(elf: &Elf) -> Result<Vec<u8>> {
+    let mut elf_rel = elf.data().to_vec();
+
+    if let Some(relocations) = elf.dynamic_relocations() {
+        for (addr, rel) in relocations {
+            // R_AARCH64_RELATIVE
+            if rel.kind() != RelocationKind::Elf(1027) {
+                // TODO: handle more relocation types
+                continue;
+            }
+
+            assert_eq!(rel.target(), RelocationTarget::Absolute);
+            let target = rel.addend() as u64;
+
+            let mut cur = Cursor::new(&mut elf_rel);
+            cur.set_position(vaddr_conv(elf, addr)?);
+            cur.write_u64::<LittleEndian>(target)?;
+        }
+    }
+
+    Ok(elf_rel)
+}
+
 /// Returns address to (g_CodeRegistration, g_MetadataRegistration)
 fn find_registration(elf: &Elf) -> Result<(u64, u64)> {
+    let elf_rel = process_relocations(elf)?;
+
     let il2cpp_init = elf
         .dynamic_symbols()
         .find(|s| s.name() == Ok("il2cpp_init"))
         .ok_or(Il2CppBinaryError::MissingIl2CppInit)?
         .address();
     let runtime_init = nth_bl(elf, il2cpp_init, 2)?;
+    let runtime_init_offset = vaddr_conv(elf, runtime_init)?;
 
-    let (blr_addr, blr_reg) =
+    let (blr_offset, blr_reg) =
         find_blr(elf, runtime_init, 200)?.ok_or(Il2CppBinaryError::MissingBlr)?;
+
     let instructions = try_disassemble(
-        &elf.data()[runtime_init as usize..blr_addr as usize],
+        &elf.data()[runtime_init_offset as usize..blr_offset as usize],
         runtime_init,
     )?;
-    let regs = analyze_reg_rel(elf, &instructions);
+    let regs = analyze_reg_rel(elf, &elf_rel, &instructions);
 
     let fn_addr = vaddr_conv(elf, regs[&blr_reg])?;
     let code = &elf.data()[fn_addr as usize..fn_addr as usize + 7 * 4];
-    let instructions = try_disassemble(code, fn_addr)?;
-    let regs = analyze_reg_rel(elf, instructions.as_slice());
+    let instructions = try_disassemble(code, regs[&blr_reg])?;
+    let regs = analyze_reg_rel(elf, &elf_rel, instructions.as_slice());
 
     Ok((regs[&Reg::X0], regs[&Reg::X1]))
 }
