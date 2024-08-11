@@ -31,7 +31,7 @@ pub enum Il2CppBinaryError {
     #[error("error disassembling code")]
     Disassemble(DecodeError),
 
-    #[error("failed to convert vitual address {0:016x}")]
+    #[error("failed to convert virtual address {0:#016x}")]
     VAddrConv(u64),
 
     #[error("could not find il2cpp_init symbol in elf")]
@@ -203,9 +203,7 @@ fn process_relocations(elf: &Elf) -> Result<Vec<u8>> {
 }
 
 /// Returns address to (g_CodeRegistration, g_MetadataRegistration)
-fn find_registration(elf: &Elf) -> Result<(u64, u64)> {
-    let elf_rel = process_relocations(elf)?;
-
+fn find_registration(elf: &Elf, elf_rel: &[u8]) -> Result<(u64, u64)> {
     let il2cpp_init = elf
         .dynamic_symbols()
         .find(|s| s.name() == Ok("il2cpp_init"))
@@ -231,18 +229,19 @@ fn find_registration(elf: &Elf) -> Result<(u64, u64)> {
     Ok((regs[&Reg::X0], regs[&Reg::X1]))
 }
 
-struct ElfReader<'elf, 'data> {
+struct ElfReader<'elf, 'data, 'elf_rel> {
     elf: &'elf Elf<'data>,
+    elf_rel: &'elf_rel [u8],
 }
 
-impl<'elf, 'data> ElfReader<'elf, 'data> {
-    fn new(elf: &'elf Elf<'data>) -> Self {
-        Self { elf }
+impl<'elf, 'data, 'elf_rel> ElfReader<'elf, 'data, 'elf_rel> {
+    fn new(elf: &'elf Elf<'data>, elf_rel: &'elf_rel [u8]) -> Self {
+        Self { elf, elf_rel }
     }
 
     fn make_cur(&self, vaddr: u64) -> Result<Cursor<&[u8]>> {
         let pos = vaddr_conv(self.elf, vaddr)?;
-        let mut cur = Cursor::new(self.elf.data());
+        let mut cur = Cursor::new(self.elf_rel);
         cur.set_position(pos);
         Ok(cur)
     }
@@ -290,7 +289,7 @@ where
 }
 
 impl<'data> Il2CppCodeGenModule<'data> {
-    fn read<'elf>(reader: &ElfReader<'elf, 'data>, vaddr: u64) -> Result<Self> {
+    fn read<'elf>(reader: &ElfReader<'elf, 'data, '_>, vaddr: u64) -> Result<Self> {
         let mut cur = reader.make_cur(vaddr)?;
 
         let name = reader.get_str(cur.read_u64::<LittleEndian>()?)?;
@@ -318,8 +317,8 @@ impl<'data> Il2CppCodeGenModule<'data> {
 }
 
 impl<'data> Il2CppCodeRegistration<'data> {
-    fn read(elf: &Elf<'data>, addr: u64) -> Result<Self> {
-        let reader = ElfReader::new(elf);
+    fn read(elf: &Elf<'data>, elf_rel: &[u8], addr: u64) -> Result<Self> {
+        let reader = ElfReader::new(elf, elf_rel);
         let mut cur = reader.make_cur(addr)?;
 
         let reverse_pinvoke_wrappers = read_len_arr(&reader, &mut cur)?;
@@ -345,7 +344,7 @@ impl<'data> Il2CppCodeRegistration<'data> {
             generic_method_pointers,
             generic_adjustor_thunks,
             invoker_pointers,
-            unresolved_virtual_call_pointers,
+            unresolved_indirect_call_pointers: unresolved_virtual_call_pointers,
             code_gen_modules,
         })
     }
@@ -471,8 +470,8 @@ impl Il2CppArrayType {
 }
 
 impl Il2CppMetadataRegistration {
-    fn read(elf: &Elf, addr: u64, metadata: &GlobalMetadata) -> Result<Self> {
-        let reader = ElfReader::new(elf);
+    fn read(elf: &Elf, elf_rel: &[u8], addr: u64, metadata: &GlobalMetadata) -> Result<Self> {
+        let reader = ElfReader::new(elf, elf_rel);
         let mut cur = reader.make_cur(addr)?;
 
         let generic_class_addrs = read_len_arr(&reader, &mut cur)?;
@@ -551,9 +550,11 @@ impl Il2CppMetadataRegistration {
 impl<'data> RuntimeMetadata<'data> {
     /// Read runtime metadata information from an [`Elf`].
     pub fn read(elf: &Elf<'data>, global_metadata: &GlobalMetadata) -> Result<Self> {
-        let (cr_addr, mr_addr) = find_registration(elf)?;
-        let code_registration = Il2CppCodeRegistration::read(elf, cr_addr)?;
-        let metadata_registration = Il2CppMetadataRegistration::read(elf, mr_addr, global_metadata)?;
+        let elf_rel = process_relocations(elf)?;
+
+        let (cr_addr, mr_addr) = find_registration(elf, &elf_rel)?;
+        let code_registration = Il2CppCodeRegistration::read(elf, &elf_rel, cr_addr)?;
+        let metadata_registration = Il2CppMetadataRegistration::read(elf, &elf_rel, mr_addr, global_metadata)?;
         Ok(RuntimeMetadata {
             code_registration,
             metadata_registration,

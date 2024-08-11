@@ -90,7 +90,7 @@ pub struct Il2CppCodeRegistration<'data> {
     pub generic_method_pointers: Vec<u64>,
     pub generic_adjustor_thunks: Vec<u64>,
     pub invoker_pointers: Vec<u64>,
-    pub unresolved_virtual_call_pointers: Vec<u64>,
+    pub unresolved_indirect_call_pointers: Vec<u64>,
 
     // TODO
     // pub interop_data: Vec<InteropData>,
