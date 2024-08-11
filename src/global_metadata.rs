@@ -168,6 +168,7 @@ pub struct Il2CppMethodDefinition {
     pub name_index: StringIndex,
     pub declaring_type: TypeDefinitionIndex,
     pub return_type: TypeIndex,
+    pub return_parameter_token: Token,
     pub parameter_start: ParameterIndex,
     /// Optional. Holds information about generic parameters.
     pub generic_container_index: GenericContainerIndex,
@@ -822,8 +823,8 @@ basic_table!(AttributeDataRangeTable: Il2CppCustomAttributeDataRange, AttributeD
 basic_table!(AttributeDataTable: u8, AttributeDataIndex);
 basic_table!(AttributeInfoTable: Il2CppCustomAttributeDataRange, AttributeInfoIndex);
 basic_table!(AttributeTypeTable: TypeIndex, AttributeTypeIndex);
-basic_table!(UnresolvedVirtualCallParameterTypeTable: TypeIndex, UnresolvedVirtualCallParameterTypeIndex);
-basic_table!(UnresolvedVirtualCallParameterRangeTable: Il2CppMetadataRange, UnresolvedVirtualCallParameterRangeIndex);
+basic_table!(UnresolvedIndirectCallParameterTypeTable: TypeIndex, UnresolvedIndirectCallParameterTypeIndex);
+basic_table!(UnresolvedIndirectCallParameterRangeTable: Il2CppMetadataRange, UnresolvedIndirectCallParameterRangeIndex);
 basic_table!(WindowsRuntimeTypeNameTable: Il2CppWindowsRuntimeTypeNamePair, WindowsRuntimeTypeNameIndex);
 string_data_table!(WindowsRuntimeStringData, WindowsRuntimeStringDataIndex);
 basic_table!(ExportedTypeDefinitionTable: TypeDefinitionIndex, ExportedTypeDefinitionIndex);
@@ -861,8 +862,8 @@ metadata! {
     referenced_assemblies: ReferencedAssemblyTable,
     attribute_data: AttributeDataTable,
     attribute_data_range: AttributeDataRangeTable,
-    unresolved_virtual_call_parameter_types: UnresolvedVirtualCallParameterTypeTable,
-    unresolved_virtual_call_parameter_ranges: UnresolvedVirtualCallParameterRangeTable,
+    unresolved_indirect_call_parameter_types: UnresolvedIndirectCallParameterTypeTable,
+    unresolved_indirect_call_parameter_ranges: UnresolvedIndirectCallParameterRangeTable,
     windows_runtime_type_names: WindowsRuntimeTypeNameTable,
     windows_runtime_strings: WindowsRuntimeStringData<'a>,
     exported_type_definitions: ExportedTypeDefinitionTable,
