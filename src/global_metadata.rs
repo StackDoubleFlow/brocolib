@@ -10,7 +10,7 @@ use binde::{BinaryDeserialize, LittleEndian};
 use thiserror::Error;
 
 const SANITY: u32 = 0xFAB11BAF;
-const VERSION: u32 = 29;
+const VERSION: u32 = 31;
 
 // TODO
 pub type TypeIndex = u32;
