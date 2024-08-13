@@ -328,10 +328,19 @@ impl<'data> Il2CppCodeRegistration<'data> {
         let generic_adjustor_thunks = read_arr(&reader, addr, generic_method_pointers.len())?;
 
         let invoker_pointers = read_len_arr(&reader, &mut cur)?;
-        let unresolved_virtual_call_pointers = read_len_arr(&reader, &mut cur)?;
+        // unresolvedIndirectCallCount
+        // unresolvedVirtualCallPointers
+        let unresolved_virtual_call_pointers: Vec<u64> = read_len_arr(&reader, &mut cur)?;
+        let _unresolved_instance_call_pointers = cur.read_u64::<LittleEndian>()?;
+        let _unresolved_static_call_pointers = cur.read_u64::<LittleEndian>()?;
 
-        let _todo = cur.read_u128::<LittleEndian>()?;
-        let _todo = cur.read_u128::<LittleEndian>()?;
+        // interopDataCount
+        // interopData
+        let _interop_data: Vec<u64> = read_len_arr(&reader, &mut cur)?;
+
+        // windowsRuntimeFactoryCount
+        // windowsRuntimeFactoryTable
+        let _windows_runtime_factory_table: Vec<u64> = read_len_arr(&reader, &mut cur)?;
 
         let module_addrs = read_len_arr(&reader, &mut cur)?;
         let mut code_gen_modules = Vec::with_capacity(module_addrs.len());
