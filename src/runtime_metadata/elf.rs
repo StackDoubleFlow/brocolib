@@ -189,7 +189,6 @@ fn process_relocations(elf: &Elf) -> Result<Vec<u8>> {
                 continue;
             }
 
-            assert_eq!(rel.target(), RelocationTarget::Absolute);
             let target = rel.addend() as u64;
 
             let mut cur = Cursor::new(&mut elf_rel);
