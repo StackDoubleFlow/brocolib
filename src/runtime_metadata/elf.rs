@@ -14,7 +14,7 @@ use bad64::{disasm, DecodeError, Imm, Instruction, Op, Operand, Reg};
 use binread::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use object::read::elf::ElfFile64;
-use object::{Endianness, Object, ObjectSection, ObjectSegment, ObjectSymbol, RelocationKind, RelocationTarget};
+use object::{Endianness, Object, ObjectSection, ObjectSegment, ObjectSymbol, RelocationEncoding, RelocationTarget};
 use std::collections::HashMap;
 use std::io::{self, Cursor};
 use std::str;
@@ -184,8 +184,7 @@ fn process_relocations(elf: &Elf) -> Result<Vec<u8>> {
 
     if let Some(relocations) = elf.dynamic_relocations() {
         for (addr, rel) in relocations {
-            // R_AARCH64_RELATIVE
-            if rel.kind() != RelocationKind::Elf(1027) {
+            if rel.encoding() != RelocationEncoding::Generic || rel.target() != RelocationTarget::Absolute {
                 // TODO: handle more relocation types
                 continue;
             }
