@@ -800,7 +800,7 @@ basic_table!(PropertyTable: Il2CppPropertyDefinition, PropertyIndex);
 basic_table!(MethodTable: Il2CppMethodDefinition, MethodIndex);
 basic_table!(ParameterDefaultValueTable: Il2CppParameterDefaultValue, ParameterDefaultValueIndex);
 basic_table!(FieldDefaultValueTable: Il2CppFieldDefaultValue, FieldDefaultValueIndex);
-// TODO: data?
+// TODO: Read default value data
 basic_table!(FieldAndParameterDefaultValueTable: u8, FieldAndParameterDefaultValueIndex);
 basic_table!(FieldMarshaledSizeTable: Il2CppFieldMarshaledSize, FieldMarshaledSizeIndex);
 basic_table!(ParameterTable: Il2CppParameterDefinition, ParameterIndex);
@@ -819,10 +819,8 @@ basic_table!(FieldRefTable: Il2CppFieldRef, FieldRefIndex);
 // TODO: reference assemblies?
 basic_table!(ReferencedAssemblyTable: u32, ReferencedAssemblyIndex);
 basic_table!(AttributeDataRangeTable: Il2CppCustomAttributeDataRange, AttributeDataRangeIndex);
-// TODO: data?
+// TODO: Read custom attribute data
 basic_table!(AttributeDataTable: u8, AttributeDataIndex);
-basic_table!(AttributeInfoTable: Il2CppCustomAttributeDataRange, AttributeInfoIndex);
-basic_table!(AttributeTypeTable: TypeIndex, AttributeTypeIndex);
 basic_table!(UnresolvedIndirectCallParameterTypeTable: TypeIndex, UnresolvedIndirectCallParameterTypeIndex);
 basic_table!(UnresolvedIndirectCallParameterRangeTable: Il2CppMetadataRange, UnresolvedIndirectCallParameterRangeIndex);
 basic_table!(WindowsRuntimeTypeNameTable: Il2CppWindowsRuntimeTypeNamePair, WindowsRuntimeTypeNameIndex);
