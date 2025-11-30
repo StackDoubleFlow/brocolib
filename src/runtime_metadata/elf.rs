@@ -127,11 +127,16 @@ fn analyze_reg_rel(elf: &Elf, elf_rel: &[u8], instructions: &[Instruction]) -> H
                     continue;
                 }
                 map.entry(*a).and_modify(|v| {
-                    // TODO: propogate error
-                    let offset = vaddr_conv(elf, (*v as i64 + imm) as u64).unwrap();
-                    *v = (&elf_rel[offset as usize..offset as usize + 8])
-                        .read_u64::<LittleEndian>()
-                        .unwrap();
+                    let vaddr = (*v as i64).wrapping_add(*imm) as u64;
+                    if let Ok(file_off) = vaddr_conv(elf, vaddr) {
+                        let start = file_off as usize;
+                        let end = start.saturating_add(8);
+                        if end <= elf_rel.len() {
+                            if let Ok(val) = (&elf_rel[start..end]).read_u64::<LittleEndian>() {
+                                *v = val;
+                            }
+                        }
+                    }
                 });
             }
             _ => {}
@@ -209,22 +214,127 @@ fn find_registration(elf: &Elf, elf_rel: &[u8]) -> Result<(u64, u64)> {
         .address();
     let runtime_init = nth_bl(elf, il2cpp_init, 2)?;
     let runtime_init_offset = vaddr_conv(elf, runtime_init)?;
+    let data = elf.data();
 
-    let (blr_offset, blr_reg) =
-        find_blr(elf, runtime_init, 200)?.ok_or(Il2CppBinaryError::MissingBlr)?;
+    // ── Unity 21 pattern: indirect BLR to g_CodegenRegistration ─────────────────
+    if let Some((blr_offset, blr_reg)) = find_blr(elf, runtime_init, 200)? {
+        // Disassemble from start of Runtime::Init up to the BLR
+        let instructions = try_disassemble(
+            &data[runtime_init_offset as usize..blr_offset as usize],
+            runtime_init,
+        )?;
+        let regs = analyze_reg_rel(elf, elf_rel, &instructions);
 
-    let instructions = try_disassemble(
-        &elf.data()[runtime_init_offset as usize..blr_offset as usize],
-        runtime_init,
-    )?;
-    let regs = analyze_reg_rel(elf, &elf_rel, &instructions);
+        // Follow the function pointer in that register
+        let target_vaddr = *regs
+            .get(&blr_reg)
+            .ok_or(Il2CppBinaryError::MissingRegistration)?;
+        let fn_off = vaddr_conv(elf, target_vaddr)?;
+        let code = &data[fn_off as usize..fn_off as usize + 7 * 4];
+        let instructions = try_disassemble(code, target_vaddr)?;
+        let regs = analyze_reg_rel(elf, elf_rel, instructions.as_slice());
 
-    let fn_addr = vaddr_conv(elf, regs[&blr_reg])?;
-    let code = &elf.data()[fn_addr as usize..fn_addr as usize + 7 * 4];
-    let instructions = try_disassemble(code, regs[&blr_reg])?;
-    let regs = analyze_reg_rel(elf, &elf_rel, instructions.as_slice());
+        return Ok((regs[&Reg::X0], regs[&Reg::X1]));
+    }
 
-    Ok((regs[&Reg::X0], regs[&Reg::X1]))
+    // ── New Unity 6 pattern: direct BL to g_CodegenRegistration ────────────
+
+    // Disassemble a chunk of Runtime::Init.
+    const MAX_RUNTIME_INSNS: usize = 400;
+    let start = runtime_init_offset as usize;
+    let end = (start + MAX_RUNTIME_INSNS * 4).min(data.len());
+    let instructions = try_disassemble(&data[start..end], runtime_init)?;
+
+    use bad64::{Op, Operand, Imm};
+
+    // Look for:  BL <g_CodegenRegistration>
+    //            BL <MetadataCache::Initialize>
+    //            TBZ w0, ...
+    let mut codegen_target: Option<u64> = None;
+
+    for i in 0..instructions.len().saturating_sub(2) {
+        if let (Op::BL, [Operand::Label(Imm::Unsigned(t1))]) =
+            (instructions[i].op(), instructions[i].operands())
+        {
+            if let (Op::BL, [Operand::Label(Imm::Unsigned(_t2))]) =
+                (instructions[i + 1].op(), instructions[i + 1].operands())
+            {
+                // In your dump this is "tbz w0,#0x0,..."
+                if instructions[i + 2].op() == Op::TBZ {
+                    codegen_target = Some(*t1);
+                    break;
+                }
+            }
+        }
+    }
+
+    let codegen_target =
+        codegen_target.ok_or(Il2CppBinaryError::MissingRegistration)?;
+
+    parse_codegen_registration_unity6(elf, codegen_target)
+}
+
+/// Unity 6+ codegen registration helper:
+/// new g_CodegenRegistration simply stores the addresses of g_CodeRegistration and g_MetadataRegistration
+fn parse_codegen_registration_unity6(elf: &Elf, fn_vaddr: u64) -> Result<(u64, u64)> {
+    let fn_off = vaddr_conv(elf, fn_vaddr)? as usize;
+    let data = elf.data();
+    if fn_off >= data.len() {
+        return Err(Il2CppBinaryError::MissingRegistration);
+    }
+
+    // Look at the first N instructions of the function.
+    const MAX_INSNS: usize = 64;
+    let end = (fn_off + MAX_INSNS * 4).min(data.len());
+    let code = &data[fn_off..end];
+
+    let instructions = try_disassemble(code, fn_vaddr)?;
+
+    // Track PC-relative values in registers and collect ones that get stored.
+    let mut reg_vals: HashMap<Reg, u64> = HashMap::new();
+    let mut stored_vals: Vec<u64> = Vec::new();
+
+    for ins in &instructions {
+        match (ins.op(), ins.operands()) {
+            // ADRP xN, label
+            (Op::ADRP, [Operand::Reg { reg, .. }, Operand::Label(Imm::Unsigned(imm))]) => {
+                reg_vals.insert(*reg, *imm);
+            }
+
+            // ADD xN, xN, #imm
+            (
+                Op::ADD,
+                [Operand::Reg { reg: a, .. }, Operand::Reg { reg: b, .. }, Operand::Imm64 {
+                    imm: Imm::Unsigned(imm),
+                    ..
+                }],
+            ) if a == b => {
+                if let Some(v) = reg_vals.get_mut(a) {
+                    *v = v.wrapping_add(*imm);
+                }
+            }
+
+            // STR xSrc, [xBase,#off] we care about the value being stored (xSrc).
+            (
+                Op::STR,
+                [Operand::Reg { reg: src, .. }, Operand::MemOffset { .. }],
+            ) => {
+                if let Some(&val) = reg_vals.get(src) {
+                    if !stored_vals.contains(&val) {
+                        stored_vals.push(val);
+                    }
+                }
+            }
+
+            _ => {}
+        }
+    }
+
+    if stored_vals.len() >= 2 {
+        Ok((stored_vals[0], stored_vals[1]))
+    } else {
+        Err(Il2CppBinaryError::MissingRegistration)
+    }
 }
 
 struct ElfReader<'elf, 'data, 'elf_rel> {
