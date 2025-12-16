@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use std::path::Path;
-use std::fs;
-use thiserror::Error;
 use super::*;
+use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum SourceParseError {
@@ -36,13 +36,13 @@ impl<'src> Iterator for SourceArrIterator<'src> {
 
 pub struct SourceDir {
     pub(crate) global_metadata_data: Vec<u8>,
-    source_files: HashMap<String, String>
+    source_files: HashMap<String, String>,
 }
 
 impl SourceDir {
     pub fn new<P>(path: P) -> std::io::Result<Self>
     where
-        P: AsRef<Path>
+        P: AsRef<Path>,
     {
         let path = path.as_ref();
         let global_metadata_path = path.join("Data/Metadata/global-metadata.dat");
@@ -59,7 +59,6 @@ impl SourceDir {
             let name = name.to_str().unwrap();
             let data = fs::read_to_string(entry.path())?;
             source_files.insert(name.to_string(), data);
-
         }
 
         Ok(Self {
@@ -74,7 +73,7 @@ impl SourceDir {
         let header = format!("{ty} {name}");
         loop {
             let Some(line) = lines.next() else {
-                return Err(SourceParseError::TableNotFound(name.to_string()))
+                return Err(SourceParseError::TableNotFound(name.to_string()));
             };
             if line.starts_with(&header) {
                 break;
@@ -134,14 +133,13 @@ impl Il2CppTypeEnum {
 
 impl Il2CppType {
     fn read_src<'s>(line: &'s str, name_mappings: &NameMappings) -> Result<(&'s str, Self)> {
-        let offset = if line.starts_with("const") {
-            1
-        } else {
-            0
-        };
+        let offset = if line.starts_with("const") { 1 } else { 0 };
         let words: Vec<&str> = line.split_whitespace().collect();
         let name = words[1 + offset];
-        let data_str = words[4 + offset].trim_end_matches(',').trim_start_matches("(void*)").trim_start_matches('&');
+        let data_str = words[4 + offset]
+            .trim_end_matches(',')
+            .trim_start_matches("(void*)")
+            .trim_start_matches('&');
         let attrs: u16 = words[5 + offset].trim_end_matches(',').parse()?;
         let ty = Il2CppTypeEnum::read_src(words[6 + offset].trim_end_matches(','))?;
         // This isn't actually used
@@ -151,21 +149,30 @@ impl Il2CppType {
         let valuetype = words[10 + offset].parse::<u8>()? != 0;
 
         let data = match ty {
-            Il2CppTypeEnum::Var | Il2CppTypeEnum::Mvar => TypeData::GenericParameterIndex(GenericParameterIndex::new(data_str.parse()?)),
-            Il2CppTypeEnum::Ptr | Il2CppTypeEnum::Szarray => TypeData::TypeIndex(name_mappings.types[data_str]),
+            Il2CppTypeEnum::Var | Il2CppTypeEnum::Mvar => {
+                TypeData::GenericParameterIndex(GenericParameterIndex::new(data_str.parse()?))
+            }
+            Il2CppTypeEnum::Ptr | Il2CppTypeEnum::Szarray => {
+                TypeData::TypeIndex(name_mappings.types[data_str])
+            }
             Il2CppTypeEnum::Array => TypeData::ArrayType(todo!()),
-            Il2CppTypeEnum::Genericinst => TypeData::GenericClassIndex(name_mappings.generic_classes[data_str]),
+            Il2CppTypeEnum::Genericinst => {
+                TypeData::GenericClassIndex(name_mappings.generic_classes[data_str])
+            }
             _ => TypeData::TypeDefinitionIndex(TypeDefinitionIndex::new(data_str.parse()?)),
         };
 
-        Ok((name, Self {
-            data,
-            attrs,
-            ty,
-            byref,
-            pinned,
-            valuetype
-        }))
+        Ok((
+            name,
+            Self {
+                data,
+                attrs,
+                ty,
+                byref,
+                pinned,
+                valuetype,
+            },
+        ))
     }
 
     pub fn read_src_all(src_dir: &SourceDir, name_mappings: &NameMappings) -> Result<Vec<Self>> {
@@ -206,10 +213,16 @@ impl Il2CppGenericClass {
                 Some(name_mappings.generic_insts[gi])
             }
         };
-        Ok((name, Self {
-            type_index,
-            context: Il2CppGenericContext { class_inst_idx, method_inst_idx }
-        }))
+        Ok((
+            name,
+            Self {
+                type_index,
+                context: Il2CppGenericContext {
+                    class_inst_idx,
+                    method_inst_idx,
+                },
+            },
+        ))
     }
 
     pub fn read_src_all(src_dir: &SourceDir, name_mappings: &NameMappings) -> Result<Vec<Self>> {
@@ -242,7 +255,7 @@ impl Il2CppGenericInst {
     fn read_src<'s>(line: &'s str, name_mappings: &NameMappings) -> Result<(&'s str, Self)> {
         let words = line.split_whitespace().collect::<Vec<_>>();
         let name = words[3].strip_suffix("_Types[]").unwrap();
-            // .context("generic inst def has wrong name suffix")?;
+        // .context("generic inst def has wrong name suffix")?;
         let types = words[6..words.len() - 1]
             .iter()
             .map(|item| {
@@ -252,14 +265,16 @@ impl Il2CppGenericInst {
             })
             .map(|item| name_mappings.types[item])
             .collect();
-        Ok((name, Self {
-            types,
-        }))
+        Ok((name, Self { types }))
     }
 
     pub fn read_src_all(src_dir: &SourceDir, name_mappings: &NameMappings) -> Result<Vec<Self>> {
         let src = &src_dir.source_files["Il2CppGenericInstDefinitions.c"];
-        let start_loc = src.find("static const Il2CppType* ").ok_or(SourceParseError::TableNotFound("generic inst definitions".to_string()))?;
+        let start_loc =
+            src.find("static const Il2CppType* ")
+                .ok_or(SourceParseError::TableNotFound(
+                    "generic inst definitions".to_string(),
+                ))?;
 
         let mut map = HashMap::new();
         for line in src[start_loc..].lines().step_by(3) {
@@ -292,12 +307,17 @@ impl Il2CppGenericMethodFunctionsDefinitions {
                 method_index,
                 invoker_index,
                 adjustor_thunk_index,
-            }
+            },
         })
     }
 
     pub fn read_src_all(src_dir: &SourceDir) -> Result<Vec<Self>> {
-        src_dir.parse_array("const Il2CppGenericMethodFunctionsDefinitions", "g_Il2CppGenericMethodFunctions", "Il2CppGenericMethodTable.c")?
+        src_dir
+            .parse_array(
+                "const Il2CppGenericMethodFunctionsDefinitions",
+                "g_Il2CppGenericMethodFunctions",
+                "Il2CppGenericMethodTable.c",
+            )?
             .map(Self::read_src)
             .collect()
     }
@@ -317,8 +337,13 @@ impl Il2CppMethodSpec {
     }
 
     fn read_src_all(src_dir: &SourceDir) -> Result<Vec<Self>> {
-        src_dir.parse_array("const Il2CppMethodSpec", "g_Il2CppMethodSpecTable", "Il2CppGenericMethodDefinitions.c")?
-            .map( Self::read_src)
+        src_dir
+            .parse_array(
+                "const Il2CppMethodSpec",
+                "g_Il2CppMethodSpecTable",
+                "Il2CppGenericMethodDefinitions.c",
+            )?
+            .map(Self::read_src)
             .collect()
     }
 }
@@ -341,7 +366,9 @@ impl<'s> NameMappings<'s> {
         let src = &src_dir.source_files["Il2CppTypeDefinitions.c"];
         let arr_start = src
             .find("const Il2CppType* const  g_Il2CppTypeTable")
-            .ok_or(SourceParseError::TableNotFound("g_Il2CppTypeTable".to_string()))?;
+            .ok_or(SourceParseError::TableNotFound(
+                "g_Il2CppTypeTable".to_string(),
+            ))?;
         for (i, line) in src[arr_start..].lines().skip(3).enumerate() {
             if line.starts_with('}') {
                 break;
@@ -356,7 +383,9 @@ impl<'s> NameMappings<'s> {
         let src = &src_dir.source_files["Il2CppGenericClassTable.c"];
         let arr_start = src
             .find("Il2CppGenericClass* const g_Il2CppGenericTypes")
-            .ok_or(SourceParseError::TableNotFound("g_Il2CppGenericTypes".to_string()))?;
+            .ok_or(SourceParseError::TableNotFound(
+                "g_Il2CppGenericTypes".to_string(),
+            ))?;
         for (i, line) in src[arr_start..].lines().skip(3).enumerate() {
             if line.starts_with('}') {
                 break;
@@ -368,7 +397,12 @@ impl<'s> NameMappings<'s> {
 
         let mut generic_insts = HashMap::new();
         let mut generic_insts_list = Vec::new();
-        src_dir.parse_array("const Il2CppGenericInst* const", "g_Il2CppGenericInstTable", "Il2CppGenericInstDefinitions.c")?
+        src_dir
+            .parse_array(
+                "const Il2CppGenericInst* const",
+                "g_Il2CppGenericInstTable",
+                "Il2CppGenericInstDefinitions.c",
+            )?
             .enumerate()
             .for_each(|(i, str)| {
                 let name = str.trim_start_matches('&');
@@ -413,8 +447,7 @@ impl<'data> RuntimeMetadata<'data> {
         let name_mappings = NameMappings::from_src(src_dir)?;
         Ok(RuntimeMetadata {
             code_registration: todo!(),
-            metadata_registration: Il2CppMetadataRegistration::read_src(src_dir, &name_mappings)?
+            metadata_registration: Il2CppMetadataRegistration::read_src(src_dir, &name_mappings)?,
         })
-
     }
 }

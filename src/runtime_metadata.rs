@@ -1,9 +1,9 @@
-pub mod source;
 pub mod elf;
+pub mod source;
 
-use binread::BinRead;
-use crate::global_metadata::{Token, TypeDefinitionIndex, GenericParameterIndex, MethodIndex};
+use crate::global_metadata::{GenericParameterIndex, MethodIndex, Token, TypeDefinitionIndex};
 use crate::Metadata;
+use binread::BinRead;
 
 /// Defined at `il2cpp-class-internals:570`
 #[derive(BinRead, Debug)]
@@ -69,10 +69,8 @@ pub struct Il2CppCodeGenModule<'data> {
 
     // TODO:
     // reverse_pinvoke_wrapper_indices: Vec<TokenIndexMethodTuple>,
-
     pub rgctx_ranges: Vec<Il2CppTokenRangePair>,
     pub rgctxs: Vec<Il2CppRGCTXDefinition>,
-
     // TODO:
     // debugger_metadata: Il2CppDebuggerMetadataRegistration,
     // module_initializer: Il2CppMethodPointer,
@@ -166,7 +164,7 @@ pub enum Il2CppTypeEnum {
     /// Denotes a local variable points to a pinned object
     Pinned,
     /// Used in custom attributes to specify an enum
-    Enum
+    Enum,
 }
 
 impl Il2CppTypeEnum {
@@ -265,28 +263,51 @@ impl Il2CppType {
             Il2CppTypeEnum::U => "System.UIntPtr",
             Il2CppTypeEnum::Object => "System.Object",
             Il2CppTypeEnum::Sentinel => "<<SENTINEL>>",
-            _ => return match (self.ty, self.data) {
-                (Il2CppTypeEnum::Var | Il2CppTypeEnum::Mvar, TypeData::GenericParameterIndex(idx)) => metadata.global_metadata.generic_parameters[idx].name(metadata).to_string(),
-                (Il2CppTypeEnum::Ptr, TypeData::TypeIndex(ty_idx)) => format!("{}*", types[ty_idx].full_name(metadata)),
-                (Il2CppTypeEnum::Szarray, TypeData::TypeIndex(ty_idx)) => format!("{}[]", types[ty_idx].full_name(metadata)),
-                (Il2CppTypeEnum::Array, TypeData::ArrayType(arr_ty_idx)) => {
-                    let arr_type = &mr.array_types[arr_ty_idx];
-                    let mut str = types[arr_type.elem_ty].full_name(metadata);
-                    str.push('[');
-                    for _ in 0..arr_type.rank - 1 {
-                        str.push(',');
+            _ => {
+                return match (self.ty, self.data) {
+                    (
+                        Il2CppTypeEnum::Var | Il2CppTypeEnum::Mvar,
+                        TypeData::GenericParameterIndex(idx),
+                    ) => metadata.global_metadata.generic_parameters[idx]
+                        .name(metadata)
+                        .to_string(),
+                    (Il2CppTypeEnum::Ptr, TypeData::TypeIndex(ty_idx)) => {
+                        format!("{}*", types[ty_idx].full_name(metadata))
                     }
-                    str.push(']');
-                    str
-                },
-                (Il2CppTypeEnum::Class | Il2CppTypeEnum::Valuetype, TypeData::TypeDefinitionIndex(ty_idx)) => type_defs[ty_idx].full_name(metadata, false),
-                (Il2CppTypeEnum::Genericinst, TypeData::GenericClassIndex(gc)) => {
-                    let gc = &mr.generic_classes[gc];
-                    let inst = &mr.generic_insts[gc.context.class_inst_idx.unwrap()];
-                    let generic_args = inst.types.iter().map(|ty| types[*ty].full_name(metadata)).collect::<Vec<_>>().join(", ");
-                    format!("{}<{}>", types[gc.type_index].full_name(metadata), generic_args)
+                    (Il2CppTypeEnum::Szarray, TypeData::TypeIndex(ty_idx)) => {
+                        format!("{}[]", types[ty_idx].full_name(metadata))
+                    }
+                    (Il2CppTypeEnum::Array, TypeData::ArrayType(arr_ty_idx)) => {
+                        let arr_type = &mr.array_types[arr_ty_idx];
+                        let mut str = types[arr_type.elem_ty].full_name(metadata);
+                        str.push('[');
+                        for _ in 0..arr_type.rank - 1 {
+                            str.push(',');
+                        }
+                        str.push(']');
+                        str
+                    }
+                    (
+                        Il2CppTypeEnum::Class | Il2CppTypeEnum::Valuetype,
+                        TypeData::TypeDefinitionIndex(ty_idx),
+                    ) => type_defs[ty_idx].full_name(metadata, false),
+                    (Il2CppTypeEnum::Genericinst, TypeData::GenericClassIndex(gc)) => {
+                        let gc = &mr.generic_classes[gc];
+                        let inst = &mr.generic_insts[gc.context.class_inst_idx.unwrap()];
+                        let generic_args = inst
+                            .types
+                            .iter()
+                            .map(|ty| types[*ty].full_name(metadata))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        format!(
+                            "{}<{}>",
+                            types[gc.type_index].full_name(metadata),
+                            generic_args
+                        )
+                    }
+                    _ => format!("({:?}?)", self.ty),
                 }
-                _ => format!("({:?}?)", self.ty)
             }
         })
     }

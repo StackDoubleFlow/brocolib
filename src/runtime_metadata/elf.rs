@@ -14,7 +14,10 @@ use bad64::{disasm, DecodeError, Imm, Instruction, Op, Operand, Reg};
 use binread::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use object::read::elf::ElfFile64;
-use object::{Endianness, Object, ObjectSection, ObjectSegment, ObjectSymbol, RelocationEncoding, RelocationTarget};
+use object::{
+    Endianness, Object, ObjectSection, ObjectSegment, ObjectSymbol, RelocationEncoding,
+    RelocationTarget,
+};
 use std::collections::HashMap;
 use std::io::{self, Cursor};
 use std::str;
@@ -184,7 +187,9 @@ fn process_relocations(elf: &Elf) -> Result<Vec<u8>> {
 
     if let Some(relocations) = elf.dynamic_relocations() {
         for (addr, rel) in relocations {
-            if rel.encoding() != RelocationEncoding::Generic || rel.target() != RelocationTarget::Absolute {
+            if rel.encoding() != RelocationEncoding::Generic
+                || rel.target() != RelocationTarget::Absolute
+            {
                 // TODO: handle more relocation types
                 continue;
             }
@@ -375,8 +380,12 @@ impl Il2CppType {
         let bitfield = cur.read_u8()?;
 
         let data = match ty {
-            Il2CppTypeEnum::Var | Il2CppTypeEnum::Mvar => TypeData::GenericParameterIndex(GenericParameterIndex::new(raw_data as u32)),
-            Il2CppTypeEnum::Ptr | Il2CppTypeEnum::Szarray => TypeData::TypeIndex(type_map[&raw_data]),
+            Il2CppTypeEnum::Var | Il2CppTypeEnum::Mvar => {
+                TypeData::GenericParameterIndex(GenericParameterIndex::new(raw_data as u32))
+            }
+            Il2CppTypeEnum::Ptr | Il2CppTypeEnum::Szarray => {
+                TypeData::TypeIndex(type_map[&raw_data])
+            }
             Il2CppTypeEnum::Array => TypeData::ArrayType({
                 match array_type_map.get(&raw_data) {
                     Some(idx) => *idx,
@@ -388,7 +397,9 @@ impl Il2CppType {
                     }
                 }
             }),
-            Il2CppTypeEnum::Genericinst => TypeData::GenericClassIndex(generic_class_map[&raw_data]),
+            Il2CppTypeEnum::Genericinst => {
+                TypeData::GenericClassIndex(generic_class_map[&raw_data])
+            }
             _ => TypeData::TypeDefinitionIndex(TypeDefinitionIndex::new(raw_data as u32)),
         };
         let byref = (bitfield >> 5) != 0;
@@ -472,7 +483,12 @@ impl Il2CppArrayType {
         let lobounds_ptr = cur.read_u64::<LittleEndian>()?;
         let lower_bounds = read_arr(reader, lobounds_ptr, num_lobounds as usize)?;
 
-        Ok(Self { elem_ty, rank, sizes, lower_bounds })
+        Ok(Self {
+            elem_ty,
+            rank,
+            sizes,
+            lower_bounds,
+        })
     }
 }
 
@@ -502,7 +518,12 @@ impl Il2CppMetadataRegistration {
         let mut generic_classes = Vec::with_capacity(type_addrs.len());
         let mut generic_class_map = HashMap::new();
         for (i, addr) in generic_class_addrs.into_iter().enumerate() {
-            generic_classes.push(Il2CppGenericClass::read(&reader, addr, &generic_inst_map, &type_map)?);
+            generic_classes.push(Il2CppGenericClass::read(
+                &reader,
+                addr,
+                &generic_inst_map,
+                &type_map,
+            )?);
             generic_class_map.insert(addr, i);
         }
 
@@ -510,7 +531,14 @@ impl Il2CppMetadataRegistration {
         let mut array_types = Vec::new();
         let mut array_type_map = HashMap::new();
         for addr in type_addrs {
-            types.push(Il2CppType::read(&reader, addr, &type_map, &generic_class_map, &mut array_types, &mut array_type_map)?);
+            types.push(Il2CppType::read(
+                &reader,
+                addr,
+                &type_map,
+                &generic_class_map,
+                &mut array_types,
+                &mut array_type_map,
+            )?);
         }
 
         let mut generic_insts = Vec::with_capacity(generic_inst_addrs.len());
@@ -561,7 +589,8 @@ impl<'data> RuntimeMetadata<'data> {
 
         let (cr_addr, mr_addr) = find_registration(elf, &elf_rel)?;
         let code_registration = Il2CppCodeRegistration::read(elf, &elf_rel, cr_addr)?;
-        let metadata_registration = Il2CppMetadataRegistration::read(elf, &elf_rel, mr_addr, global_metadata)?;
+        let metadata_registration =
+            Il2CppMetadataRegistration::read(elf, &elf_rel, mr_addr, global_metadata)?;
         Ok(RuntimeMetadata {
             code_registration,
             metadata_registration,

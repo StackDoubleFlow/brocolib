@@ -8,9 +8,9 @@
 pub mod global_metadata;
 pub mod runtime_metadata;
 
+use global_metadata::{GlobalMetadata, MetadataDeserializeError};
 use runtime_metadata::elf::Il2CppBinaryError;
 use runtime_metadata::RuntimeMetadata;
-use global_metadata::{GlobalMetadata, MetadataDeserializeError};
 use thiserror::Error;
 
 /// A container for all of the applications metadata structures.
