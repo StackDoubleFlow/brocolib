@@ -150,6 +150,18 @@ fn try_disassemble(code: &[u8], addr: u64) -> Result<Vec<Instruction>> {
 }
 
 fn nth_bl(elf: &Elf, addr: u64, n: usize) -> Result<u64> {
+    let mut target = None;
+    matching_bl(elf, addr, n, |addr| {
+        target = Some(addr);
+        Ok(false)
+    })?;
+    Ok(target.unwrap())
+}
+
+fn matching_bl<F>(elf: &Elf, addr: u64, limit: usize, mut f: F) -> Result<Option<u64>>
+where
+    F: FnMut(u64) -> Result<bool>,
+{
     let offset = vaddr_conv(elf, addr)?;
     let mut count = 0;
 
@@ -158,9 +170,12 @@ fn nth_bl(elf: &Elf, addr: u64, n: usize) -> Result<u64> {
         let code = &elf.data()[offset as usize..offset as usize + 4];
         let ins = &try_disassemble(code, addr + i * 4)?[0];
         if let (Op::BL, [Operand::Label(Imm::Unsigned(target))]) = (ins.op(), ins.operands()) {
+            if f(*target)? {
+                return Ok(Some(*target));
+            }
             count += 1;
-            if count == n {
-                return Ok(*target);
+            if count == limit {
+                return Ok(None);
             }
         }
     }
@@ -215,21 +230,56 @@ fn find_registration(elf: &Elf, elf_rel: &[u8]) -> Result<(u64, u64)> {
     let runtime_init = nth_bl(elf, il2cpp_init, 2)?;
     let runtime_init_offset = vaddr_conv(elf, runtime_init)?;
 
-    let (blr_offset, blr_reg) =
-        find_blr(elf, runtime_init, 200)?.ok_or(Il2CppBinaryError::MissingBlr)?;
+    // Here we try to find g_CodegenRegistration. There are 2 options:
+    // - Without LTO, this will be the only indirect branch in Runtime::Init
+    // - With LTO, this will be a normal bl, so we look at all calls to find a function with a first
+    //   instructions being adrps. This is probably g_CodegenRegistration given its adrp density.
+    if let Some((blr_offset, blr_reg)) = find_blr(elf, runtime_init, 200)? {
+        let instructions = try_disassemble(
+            &elf.data()[runtime_init_offset as usize..blr_offset as usize],
+            runtime_init,
+        )?;
 
-    let instructions = try_disassemble(
-        &elf.data()[runtime_init_offset as usize..blr_offset as usize],
-        runtime_init,
-    )?;
-    let regs = analyze_reg_rel(elf, &elf_rel, &instructions);
+        // This relocation points to s_Il2CppCodegenRegistration
+        let regs = analyze_reg_rel(elf, &elf_rel, &instructions);
+        let fn_addr = regs[&blr_reg];
+        let fn_offset = vaddr_conv(elf, fn_addr)? as usize;
 
-    let fn_addr = vaddr_conv(elf, regs[&blr_reg])?;
-    let code = &elf.data()[fn_addr as usize..fn_addr as usize + 7 * 4];
-    let instructions = try_disassemble(code, regs[&blr_reg])?;
-    let regs = analyze_reg_rel(elf, &elf_rel, instructions.as_slice());
+        let code = &elf.data()[fn_offset..fn_offset + 7 * 4];
+        let instructions = try_disassemble(code, fn_addr)?;
+        let regs = analyze_reg_rel(elf, &elf_rel, instructions.as_slice());
+        Ok((regs[&Reg::X0], regs[&Reg::X1]))
+    } else {
+        // This is call directly to s_Il2CppCodegenRegistration
+        let fn_addr = matching_bl(elf, runtime_init, 200, |target_addr| {
+            let target_offset = vaddr_conv(elf, target_addr)? as usize;
+            let code = &elf.data()[target_offset..target_offset + 4 * 4];
+            let instructions = try_disassemble(code, target_addr)?;
+            Ok(instructions.iter().filter(|ins| ins.op() == Op::ADRP).count() >= 3)
+        })?
+        .ok_or(Il2CppBinaryError::MissingRegistration)?;
+        let fn_offset = vaddr_conv(elf, fn_addr)? as usize;
 
-    Ok((regs[&Reg::X0], regs[&Reg::X1]))
+        let code = &elf.data()[fn_offset..fn_offset + 10 * 4];
+        let instructions = try_disassemble(code, fn_addr)?;
+
+        // Look for the first 2 store instructions
+        let mut code_registration = None;
+        for (idx, ins) in instructions.iter().enumerate() {
+            match (ins.op(), ins.operands()) {
+                (Op::STR, [Operand::Reg { reg, .. }, ..]) => {
+                    let regs = analyze_reg_rel(elf, elf_rel, &instructions[0..idx]);
+                    if let Some(code_registration) = code_registration {
+                        return Ok((code_registration, regs[reg]));
+                    } else {
+                        code_registration = Some(regs[reg])
+                    }
+                }
+                _ => {}
+            }
+        }
+        Err(Il2CppBinaryError::MissingRegistration)
+    }
 }
 
 struct ElfReader<'elf, 'data, 'elf_rel> {
