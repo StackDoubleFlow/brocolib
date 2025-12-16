@@ -41,7 +41,7 @@ pub struct SourceDir {
 
 impl SourceDir {
     pub fn new<P>(path: P) -> std::io::Result<Self>
-    where 
+    where
         P: AsRef<Path>
     {
         let path = path.as_ref();

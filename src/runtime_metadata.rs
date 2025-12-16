@@ -40,7 +40,7 @@ pub enum Il2CppRGCTXDataType {
 }
 
 /// A runtime generic context.
-/// 
+///
 /// Defined at `il2cpp-metadata.h:92`
 #[derive(BinRead, Debug)]
 pub struct Il2CppRGCTXDefinition {
@@ -100,7 +100,7 @@ pub struct Il2CppCodeRegistration<'data> {
 
 /// Corresponds to element type signatures.
 /// See ECMA-335, II.23.1.16
-/// 
+///
 /// Defined at `il2cpp-blob.h:6`
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Il2CppTypeEnum {
@@ -317,11 +317,11 @@ pub struct Il2CppGenericContext {
 }
 
 /// A generic method instantiation.
-/// 
+///
 /// It is not possible for both `class_inst_index` and `method_inst_index` to
 /// be invalid since if both the class and method are not generic, you cannot
 /// make a generic instance.
-/// 
+///
 /// Defined at `il2cpp-metadata.h:67`
 #[derive(BinRead, Debug)]
 pub struct Il2CppMethodSpec {
@@ -340,7 +340,7 @@ pub struct Il2CppMethodSpec {
 }
 
 /// A list of types used for a generic instantiation.
-/// 
+///
 /// Defined at `il2cpp-runtime-metadata.h:21`
 #[derive(Debug)]
 pub struct Il2CppGenericInst {
@@ -369,7 +369,7 @@ pub struct Il2CppGenericMethodFunctionsDefinitions {
 }
 
 /// Compiler calculated values
-/// 
+///
 /// Defined at `il2cpp-class-internals:475`
 #[derive(BinRead, Debug)]
 pub struct Il2CppTypeDefinitionSizes {

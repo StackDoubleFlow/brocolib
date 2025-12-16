@@ -129,10 +129,10 @@ impl BinaryDeserialize for Token {
 }
 
 /// A C# string literal.
-/// 
+///
 /// These are stored as UTF-8 in the metadata file and expanded to UTF-16 at
 /// runtime.
-/// 
+///
 /// Defined at `vm/GlobalMetadataFileInternals.h:187`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppStringLiteral {
@@ -439,7 +439,7 @@ impl Il2CppFieldMarshaledSize {
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppGenericParameter {
     /// Type or method this parameter was defined in.
-    pub owner_index: GenericContainerIndex, 
+    pub owner_index: GenericContainerIndex,
     /// The name of the generic parameter.
     pub name_index: StringIndex,
     /// An optional list of constraints for the generic parameter
@@ -459,7 +459,7 @@ impl Il2CppGenericParameter {
 /// Defined at `vm/GlobalMetadataFileInternals.h:247`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppGenericContainer {
-    /// The index of the generic type definition or the generic method definition 
+    /// The index of the generic type definition or the generic method definition
     /// corresponding to this container. Either index into Il2CppClass metadata
     /// array or Il2CppMethodDefinition array.
     pub owner_index: u32,
@@ -499,7 +499,7 @@ pub struct Il2CppInterfaceOffsetPair {
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppAssemblyNameDefinition {
     /// The name of the assembly.
-    /// 
+    ///
     /// Assembly names do not end with `.dll`
     pub name_index: StringIndex,
     pub culture_index: StringIndex,
@@ -662,7 +662,7 @@ macro_rules! index_type {
                 self.0 != <$ty>::MAX
             }
         }
-        
+
         impl BinaryDeserialize for $name {
             const SIZE: usize = <$ty>::SIZE;
             fn deserialize<E, R>(reader: R) -> std::io::Result<Self>
@@ -718,7 +718,7 @@ macro_rules! basic_table {
             }
         }
 
-        impl<R> Index<R> for $name 
+        impl<R> Index<R> for $name
             where R: std::ops::RangeBounds<$idx_name>
         {
             type Output = [$ty];
@@ -842,7 +842,7 @@ metadata! {
     field_and_parameter_default_value_data: FieldAndParameterDefaultValueTable,
     field_marshaled_sizes: FieldMarshaledSizeTable,
     /// C# method parameters.
-    /// 
+    ///
     /// This is normally indexed by a range returned from [`Il2CppMethodDefinition::parameters()`].
     parameters: ParameterTable,
     fields: FieldTable,
