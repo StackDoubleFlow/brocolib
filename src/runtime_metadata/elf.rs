@@ -40,9 +40,6 @@ pub enum Il2CppBinaryError {
     #[error("could not find il2cpp_init symbol in elf")]
     MissingIl2CppInit,
 
-    #[error("could not find indirect branch in Runtime::Init")]
-    MissingBlr,
-
     #[error("could not find registration function")]
     MissingRegistration,
 
@@ -255,7 +252,11 @@ fn find_registration(elf: &Elf, elf_rel: &[u8]) -> Result<(u64, u64)> {
             let target_offset = vaddr_conv(elf, target_addr)? as usize;
             let code = &elf.data()[target_offset..target_offset + 4 * 4];
             let instructions = try_disassemble(code, target_addr)?;
-            Ok(instructions.iter().filter(|ins| ins.op() == Op::ADRP).count() >= 3)
+            Ok(instructions
+                .iter()
+                .filter(|ins| ins.op() == Op::ADRP)
+                .count()
+                >= 3)
         })?
         .ok_or(Il2CppBinaryError::MissingRegistration)?;
         let fn_offset = vaddr_conv(elf, fn_addr)? as usize;
