@@ -1,0 +1,2 @@
+# I think longer lines are cleaner in this case
+skip_macro_invocations = ["range_helper", "field_helper", "field_helper_optional"]

@@ -1,12 +1,12 @@
 //! Global metadata types.
 
-use crate::Metadata;
 use crate::runtime_metadata::TypeData;
+use crate::Metadata;
+use binde::{BinaryDeserialize, LittleEndian};
+use binread::BinRead;
 use std::io::Cursor;
 use std::ops::Index;
-use std::{str, concat, stringify};
-use binread::BinRead;
-use binde::{BinaryDeserialize, LittleEndian};
+use std::{concat, str, stringify};
 use thiserror::Error;
 
 const SANITY: u32 = 0xFAB11BAF;
@@ -40,7 +40,7 @@ macro_rules! field_helper_optional {
         pub fn $name<'md>(&self, metadata: &'md Metadata) -> Option<&'md $ty> {
             match self.$field.is_valid() {
                 false => None,
-                true => Some(&metadata.global_metadata.$table[self.$field])
+                true => Some(&metadata.global_metadata.$table[self.$field]),
             }
         }
     };
@@ -49,7 +49,7 @@ macro_rules! field_helper_optional {
 #[derive(Debug)]
 pub enum InvalidMethodIndex {
     NoData,
-    AmbiguousMethod
+    AmbiguousMethod,
 }
 
 #[derive(Debug)]
@@ -89,17 +89,16 @@ impl EncodedMethodIndex {
             7 => DecodedMethodIndex::FieldRva(FieldRefIndex::new(idx)),
             _ => panic!("Unknown encoded method index type: {}", ty),
         }
-
     }
 }
-
 
 impl BinaryDeserialize for EncodedMethodIndex {
     const SIZE: usize = u32::SIZE;
     fn deserialize<E, R>(reader: R) -> std::io::Result<Self>
-        where
-            E: binde::ByteOrder,
-            R: std::io::Read {
+    where
+        E: binde::ByteOrder,
+        R: std::io::Read,
+    {
         Ok(Self(binde::deserialize::<E, _, _>(reader)?))
     }
 }
@@ -121,9 +120,10 @@ impl Token {
 impl BinaryDeserialize for Token {
     const SIZE: usize = u32::SIZE;
     fn deserialize<E, R>(reader: R) -> std::io::Result<Self>
-        where
-            E: binde::ByteOrder,
-            R: std::io::Read {
+    where
+        E: binde::ByteOrder,
+        R: std::io::Read,
+    {
         Ok(Self(binde::deserialize::<E, _, _>(reader)?))
     }
 }
@@ -296,7 +296,6 @@ impl Il2CppTypeDefinition {
         let namespace = self.namespace(metadata);
         let name = self.name(metadata);
 
-
         let mut full_name = String::new();
         if !namespace.is_empty() {
             full_name.push_str(namespace);
@@ -380,7 +379,11 @@ impl Il2CppPropertyDefinition {
         MethodIndex::new(decl_type.method_start.index() + self.get)
     }
 
-    pub fn get_method<'md>(&self, decl_type: &Il2CppTypeDefinition, metadata: &'md Metadata) -> &'md Il2CppMethodDefinition {
+    pub fn get_method<'md>(
+        &self,
+        decl_type: &Il2CppTypeDefinition,
+        metadata: &'md Metadata,
+    ) -> &'md Il2CppMethodDefinition {
         let idx = self.get_method_index(decl_type);
         &metadata.global_metadata.methods[idx]
     }
@@ -389,7 +392,11 @@ impl Il2CppPropertyDefinition {
         MethodIndex::new(decl_type.method_start.index() + self.set)
     }
 
-    pub fn set_method<'md>(&self, decl_type: &Il2CppTypeDefinition, metadata: &'md Metadata) -> &'md Il2CppMethodDefinition {
+    pub fn set_method<'md>(
+        &self,
+        decl_type: &Il2CppTypeDefinition,
+        metadata: &'md Metadata,
+    ) -> &'md Il2CppMethodDefinition {
         let idx = self.set_method_index(decl_type);
         &metadata.global_metadata.methods[idx]
     }
@@ -514,7 +521,6 @@ pub struct Il2CppAssemblyNameDefinition {
     pub public_key_token: [u8; 8],
 }
 
-
 impl Il2CppAssemblyNameDefinition {
     field_helper!(name, string, name_index, str);
     // TODO: are culture and public_key valid utf-8?
@@ -565,7 +571,8 @@ pub struct Il2CppFieldRef {
 
 impl Il2CppFieldRef {
     pub fn resolve_field(&self, metadata: &Metadata) -> FieldIndex {
-        let ty_data = &metadata.runtime_metadata.metadata_registration.types[self.type_index as usize].data;
+        let ty_data =
+            &metadata.runtime_metadata.metadata_registration.types[self.type_index as usize].data;
         let TypeData::TypeDefinitionIndex(ty_def_idx) = ty_data else {
             panic!("Bad Il2CppFieldRef type data type: {:?}", ty_data);
         };
@@ -630,9 +637,9 @@ macro_rules! metadata {
     };
 }
 
-
 macro_rules! index_type {
     ($name:ident, $ty:ty, $for:ident) => {
+#[rustfmt::skip]
         #[doc = concat!(
             "Index type for [`",
             stringify!($for),
@@ -666,9 +673,10 @@ macro_rules! index_type {
         impl BinaryDeserialize for $name {
             const SIZE: usize = <$ty>::SIZE;
             fn deserialize<E, R>(reader: R) -> std::io::Result<Self>
-                where
-                    E: binde::ByteOrder,
-                    R: std::io::Read {
+            where
+                E: binde::ByteOrder,
+                R: std::io::Read,
+            {
                 Ok(Self(binde::deserialize::<E, _, _>(reader)?))
             }
         }
@@ -746,6 +754,7 @@ macro_rules! basic_table {
 
 macro_rules! string_data_table {
     ($name:ident, $idx_name:ident) => {
+#[rustfmt::skip]
         #[doc =
             concat!(
                 "A metadata table for string data.\n\nIndexing into it with a [`",
@@ -755,7 +764,7 @@ macro_rules! string_data_table {
         ]
         #[derive(Debug, Default)]
         pub struct $name<'data> {
-            data: &'data [u8]
+            data: &'data [u8],
         }
 
         impl<'data> $name<'data> {
@@ -782,14 +791,14 @@ macro_rules! string_data_table {
         }
 
         impl<'data> ReadMetadataTable<'data> for $name<'data> {
-                fn read(cursor: &mut Cursor<&'data [u8]>, size: usize) -> std::io::Result<Self> {
-                    let start = cursor.position() as usize;
-                    Ok($name {
-                        data: &cursor.get_ref()[start..start + size],
-                    })
-                }
+            fn read(cursor: &mut Cursor<&'data [u8]>, size: usize) -> std::io::Result<Self> {
+                let start = cursor.position() as usize;
+                Ok($name {
+                    data: &cursor.get_ref()[start..start + size],
+                })
             }
-        };
+        }
+    };
 }
 
 basic_table!(StringLiteralTable: Il2CppStringLiteral, StringLiteralIndex);
