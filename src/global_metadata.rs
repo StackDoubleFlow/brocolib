@@ -617,7 +617,7 @@ macro_rules! metadata {
             fn deserialize(
                 data: &'a [u8],
                 header: Il2CppGlobalMetadataHeader,
-            ) -> Result<GlobalMetadata, MetadataDeserializeError> {
+            ) -> Result<GlobalMetadata<'a>, MetadataDeserializeError> {
                 let mut cursor = Cursor::new(data);
                 Ok(GlobalMetadata {
                     $(
