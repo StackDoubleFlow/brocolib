@@ -7,9 +7,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-thiserror = "1"
+thiserror = "2"
 binde = { git = "https://github.com/StackDoubleFlow/binde" }
-bad64 = "0.9"
+bad64 = "0.12"
 byteorder = "1.4"
-object = "0.36"
+object = "0.38"
 binread = "2.2"
