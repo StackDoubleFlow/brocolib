@@ -128,8 +128,8 @@ fn analyze_reg_rel(elf: &Elf, elf_rel: &[u8], instructions: &[Instruction]) -> H
                 }
                 map.entry(*a).and_modify(|v| {
                     // TODO: propogate error
-                    let offset = vaddr_conv(elf, (*v as i64 + imm) as u64).unwrap();
-                    *v = (&elf_rel[offset as usize..offset as usize + 8])
+                    let offset = vaddr_conv(elf, (*v as i64 + imm) as u64).unwrap() as usize;
+                    *v = (&elf_rel[offset..offset + 8])
                         .read_u64::<LittleEndian>()
                         .unwrap();
                 });
@@ -159,13 +159,13 @@ fn matching_bl<F>(elf: &Elf, addr: u64, limit: usize, mut f: F) -> Result<Option
 where
     F: FnMut(u64) -> Result<bool>,
 {
-    let offset = vaddr_conv(elf, addr)?;
+    let offset = vaddr_conv(elf, addr)? as usize;
     let mut count = 0;
 
     for i in 0.. {
         let offset = offset + i * 4;
-        let code = &elf.data()[offset as usize..offset as usize + 4];
-        let ins = &try_disassemble(code, addr + i * 4)?[0];
+        let code = &elf.data()[offset..offset + 4];
+        let ins = &try_disassemble(code, addr + i as u64 * 4)?[0];
         if let (Op::BL, [Operand::Label(Imm::Unsigned(target))]) = (ins.op(), ins.operands()) {
             if f(*target)? {
                 return Ok(Some(*target));
@@ -180,12 +180,12 @@ where
     unreachable!()
 }
 
-/// Finds and returns the address of the first `blr` instruction it comes across starting from `addr`.
-fn find_blr(elf: &Elf, addr: u64, limit: usize) -> Result<Option<(u64, Reg)>> {
-    let offset = vaddr_conv(elf, addr)?;
+/// Finds and returns the elf offset of the first `blr` instruction it comes across starting from `addr`.
+fn find_blr(elf: &Elf, addr: u64, limit: usize) -> Result<Option<(usize, Reg)>> {
+    let offset = vaddr_conv(elf, addr)? as usize;
     for i in 0..limit {
-        let offset = offset + i as u64 * 4;
-        let code = &elf.data()[offset as usize..offset as usize + 4];
+        let offset = offset + i * 4;
+        let code = &elf.data()[offset..offset + 4];
         let ins = &try_disassemble(code, addr + i as u64 * 4)?[0];
         if let (Op::BLR, [Operand::Reg { reg, .. }]) = (ins.op(), ins.operands()) {
             return Ok(Some((offset, *reg)));
@@ -225,17 +225,15 @@ fn find_registration(elf: &Elf, elf_rel: &[u8]) -> Result<(u64, u64)> {
         .ok_or(Il2CppBinaryError::MissingIl2CppInit)?
         .address();
     let runtime_init = nth_bl(elf, il2cpp_init, 2)?;
-    let runtime_init_offset = vaddr_conv(elf, runtime_init)?;
+    let runtime_init_offset = vaddr_conv(elf, runtime_init)? as usize;
 
     // Here we try to find g_CodegenRegistration. There are 2 options:
     // - Without LTO, this will be the only indirect branch in Runtime::Init
     // - With LTO, this will be a normal bl, so we look at all calls to find a function with a first
     //   instructions being adrps. This is probably g_CodegenRegistration given its adrp density.
     if let Some((blr_offset, blr_reg)) = find_blr(elf, runtime_init, 200)? {
-        let instructions = try_disassemble(
-            &elf.data()[runtime_init_offset as usize..blr_offset as usize],
-            runtime_init,
-        )?;
+        let instructions =
+            try_disassemble(&elf.data()[runtime_init_offset..blr_offset], runtime_init)?;
 
         // This relocation points to s_Il2CppCodegenRegistration
         let regs = analyze_reg_rel(elf, &elf_rel, &instructions);
@@ -301,8 +299,8 @@ impl<'elf, 'data, 'elf_rel> ElfReader<'elf, 'data, 'elf_rel> {
     }
 
     fn get_str(&self, vaddr: u64) -> Result<&'data str> {
-        let ptr = vaddr_conv(self.elf, vaddr)?;
-        get_str(self.elf.data(), ptr as usize)
+        let offset = vaddr_conv(self.elf, vaddr)?;
+        get_str(self.elf.data(), offset as usize)
     }
 }
 
