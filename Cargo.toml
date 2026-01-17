@@ -13,3 +13,15 @@ bad64 = "0.12"
 byteorder = "1.4"
 object = "0.38"
 binread = "2.2"
+libloading = "0.9"
+
+[features]
+default = ["elf", "pe", "elf_aarch64", "il2cpp_v31"]
+elf = []
+pe = []
+
+# Target-specific features e.g xrefs
+elf_aarch64 = ["elf"]
+
+# IL2CPP Version-specific features
+il2cpp_v31 = []

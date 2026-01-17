@@ -4,14 +4,16 @@
 //! The documentation contains many references to C/C++ header source files.
 //! You can find these files in a Unity install at the following path:
 //! `UnityEditor/2021.3.16f1/Editor/Data/il2cpp/libil2cpp`
+#![allow(clippy::doc_overindented_list_items)]
 
 pub mod global_metadata;
 pub mod runtime_metadata;
 
 use global_metadata::{GlobalMetadata, MetadataDeserializeError};
-use runtime_metadata::elf::Il2CppBinaryError;
 use runtime_metadata::RuntimeMetadata;
 use thiserror::Error;
+
+use crate::runtime_metadata::loader::Il2CppBinaryError;
 
 /// A container for all of the applications metadata structures.
 ///
@@ -46,9 +48,9 @@ pub enum MetadataParseError {
 }
 
 impl<'gmd, 'rmd> Metadata<'gmd, 'rmd> {
-    pub fn parse(global_metadata: &'gmd [u8], elf: &'rmd [u8]) -> Result<Self, MetadataParseError> {
+    pub fn parse(global_metadata: &'gmd [u8], lib: &'rmd [u8]) -> Result<Self, MetadataParseError> {
         let global_metadata = global_metadata::deserialize(global_metadata)?;
-        let runtime_metadata = RuntimeMetadata::read_elf(elf, &global_metadata)?;
+        let runtime_metadata = RuntimeMetadata::read_elf(lib, &global_metadata)?;
         Ok(Metadata {
             global_metadata,
             runtime_metadata,
