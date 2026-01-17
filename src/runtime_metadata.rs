@@ -1,5 +1,8 @@
-pub mod elf;
+pub mod loader;
 pub mod source;
+
+// TODO: Feature lock types by version
+// or make version-specific modules
 
 use crate::global_metadata::{GenericParameterIndex, MethodIndex, Token, TypeDefinitionIndex};
 use crate::Metadata;

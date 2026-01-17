@@ -9,9 +9,10 @@ pub mod global_metadata;
 pub mod runtime_metadata;
 
 use global_metadata::{GlobalMetadata, MetadataDeserializeError};
-use runtime_metadata::elf::Il2CppBinaryError;
 use runtime_metadata::RuntimeMetadata;
 use thiserror::Error;
+
+use crate::runtime_metadata::loader::Il2CppBinaryError;
 
 /// A container for all of the applications metadata structures.
 ///
@@ -46,9 +47,19 @@ pub enum MetadataParseError {
 }
 
 impl<'gmd, 'rmd> Metadata<'gmd, 'rmd> {
-    pub fn parse(global_metadata: &'gmd [u8], elf: &'rmd [u8]) -> Result<Self, MetadataParseError> {
+    pub fn parse(global_metadata: &'gmd [u8], lib: &'rmd [u8]) -> Result<Self, MetadataParseError> {
         let global_metadata = global_metadata::deserialize(global_metadata)?;
-        let runtime_metadata = RuntimeMetadata::read_elf(elf, &global_metadata)?;
+        let object = object::File::parse(lib)
+            .map_err(|e| MetadataParseError::Binary(Il2CppBinaryError::Object(e)))?;
+
+        let runtime_metadata = match object {
+            #[cfg(feature = "elf")]
+            object::File::Elf64(elf) => RuntimeMetadata::read_elf(&elf, &global_metadata),
+            #[cfg(feature = "pe")]
+            object::File::Pe64(pe) => RuntimeMetadata::read_pe(&pe, &global_metadata),
+            _ => panic!("unsupported binary format (feature must be enabled)"),
+        }?;
+
         Ok(Metadata {
             global_metadata,
             runtime_metadata,

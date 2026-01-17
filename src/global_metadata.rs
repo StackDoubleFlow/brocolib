@@ -8,8 +8,11 @@ use std::io::Cursor;
 use std::ops::Index;
 use std::{concat, str, stringify};
 use thiserror::Error;
-
+// TODO: Feature lock types by version
+// or make version-specific modules
 const SANITY: u32 = 0xFAB11BAF;
+
+#[cfg(feature = "il2cpp_v31")]
 const VERSION: u32 = 31;
 
 // TODO
@@ -982,7 +985,7 @@ pub enum MetadataDeserializeError {
     VersionCheck(u32),
 }
 
-pub fn deserialize(data: &[u8]) -> Result<GlobalMetadata, MetadataDeserializeError> {
+pub fn deserialize(data: &[u8]) -> Result<GlobalMetadata<'_>, MetadataDeserializeError> {
     let header = Il2CppGlobalMetadataHeader::deserialize::<LittleEndian, _>(Cursor::new(data))?;
 
     if header.sanity != SANITY {
