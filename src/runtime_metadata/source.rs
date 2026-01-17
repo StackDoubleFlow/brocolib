@@ -67,7 +67,7 @@ impl SourceDir {
         })
     }
 
-    fn parse_array(&self, ty: &str, name: &str, file: &str) -> Result<SourceArrIterator> {
+    fn parse_array(&self, ty: &str, name: &str, file: &str) -> Result<SourceArrIterator<'_>> {
         let src = &self.source_files[file];
         let mut lines = src.lines();
         let header = format!("{ty} {name}");
