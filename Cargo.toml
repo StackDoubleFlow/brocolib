@@ -17,8 +17,8 @@ libloading = "0.9"
 
 [features]
 default = ["elf", "pe", "elf_aarch64", "il2cpp_v31"]
-elf = []
-pe = []
+elf = ["object/elf"]
+pe = ["object/pe"]
 
 # Target-specific features e.g xrefs
 elf_aarch64 = ["elf"]
