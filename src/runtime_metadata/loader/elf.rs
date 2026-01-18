@@ -134,7 +134,7 @@ where
 }
 
 impl<'data> Il2CppCodeGenModule<'data> {
-    fn read<'elf>(reader: &ElfReader<'elf, 'data, '_>, vaddr: u64) -> Result<Self> {
+    fn read_elf<'elf>(reader: &ElfReader<'elf, 'data, '_>, vaddr: u64) -> Result<Self> {
         let mut cur = reader.make_cur(vaddr)?;
 
         let name = reader.get_str(cur.read_u64::<LittleEndian>()?)?;
@@ -162,7 +162,7 @@ impl<'data> Il2CppCodeGenModule<'data> {
 }
 
 impl<'data> Il2CppCodeRegistration<'data> {
-    fn read(elf: &Elf<'data>, elf_rel: &[u8], addr: u64) -> Result<Self> {
+    fn read_elf(elf: &Elf<'data>, elf_rel: &[u8], addr: u64) -> Result<Self> {
         let reader = ElfReader::new(elf, elf_rel);
         let mut cur = reader.make_cur(addr)?;
 
@@ -190,7 +190,7 @@ impl<'data> Il2CppCodeRegistration<'data> {
         let module_addrs = read_len_arr(&reader, &mut cur)?;
         let mut code_gen_modules = Vec::with_capacity(module_addrs.len());
         for addr in module_addrs {
-            code_gen_modules.push(Il2CppCodeGenModule::read(&reader, addr)?);
+            code_gen_modules.push(Il2CppCodeGenModule::read_elf(&reader, addr)?);
         }
 
         Ok(Self {
@@ -335,7 +335,7 @@ impl Il2CppArrayType {
 }
 
 impl Il2CppMetadataRegistration {
-    fn read(elf: &Elf, elf_rel: &[u8], addr: u64, metadata: &GlobalMetadata) -> Result<Self> {
+    fn read_elf(elf: &Elf, elf_rel: &[u8], addr: u64, metadata: &GlobalMetadata) -> Result<Self> {
         let reader = ElfReader::new(elf, elf_rel);
         let mut cur = reader.make_cur(addr)?;
 
@@ -426,7 +426,7 @@ impl Il2CppMetadataRegistration {
 
 impl<'data> RuntimeMetadata<'data> {
     /// Read runtime metadata information from an [`Elf`].
-    pub fn read(elf: &Elf<'data>, global_metadata: &GlobalMetadata) -> Result<Self> {
+    pub fn read_elf(elf: &Elf<'data>, global_metadata: &GlobalMetadata) -> Result<Self> {
         let elf_rel = process_relocations(elf)?;
 
         let (cr_addr, mr_addr) = match elf.architecture() {
@@ -435,9 +435,9 @@ impl<'data> RuntimeMetadata<'data> {
             _ => unimplemented!("unsupported architecture"),
         };
 
-        let code_registration = Il2CppCodeRegistration::read(elf, &elf_rel, cr_addr)?;
+        let code_registration = Il2CppCodeRegistration::read_elf(elf, &elf_rel, cr_addr)?;
         let metadata_registration =
-            Il2CppMetadataRegistration::read(elf, &elf_rel, mr_addr, global_metadata)?;
+            Il2CppMetadataRegistration::read_elf(elf, &elf_rel, mr_addr, global_metadata)?;
         Ok(RuntimeMetadata {
             code_registration,
             metadata_registration,
@@ -445,8 +445,8 @@ impl<'data> RuntimeMetadata<'data> {
     }
 
     /// Read runtime metadata information from raw ELF data.
-    pub fn read_elf(elf_data: &'data [u8], global_metadata: &GlobalMetadata) -> Result<Self> {
+    pub fn read_elf_bytes(elf_data: &'data [u8], global_metadata: &GlobalMetadata) -> Result<Self> {
         let elf = Elf::parse(elf_data)?;
-        Self::read(&elf, global_metadata)
+        Self::read_elf(&elf, global_metadata)
     }
 }

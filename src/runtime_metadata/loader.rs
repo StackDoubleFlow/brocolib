@@ -5,6 +5,8 @@ use thiserror::Error;
 
 #[cfg(feature = "elf")]
 pub mod elf;
+#[cfg(feature = "pe")]
+pub mod pe;
 
 #[derive(Error, Debug)]
 pub enum Il2CppBinaryError {
@@ -33,7 +35,7 @@ pub enum Il2CppBinaryError {
     Utf8(#[from] str::Utf8Error),
 
     #[error(transparent)]
-    Elf(#[from] object::Error),
+    Object(#[from] object::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Il2CppBinaryError>;
