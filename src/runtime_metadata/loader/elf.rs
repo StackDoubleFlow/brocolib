@@ -38,18 +38,18 @@ pub fn addr_in_bss(elf: &Elf, vaddr: u64) -> bool {
 }
 
 /// Converts a virtual address in the elf to a file offset
-pub fn vaddr_conv(elf: &Elf, vaddr: u64) -> Result<u64> {
-    for segment in elf.segments() {
-        if segment.address() <= vaddr {
-            let offset = vaddr - segment.address();
-            if offset < segment.size() {
-                // println!("{:08x} -> {:08x}", vaddr, segment.file_range().0 + offset);
-                return Ok(segment.file_range().0 + offset);
-            }
-        }
-    }
-    Err(Il2CppBinaryError::VAddrConv(vaddr))
-}
+// pub fn vaddr_conv(elf: &Elf, vaddr: u64) -> Result<u64> {
+//     for segment in elf.segments() {
+//         if segment.address() <= vaddr {
+//             let offset = vaddr - segment.address();
+//             if offset < segment.size() {
+//                 // println!("{:08x} -> {:08x}", vaddr, segment.file_range().0 + offset);
+//                 return Ok(segment.file_range().0 + offset);
+//             }
+//         }
+//     }
+//     Err(Il2CppBinaryError::VAddrConv(vaddr))
+// }
 
 fn process_relocations(elf: &Elf) -> Result<Vec<u8>> {
     let mut elf_rel = elf.data().to_vec();

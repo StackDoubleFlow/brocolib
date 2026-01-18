@@ -1,6 +1,7 @@
 use std::{io, str};
 
 use bad64::DecodeError;
+use object::{Object, ObjectSection};
 use thiserror::Error;
 
 #[cfg(feature = "elf")]
@@ -56,4 +57,19 @@ pub fn get_str(data: &[u8], offset: usize) -> Result<&str> {
     let len = strlen(data, offset);
     let str = str::from_utf8(&data[offset..offset + len])?;
     Ok(str)
+}
+
+/// Convert a virtual address to a file offset
+pub fn vaddr_conv<'a>(pe: &impl Object<'a>, vaddr: u64) -> Result<u64> {
+    for section in pe.sections() {
+        let addr = section.address();
+        let size = section.size();
+        if addr <= vaddr && vaddr - addr < size {
+            if let Some((file_off, _)) = section.file_range() {
+                let offset = file_off + (vaddr - addr);
+                return Ok(offset);
+            }
+        }
+    }
+    Err(Il2CppBinaryError::VAddrConv(vaddr))
 }

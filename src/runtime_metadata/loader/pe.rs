@@ -15,26 +15,28 @@ use crate::runtime_metadata::{
 use binread::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use object::read::pe::PeFile64;
-use object::{Object, ObjectSection, ObjectSymbol};
+use object::{Object, ObjectSection};
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::str;
 
 type PeFile<'data> = PeFile64<'data>;
 
-fn vaddr_conv(pe: &PeFile, vaddr: u64) -> Result<u64> {
-    for section in pe.sections() {
-        let addr = section.address();
-        let size = section.size();
-        if addr <= vaddr && vaddr - addr < size {
-            if let Some((file_off, _)) = section.file_range() {
-                let offset = file_off + (vaddr - addr);
-                return Ok(offset as u64);
-            }
-        }
-    }
-    Err(Il2CppBinaryError::VAddrConv(vaddr))
-}
+mod x86_64;
+
+// fn vaddr_conv(pe: &PeFile, vaddr: u64) -> Result<u64> {
+//     for section in pe.sections() {
+//         let addr = section.address();
+//         let size = section.size();
+//         if addr <= vaddr && vaddr - addr < size {
+//             if let Some((file_off, _)) = section.file_range() {
+//                 let offset = file_off + (vaddr - addr);
+//                 return Ok(offset);
+//             }
+//         }
+//     }
+//     Err(Il2CppBinaryError::VAddrConv(vaddr))
+// }
 
 struct PeReader<'pe, 'data> {
     pe: &'pe PeFile<'data>,
@@ -270,50 +272,6 @@ impl Il2CppArrayType {
     }
 }
 
-fn find_registration(pe: &PeFile<'_>) -> Result<(u64, u64)> {
-    let mut cr_addr: Option<u64> = None;
-    let mut mr_addr: Option<u64> = None;
-
-    // Try exports first
-
-    if let Ok(exports) = pe.exports() {
-        for export in exports {
-            let name = export.name();
-            if let Ok(s) = std::str::from_utf8(name) {
-                if s.contains("Il2CppCodegenRegistration")
-                    || s.contains("s_Il2CppCodegenRegistration")
-                {
-                    cr_addr = Some(export.address());
-                }
-                if s.contains("Il2CppMetadataRegistration")
-                    || s.contains("s_Il2CppMetadataRegistration")
-                {
-                    mr_addr = Some(export.address());
-                }
-            }
-        }
-    }
-
-    // Try symbol table if exports didn't work
-    if cr_addr.is_none() || mr_addr.is_none() {
-        for symbol in pe.symbols() {
-            if let Ok(name) = symbol.name() {
-                if cr_addr.is_none() && name.contains("Il2CppCodegenRegistration") {
-                    cr_addr = Some(symbol.address());
-                }
-                if mr_addr.is_none() && name.contains("Il2CppMetadataRegistration") {
-                    mr_addr = Some(symbol.address());
-                }
-            }
-        }
-    }
-
-    match (cr_addr, mr_addr) {
-        (Some(c), Some(m)) => Ok((c, m)),
-        _ => Err(Il2CppBinaryError::MissingRegistration),
-    }
-}
-
 impl<'data> Il2CppCodeRegistration<'data> {
     fn read_pe(pe: &PeFile<'data>, pe_data: &'data [u8], addr: u64) -> Result<Self> {
         let reader = PeReader::new(pe, pe_data);
@@ -448,7 +406,11 @@ impl Il2CppMetadataRegistration {
 impl<'data> RuntimeMetadata<'data> {
     pub fn read_pe(pe: &PeFile<'data>, global_metadata: &GlobalMetadata) -> Result<Self> {
         let pe_data = pe.data();
-        let (cr_addr, mr_addr) = find_registration(pe)?;
+        let (cr_addr, mr_addr) = match pe.architecture() {
+            #[cfg(feature = "pe_x64")]
+            object::Architecture::X86_64 => x86_64::find_registration(pe)?,
+            _ => unimplemented!("unsupported architecture"),
+        };
 
         let code_registration = Il2CppCodeRegistration::read_pe(pe, pe_data, cr_addr)?;
         let metadata_registration =
