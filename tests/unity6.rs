@@ -1,0 +1,38 @@
+mod common;
+use anyhow::Context;
+
+const VERSION: &str = "unity-6000.0.65f1";
+// ELF tests (linux/android). Compiled only when `elf` feature is enabled.
+#[cfg(feature = "elf")]
+#[cfg(test)]
+mod elf_tests {
+    use super::*;
+
+    #[test]
+    #[cfg(feature = "elf_x64")]
+    fn elf_linux_fixture() -> anyhow::Result<()> {
+        common::run_checks_helper(VERSION, "linux", "GameAssembly.so")
+            .context("running linux elf fixture")
+    }
+
+    #[test]
+    #[cfg(feature = "elf_aarch64")]
+    fn elf_android_fixture() -> anyhow::Result<()> {
+        common::run_checks_helper(VERSION, "android", "libil2cpp.so")
+            .context("running android elf fixture")
+    }
+}
+
+// PE tests (windows). Compiled only when `pe` feature is enabled.
+#[cfg(feature = "pe")]
+#[cfg(test)]
+mod pe_tests {
+    use super::*;
+
+    #[test]
+    #[cfg(feature = "pe_x64")]
+    fn pe_windows_fixture() -> anyhow::Result<()> {
+        common::run_checks_helper(VERSION, "windows", "GameAssembly.dll")
+            .context("running windows pe fixture")
+    }
+}

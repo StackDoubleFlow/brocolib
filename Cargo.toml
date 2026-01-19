@@ -24,7 +24,13 @@ pe = ["object/pe"]
 
 # Target-specific features e.g xrefs
 elf_aarch64 = ["elf", "dep:bad64"]
+elf_x64 = ["elf", "dep:iced-x86"]
+
+pe_arm64 = ["pe", "dep:bad64"]
 pe_x64 = ["pe", "dep:iced-x86"]
 
 # IL2CPP Version-specific features
 il2cpp_v31 = []
+
+[dev-dependencies]
+anyhow = "1.0.100"
