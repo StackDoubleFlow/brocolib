@@ -89,6 +89,7 @@ fn try_disassemble(code: &[u8], addr: u64) -> loader::Result<Vec<Instruction>> {
         .collect()
 }
 
+/// Find the nth `bl` instruction starting from addr
 fn nth_bl(elf: &Elf, addr: u64, n: usize) -> loader::Result<u64> {
     let mut target = None;
     matching_bl(elf, addr, n, |addr| {
@@ -98,6 +99,7 @@ fn nth_bl(elf: &Elf, addr: u64, n: usize) -> loader::Result<u64> {
     Ok(target.unwrap())
 }
 
+/// Find a `bl` instruction starting from addr that matches f
 fn matching_bl<F>(elf: &Elf, addr: u64, limit: usize, mut f: F) -> loader::Result<Option<u64>>
 where
     F: FnMut(u64) -> loader::Result<bool>,

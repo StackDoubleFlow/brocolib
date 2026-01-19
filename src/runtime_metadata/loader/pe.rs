@@ -50,6 +50,7 @@ impl<'pe, 'data> PeReader<'pe, 'data> {
 
     fn make_cur(&self, rva: u64) -> Result<Cursor<&'data [u8]>> {
         let pos = vaddr_conv(self.pe, rva)? as u64;
+        // let pos = rva;
         let mut cur = Cursor::new(self.pe_data);
         cur.set_position(pos);
         Ok(cur)
@@ -57,6 +58,7 @@ impl<'pe, 'data> PeReader<'pe, 'data> {
 
     fn get_str(&self, rva: u64) -> Result<&'data str> {
         let offset = vaddr_conv(self.pe, rva)?;
+        // let offset = rva;
         get_str(self.pe_data, offset as usize)
     }
 }
@@ -406,9 +408,11 @@ impl Il2CppMetadataRegistration {
 impl<'data> RuntimeMetadata<'data> {
     pub fn read_pe(pe: &PeFile<'data>, global_metadata: &GlobalMetadata) -> Result<Self> {
         let pe_data = pe.data();
+        let pe_rel = process_relocations(pe, pe_data.to_vec())?;
+
         let (cr_addr, mr_addr) = match pe.architecture() {
             #[cfg(feature = "pe_x64")]
-            object::Architecture::X86_64 => x86_64::find_registration(pe)?,
+            object::Architecture::X86_64 => x86_64::find_registration(pe, &pe_rel)?,
             _ => unimplemented!("unsupported architecture"),
         };
 

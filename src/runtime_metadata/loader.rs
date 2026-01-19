@@ -1,7 +1,9 @@
-use std::{io, str};
+use std::{backtrace::Backtrace, io::{self, Cursor}, str};
 
 use bad64::DecodeError;
-use object::{Object, ObjectSection};
+use binde::LittleEndian;
+use byteorder::WriteBytesExt;
+use object::{Object, ObjectSection, RelocationEncoding, RelocationTarget};
 use thiserror::Error;
 
 #[cfg(feature = "elf")]
@@ -22,6 +24,9 @@ pub enum Il2CppBinaryError {
 
     #[error("could not find registration function")]
     MissingRegistration,
+
+    #[error("bad instruction encountered during disassembly {0} at {1:#016x}")]
+    BadInstruction(String, u64),
 
     #[error("invalid Il2CppType with type {0}")]
     InvalidType(u8),
@@ -60,8 +65,13 @@ pub fn get_str(data: &[u8], offset: usize) -> Result<&str> {
 }
 
 /// Convert a virtual address to a file offset
-pub fn vaddr_conv<'a>(pe: &impl Object<'a>, vaddr: u64) -> Result<u64> {
-    for section in pe.sections() {
+pub fn vaddr_conv<'a>(obj: &impl Object<'a>, vaddr: u64) -> Result<u64> {
+    // TODO: is this correct for vaddr 0?
+    if vaddr == 0 {
+        return Ok(0);
+    }
+
+    for section in obj.sections() {
         let addr = section.address();
         let size = section.size();
         if addr <= vaddr && vaddr - addr < size {
@@ -72,4 +82,27 @@ pub fn vaddr_conv<'a>(pe: &impl Object<'a>, vaddr: u64) -> Result<u64> {
         }
     }
     Err(Il2CppBinaryError::VAddrConv(vaddr))
+}
+
+fn process_relocations<'a>(obj: &impl Object<'a>, obj_data: Vec<u8>) -> Result<Vec<u8>> {
+    let mut obj_data = obj_data;
+
+    if let Some(relocations) = obj.dynamic_relocations() {
+        for (addr, rel) in relocations {
+            if rel.encoding() != RelocationEncoding::Generic
+                || rel.target() != RelocationTarget::Absolute
+            {
+                // TODO: handle more relocation types
+                continue;
+            }
+
+            let target = rel.addend() as u64;
+
+            let mut cur = Cursor::new(&mut obj_data);
+            cur.set_position(vaddr_conv(obj, addr)?);
+            cur.write_u64::<LittleEndian>(target)?;
+        }
+    }
+
+    Ok(obj_data)
 }

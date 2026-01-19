@@ -51,28 +51,7 @@ pub fn addr_in_bss(elf: &Elf, vaddr: u64) -> bool {
 //     Err(Il2CppBinaryError::VAddrConv(vaddr))
 // }
 
-fn process_relocations(elf: &Elf) -> Result<Vec<u8>> {
-    let mut elf_rel = elf.data().to_vec();
 
-    if let Some(relocations) = elf.dynamic_relocations() {
-        for (addr, rel) in relocations {
-            if rel.encoding() != RelocationEncoding::Generic
-                || rel.target() != RelocationTarget::Absolute
-            {
-                // TODO: handle more relocation types
-                continue;
-            }
-
-            let target = rel.addend() as u64;
-
-            let mut cur = Cursor::new(&mut elf_rel);
-            cur.set_position(vaddr_conv(elf, addr)?);
-            cur.write_u64::<LittleEndian>(target)?;
-        }
-    }
-
-    Ok(elf_rel)
-}
 
 struct ElfReader<'elf, 'data, 'elf_rel> {
     elf: &'elf Elf<'data>,
@@ -427,7 +406,7 @@ impl Il2CppMetadataRegistration {
 impl<'data> RuntimeMetadata<'data> {
     /// Read runtime metadata information from an [`Elf`].
     pub fn read_elf(elf: &Elf<'data>, global_metadata: &GlobalMetadata) -> Result<Self> {
-        let elf_rel = process_relocations(elf)?;
+        let elf_rel = process_relocations(elf, elf.data().to_vec())?;
 
         let (cr_addr, mr_addr) = match elf.architecture() {
             #[cfg(feature = "elf_aarch64")]

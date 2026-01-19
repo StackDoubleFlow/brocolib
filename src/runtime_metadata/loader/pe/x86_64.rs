@@ -1,35 +1,98 @@
 use std::collections::HashMap;
 
 use iced_x86::{Decoder, DecoderOptions, Instruction, OpKind, Register};
-use object::{Object, ObjectSymbol};
+use object::Object;
 
 use crate::runtime_metadata::loader::{self, pe::PeFile, vaddr_conv, Il2CppBinaryError};
 use iced_x86::Mnemonic;
 
 /// Returns address to (g_CodeRegistration, g_MetadataRegistration)
-pub fn find_registration(pe: &PeFile) -> loader::Result<(u64, u64)> {
+pub fn find_registration(pe: &PeFile, pe_rel: &[u8]) -> loader::Result<(u64, u64)> {
+    /*
+
+                                **************************************************************
+                            *                          FUNCTION                          *
+                            **************************************************************
+                            undefined il2cpp_init()
+                              assume GS_OFFSET = 0xff00000000
+            undefined         <UNASSIGNED>   <RETURN>
+                            0x34cd20  133  il2cpp_init
+                            Ordinal_133                                     XREF[3]:     Entry Point(*), 1820304d8(*),
+                            il2cpp_init                                                  1824dd290(*)
+      18034cd20 40 53           PUSH       RBX
+      18034cd22 48 83 ec 20     SUB        RSP,0x20
+      18034cd26 48 8b d9        MOV        RBX,RCX
+      18034cd29 48 8d 15        LEA        RDX,[DAT_181ebf51c]
+                ec 27 b7 01
+      18034cd30 33 c9           XOR        ECX,ECX
+      18034cd32 e8 7d 11        CALL       setlocale                                        char * setlocale(int _Category,
+                03 00
+      18034cd37 48 8b cb        MOV        RCX,RBX
+      18034cd3a e8 41 43        CALL       FUN_1802e1080                                    undefined FUN_1802e1080()
+                f9 ff
+      18034cd3f 0f b6 c0        MOVZX      EAX,AL
+      18034cd42 48 83 c4 20     ADD        RSP,0x20
+      18034cd46 5b              POP        RBX
+      18034cd47 c3              RET
+      18034cd48 cc              ??         CCh
+      18034cd49 cc              ??         CCh
+      18034cd4a cc              ??         CCh
+      18034cd4b cc              ??         CCh
+      18034cd4c cc              ??         CCh
+      18034cd4d cc              ??         CCh
+      18034cd4e cc              ??         CCh
+      18034cd4f cc              ??         CCh
+
+    */
     let il2cpp_init = pe
-        .dynamic_symbols()
-        .find(|s| s.name() == Ok("il2cpp_init"))
+        .exports()
+        .map_err(Il2CppBinaryError::Object)?
+        .iter()
+        .find(|n| str::from_utf8(n.name()) == Ok("il2cpp_init"))
         .ok_or(Il2CppBinaryError::MissingIl2CppInit)?
         .address();
+
     let mut code_registration: Option<u64> = None;
     let mut metadata_registration: Option<u64> = None;
 
     // find `call` to Runtime::Init
-    let runtime_init_instr = nth_call(pe, il2cpp_init, 1)?;
-    let runtime_init_instr = vaddr_conv(pe, runtime_init_instr)? as usize;
+    let runtime_init_instr = nth_call(pe, il2cpp_init, 2)? as usize;
+    println!("runtime_init_instr: {:#x}", runtime_init_instr);
+    assert_eq!(
+        0x1802e1080,
+        runtime_init_instr,
+        "{}",
+        runtime_init_instr.wrapping_sub(0x1802e1080)
+    );
+
+    println!();
+    println!();
+
+    let code_registration_call = nth_indirect_call(pe, runtime_init_instr as u64, 1)?;
+    println!("code_registration address: {:#x?}", code_registration);
+
+    assert_eq!(
+        0x1802e1187,
+        code_registration_call,
+        "{}",
+        code_registration_call.wrapping_sub(0x1802e1187)
+    );
+
+    let runtime_init_instr_vaddr = vaddr_conv(pe, runtime_init_instr as u64)? as usize;
+    let code_registration_call_vaddr = vaddr_conv(pe, code_registration_call)? as usize;
 
     // disassemble Runtime::Init to find the call to s_Il2CppCodegenRegistration
     // it is 1802b4973		CALL qword ptr [->FUN_18019c2a0]	Read
     // find the first indirect call (call via register)
-
     let instructions = try_disassemble(
-        &pe.data()[runtime_init_instr..runtime_init_instr + 200],
+        &pe.data()[runtime_init_instr_vaddr..code_registration_call_vaddr as usize],
         runtime_init_instr as u64,
     )?;
 
-    // find this indirect call
+    // This relocation points to s_Il2CppCodegenRegistration
+    let regs = analyze_reg_rel(pe, pe_rel, &instructions);
+
+    // find this indirect call in Runtime::Init
     /*
           1802b4973 ff 15 cf        CALL       qword ptr [->FUN_18019c2a0]                      undefined FUN_18019c2a0()
                 d5 9a 02                                                                    = 18019c2a0
@@ -43,28 +106,10 @@ pub fn find_registration(pe: &PeFile) -> loader::Result<(u64, u64)> {
             let target_addr = instr.near_branch_target();
             let target_offset = vaddr_conv(pe, target_addr)? as usize;
             let code = &pe.data()[target_offset..target_offset + 7 * 4];
-            let instructions = try_disassemble(code, target_addr)?;
-
-            // Look for the first 2 store instructions
-
-            for (idx, ins) in instructions.iter().enumerate() {
-                match (ins.mnemonic(), ins.op_count()) {
-                    (iced_x86::Mnemonic::Mov, 2)
-                        if ins.op0_kind() == OpKind::Memory
-                            && ins.op1_kind() == OpKind::Register =>
-                    {
-                        let regs = analyze_reg_rel(pe, &instructions[0..idx]);
-                        if let Some(code_registration) = code_registration {
-                            return Ok((code_registration, regs[&ins.op1_register()]));
-                        } else {
-                            code_registration = Some(regs[&ins.op1_register()]);
-                        }
-                    }
-                    _ => {}
-                }
-            }
         }
     }
+
+    println!("code_registration address: {:#x?}", code_registration);
 
     // now to find s_Il2CppMetadataRegistration, we look for call to MetadataCache::Initialize,
     // immediately after codegen registration store and call
@@ -94,7 +139,7 @@ pub fn find_registration(pe: &PeFile) -> loader::Result<(u64, u64)> {
             && instr.op0_kind() == OpKind::Register
             && instr.op1_kind() == OpKind::Memory
         {
-            let regs = analyze_reg_rel(pe, &instructions);
+            let regs = analyze_reg_rel(pe, pe_rel, &instructions);
             let reg = instr.op0_register();
             if let Some(&addr) = regs.get(&reg) {
                 metadata_registration = Some(addr);
@@ -102,6 +147,11 @@ pub fn find_registration(pe: &PeFile) -> loader::Result<(u64, u64)> {
             }
         }
     }
+
+    println!(
+        "metadata_registration address: {:#x?}",
+        metadata_registration
+    );
 
     Ok((
         code_registration.ok_or(Il2CppBinaryError::MissingRegistration)?,
@@ -112,6 +162,7 @@ pub fn find_registration(pe: &PeFile) -> loader::Result<(u64, u64)> {
 /// Analyze instructions to find the values of registers
 fn analyze_reg_rel(
     pe: &object::read::pe::PeFile<'_, object::pe::ImageNtHeaders64>,
+    pe_rel: &[u8],
     idx: &[Instruction],
 ) -> HashMap<Register, u64> {
     let mut regs: HashMap<Register, u64> = HashMap::new();
@@ -121,10 +172,9 @@ fn analyze_reg_rel(
         let read_u64 = |addr: u64| -> Option<u64> {
             if let Ok(off) = vaddr_conv(pe, addr) {
                 let off = off as usize;
-                let data = pe.data();
-                if off + 8 <= data.len() {
+                if off + 8 <= pe_rel.len() {
                     let mut arr = [0u8; 8];
-                    arr.copy_from_slice(&data[off..off + 8]);
+                    arr.copy_from_slice(&pe_rel[off..off + 8]);
                     return Some(u64::from_le_bytes(arr));
                 }
             }
@@ -233,13 +283,26 @@ fn try_disassemble(code: &[u8], addr: u64) -> loader::Result<Vec<Instruction>> {
     Ok(decoder.into_iter().collect::<Vec<Instruction>>())
 }
 
+fn nth_indirect_call(pe: &PeFile, addr: u64, n: usize) -> loader::Result<u64> {
+    let target = matching_call(pe, addr, n, |addr, call| Ok(call.is_call_near_indirect()))?;
+    target.ok_or(Il2CppBinaryError::BadInstruction(
+        "Could not find nth indirect call".to_string(),
+        addr,
+    ))
+}
+
+/// Find the nth call instruction starting from addr
+/// Returns the target address of the call
 fn nth_call(pe: &PeFile, addr: u64, n: usize) -> loader::Result<u64> {
     let mut target = None;
-    matching_call(pe, addr, n, |addr| {
+    matching_call(pe, addr, n, |addr, ins| {
         target = Some(addr);
         Ok(false)
     })?;
-    Ok(target.unwrap())
+    target.ok_or(Il2CppBinaryError::BadInstruction(
+        "Could not find nth call".to_string(),
+        addr,
+    ))
 }
 
 /// Find the nth call instruction starting from addr
@@ -249,22 +312,38 @@ fn nth_call(pe: &PeFile, addr: u64, n: usize) -> loader::Result<u64> {
 /// The closure is called with the target address of the call instruction
 fn matching_call<F>(elf: &PeFile, addr: u64, limit: usize, mut f: F) -> loader::Result<Option<u64>>
 where
-    F: FnMut(u64) -> loader::Result<bool>,
+    F: FnMut(u64, &Instruction) -> loader::Result<bool>,
 {
-    // https://docs.rs/iced-x86/latest/iced_x86/#get-the-virtual-address-of-a-memory-operand
-    let offset = vaddr_conv(elf, addr)? as usize;
+    // Disassemble a contiguous window of bytes starting at `addr` instead
+    // of stepping fixed 4-byte chunks (instructions are variable length).
+    let start_off = vaddr_conv(elf, addr)? as usize;
+    println!(
+        "matching_call: start disassemble at offset {:#x}",
+        start_off
+    );
+
+    let data = &elf.data()[start_off..];
+    let max_bytes = std::cmp::min(data.len(), 0x10000); // cap to avoid huge disassembly
+    let instructions = try_disassemble(&data[..max_bytes], addr)?;
+
     let mut count = 0;
+    for ins in &instructions {
+        if matches!(ins.flow_control(), iced_x86::FlowControl::Call | iced_x86::FlowControl::IndirectCall) {
+            // Only handle direct (near) calls which have an immediate branch target.
 
-    for i in 0.. {
-        let offset = offset + i * 4;
-        let code = &elf.data()[offset..offset + 4];
-        let ins = &try_disassemble(code, addr + i as u64 * 4)?[0];
-
-        if ins.flow_control() == iced_x86::FlowControl::Call {
-            let target = ins.near_branch_target();
-            if f(target)? {
-                return Ok(Some(target));
+            if ins.is_call_near() {
+                let target = ins.near_branch_target();
+                println!("found call to {:#x}", target);
+                if f(target, ins)? {
+                    return Ok(Some(target));
+                }
             }
+
+            if ins.is_call_far() {
+                eprintln!("encountered far call at {:#x}, unsupported", ins.ip());
+                continue;
+            }
+
             count += 1;
             if count == limit {
                 return Ok(None);
@@ -272,5 +351,5 @@ where
         }
     }
 
-    unreachable!()
+    Ok(None)
 }
