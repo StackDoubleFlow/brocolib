@@ -15,7 +15,7 @@ use crate::runtime_metadata::{
 use binread::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use object::read::pe::PeFile64;
-use object::{Object, ObjectSection};
+use object::Object;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::str;
@@ -38,32 +38,34 @@ mod x86_64;
 //     Err(Il2CppBinaryError::VAddrConv(vaddr))
 // }
 
-struct PeReader<'pe, 'data> {
+struct PeReader<'pe, 'data, 'rel_data> {
     pe: &'pe PeFile<'data>,
-    pe_data: &'data [u8],
+    pe_data: &'rel_data [u8],
 }
 
-impl<'pe, 'data> PeReader<'pe, 'data> {
-    fn new(pe: &'pe PeFile<'data>, pe_data: &'data [u8]) -> Self {
+impl<'pe, 'data, 'rel_data> PeReader<'pe, 'data, 'rel_data> {
+    fn new(pe: &'pe PeFile<'data>, pe_data: &'rel_data [u8]) -> Self {
         Self { pe, pe_data }
     }
 
-    fn make_cur(&self, rva: u64) -> Result<Cursor<&'data [u8]>> {
-        let pos = vaddr_conv(self.pe, rva)? as u64;
-        // let pos = rva;
+    fn make_cur(&self, vaddr: u64) -> Result<Cursor<&[u8]>> {
+        let pos = vaddr_conv(self.pe, vaddr)?;
         let mut cur = Cursor::new(self.pe_data);
         cur.set_position(pos);
         Ok(cur)
     }
 
-    fn get_str(&self, rva: u64) -> Result<&'data str> {
-        let offset = vaddr_conv(self.pe, rva)?;
-        // let offset = rva;
-        get_str(self.pe_data, offset as usize)
+    fn get_str(&self, vaddr: u64) -> Result<&'data str> {
+        let offset = vaddr_conv(self.pe, vaddr)?;
+        get_str(self.pe.data(), offset as usize)
     }
 }
 
-fn read_arr<'pe, 'data, T>(reader: &PeReader<'pe, 'data>, rva: u64, len: usize) -> Result<Vec<T>>
+fn read_arr<'pe, 'data, T>(
+    reader: &PeReader<'pe, 'data, '_>,
+    rva: u64,
+    len: usize,
+) -> Result<Vec<T>>
 where
     T: BinRead,
 {
@@ -76,7 +78,7 @@ where
 }
 
 fn read_len_arr<'pe, 'data, T>(
-    reader: &PeReader<'pe, 'data>,
+    reader: &PeReader<'pe, 'data, '_>,
     cur: &mut Cursor<&'data [u8]>,
 ) -> Result<Vec<T>>
 where
@@ -89,7 +91,7 @@ where
 }
 
 fn read_len_arr_nullable<'pe, 'data, T>(
-    reader: &PeReader<'pe, 'data>,
+    reader: &PeReader<'pe, 'data, '_>,
     cur: &mut Cursor<&'data [u8]>,
 ) -> Result<Vec<T>>
 where
@@ -106,10 +108,7 @@ where
 }
 
 impl<'data> Il2CppCodeGenModule<'data> {
-    fn read_pe<'pe>(
-        reader: &PeReader<'pe, 'data>,
-        vaddr: u64,
-    ) -> Result<Il2CppCodeGenModule<'data>> {
+    fn read_pe<'pe>(reader: &PeReader<'pe, 'data, '_>, vaddr: u64) -> Result<Self> {
         let mut cur = reader.make_cur(vaddr)?;
 
         let name = reader.get_str(cur.read_u64::<LittleEndian>()?)?;
@@ -124,7 +123,7 @@ impl<'data> Il2CppCodeGenModule<'data> {
 
         let rgctx_ranges = read_len_arr(reader, &mut cur)?;
         let rgctxs = read_len_arr(reader, &mut cur)?;
-        Ok(Il2CppCodeGenModule {
+        Ok(Self {
             name,
             method_pointers,
             adjustor_thunks,
@@ -137,7 +136,7 @@ impl<'data> Il2CppCodeGenModule<'data> {
 
 impl Il2CppType {
     fn read_pe<'pe, 'data>(
-        reader: &PeReader<'pe, 'data>,
+        reader: &PeReader<'pe, 'data, '_>,
         vaddr: u64,
         type_map: &HashMap<u64, usize>,
         generic_class_map: &HashMap<u64, usize>,
@@ -190,7 +189,7 @@ impl Il2CppType {
 
 impl Il2CppGenericClass {
     fn read_pe<'pe, 'data>(
-        reader: &PeReader<'pe, 'data>,
+        reader: &PeReader<'pe, 'data, '_>,
         vaddr: u64,
         generic_inst_map: &HashMap<u64, usize>,
         type_map: &HashMap<u64, usize>,
@@ -226,7 +225,7 @@ impl Il2CppGenericContext {
 
 impl Il2CppGenericInst {
     fn read_pe<'pe, 'data>(
-        reader: &PeReader<'pe, 'data>,
+        reader: &PeReader<'pe, 'data, '_>,
         vaddr: u64,
         types_map: &HashMap<u64, usize>,
     ) -> Result<Il2CppGenericInst> {
@@ -243,7 +242,7 @@ impl Il2CppGenericInst {
 
 impl Il2CppArrayType {
     fn read_pe<'pe, 'data>(
-        reader: &PeReader<'pe, 'data>,
+        reader: &PeReader<'pe, 'data, '_>,
         vaddr: u64,
         types_map: &HashMap<u64, usize>,
     ) -> Result<Il2CppArrayType> {
@@ -275,7 +274,7 @@ impl Il2CppArrayType {
 }
 
 impl<'data> Il2CppCodeRegistration<'data> {
-    fn read_pe(pe: &PeFile<'data>, pe_data: &'data [u8], addr: u64) -> Result<Self> {
+    fn read_pe(pe: &PeFile<'data>, pe_data: &[u8], addr: u64) -> Result<Self> {
         let reader = PeReader::new(pe, pe_data);
         let mut cur = reader.make_cur(addr)?;
 
@@ -299,7 +298,7 @@ impl<'data> Il2CppCodeRegistration<'data> {
             code_gen_modules.push(Il2CppCodeGenModule::read_pe(&reader, maddr)?);
         }
 
-        Ok(Il2CppCodeRegistration {
+        Ok(Self {
             reverse_pinvoke_wrappers,
             generic_method_pointers,
             generic_adjustor_thunks,
@@ -416,9 +415,11 @@ impl<'data> RuntimeMetadata<'data> {
             _ => unimplemented!("unsupported architecture"),
         };
 
-        let code_registration = Il2CppCodeRegistration::read_pe(pe, pe.data(), cr_addr)?;
+        // Use the relocated image (`pe_rel`) for reading tables that contain pointers
+        // since `process_relocations` applied dynamic relocations into that buffer.
+        let code_registration = Il2CppCodeRegistration::read_pe(pe, &pe_rel, cr_addr)?;
         let metadata_registration =
-            Il2CppMetadataRegistration::read_pe(pe, pe_data, mr_addr, global_metadata)?;
+            Il2CppMetadataRegistration::read_pe(pe, &pe_rel, mr_addr, global_metadata)?;
         Ok(RuntimeMetadata {
             code_registration,
             metadata_registration,
