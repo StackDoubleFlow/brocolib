@@ -1,10 +1,33 @@
 use std::collections::HashMap;
 
 use iced_x86::{Decoder, DecoderOptions, Instruction, OpKind, Register};
-use object::{Object, ObjectSection};
+use object::Object;
 
 use crate::runtime_metadata::loader::{self, pe::PeFile, vaddr_conv, Il2CppBinaryError};
 use iced_x86::Mnemonic;
+
+const UNITY_6: bool = false;
+
+macro_rules! unity6_debug_println {
+    ($($arg:tt)*) => {
+        if UNITY_6 && cfg!(debug_assertions) {
+            println!($($arg)*);
+        }
+    };
+}
+
+macro_rules! unity6_debug_assert_eq {
+    ($left:expr, $right:expr $(,)?) => {
+        if UNITY_6 {
+            debug_assert_eq!($left, $right);
+        }
+    };
+    ($left:expr, $right:expr, $($arg:tt)+) => {
+        if UNITY_6 {
+            debug_assert_eq!($left, $right, $($arg)+);
+        }
+    };
+}
 
 /// Returns address to (g_CodegenRegistration, g_MetadataRegistration)
 pub fn find_registration(pe: &PeFile, pe_rel: &[u8]) -> loader::Result<(u64, u64)> {
@@ -57,16 +80,16 @@ pub fn find_registration(pe: &PeFile, pe_rel: &[u8]) -> loader::Result<(u64, u64
 
     // find `call` to Runtime::Init
     let runtime_init_instr = nth_call(pe, il2cpp_init, 1)? as usize;
-    println!("runtime_init_instr: {:#x}", runtime_init_instr);
-    assert_eq!(
+    unity6_debug_println!("runtime_init_instr: {:#x}", runtime_init_instr);
+    unity6_debug_assert_eq!(
         0x1802e1080,
         runtime_init_instr,
         "{}",
         runtime_init_instr.abs_diff(0x1802e1080)
     );
 
-    println!();
-    println!("code_registration search:");
+    unity6_debug_println!();
+    unity6_debug_println!("code_registration search:");
 
     // disassemble Runtime::Init to find the call to s_Il2CppCodegenRegistration
     // find the first indirect call (call via register)
@@ -77,10 +100,10 @@ pub fn find_registration(pe: &PeFile, pe_rel: &[u8]) -> loader::Result<(u64, u64
 
     */
     code_registration = nth_indirect_call(pe, pe_rel, runtime_init_instr as u64, 2)?;
-    println!("code_registration_global: {:#x?}", code_registration);
+    unity6_debug_println!("code_registration_global: {:#x?}", code_registration);
 
     if let Some(code_registration) = code_registration {
-        assert_eq!(
+        unity6_debug_assert_eq!(
             0x1802e118d,
             code_registration,
             "0x{:x}",
@@ -103,7 +126,7 @@ pub fn find_registration(pe: &PeFile, pe_rel: &[u8]) -> loader::Result<(u64, u64
         )?;
         let metadata_cache_init_call_vaddr = vaddr_conv(pe, metadata_cache_init_call)? as usize;
 
-        debug_assert_eq!(
+        unity6_debug_assert_eq!(
             0x180336250,
             metadata_cache_init_call,
             "0x{:x}",
@@ -111,87 +134,84 @@ pub fn find_registration(pe: &PeFile, pe_rel: &[u8]) -> loader::Result<(u64, u64
         );
 
         // s_MetadataRegistration is the first argument to MetadataCache::Initialize which is dereferenced [DAT_1821f1c28]
+        // therefore it'll the first argument passed in RCX
+        // after GlobalMetadata::Initialize() is called in MetadataCache::Initialize
 
         /*
-                18033628f 48 8b 0d        MOV        RCX,qword ptr [DAT_1821f1c28]
+              180336282 e8 09 91        CALL       FUN_1802ff390                                    undefined FUN_1802ff390()
+                fc ff
+        */
+        let register_generic_classes_call = Decoder::with_ip(
+            64,
+            &pe.data()[metadata_cache_init_call_vaddr..],
+            metadata_cache_init_call,
+            DecoderOptions::NONE,
+        )
+        .into_iter()
+        .inspect(|i| {
+            unity6_debug_println!(
+                "{:#016x} {:<10} {}",
+                i.ip(),
+                format!("{:?}", i.mnemonic()),
+                i
+            );
+        })
+        .find(|t| t.is_call_near())
+        .ok_or(Il2CppBinaryError::BadInstruction(
+            "Could not find 2nd call to MetadataCache::Initialize".to_string(),
+            runtime_init_instr as u64,
+        ))?;
+
+        unity6_debug_assert_eq!(
+            0x180336282,
+            register_generic_classes_call.ip(),
+            "0x{:x}",
+            register_generic_classes_call.ip().abs_diff(0x180336282)
+        );
+
+        /*
+        180336282 e8 09 91        CALL       FUN_1802ff390                                    undefined FUN_1802ff390()
+                  fc ff
+        180336287 84 c0           TEST       AL,AL
+        180336289 0f 84 74        JZ         LAB_180336803
+                  05 00 00
+        18033628f 48 8b 0d        MOV        RCX,qword ptr [DAT_1821f1c28]
                   92 b9 eb 01
         180336296 8b 11           MOV        EDX,dword ptr [RCX]
         180336298 48 8b 49 08     MOV        RCX,qword ptr [RCX + 0x8]
 
         18033629c e8 5f f6        CALL       FUN_180345900                                    undefined FUN_180345900()
+        ...
             00 00
-
-
           */
-        // we need to disassemble to the 2nd call to get the parameters
-        let decoder = Decoder::with_ip(
+        // now find the value loaded into RCX after the call
+        let rcx_value = Decoder::with_ip(
             64,
             &pe.data()[metadata_cache_init_call_vaddr..],
-            runtime_init_instr as u64,
+            metadata_cache_init_call,
             DecoderOptions::NONE,
-        );
+        )
+        .into_iter()
+        .find(|t| t.mnemonic() == Mnemonic::Mov && t.op0_register() == Register::RCX)
+        .ok_or(Il2CppBinaryError::BadInstruction(
+            "Could not find MOV to RCX in MetadataCache::Initialize".to_string(),
+            runtime_init_instr as u64,
+        ))?;
 
-        // il2cpp::metadata::GenericMetadata::RegisterGenericClasses(
-        //  s_MetadataCache_Il2CppMetadataRegistration->genericClasses,
-        //  s_MetadataCache_Il2CppMetadataRegistration->genericClassesCount
-        // )
-        let register_generic_classes_call = decoder
-            .into_iter()
-            .inspect(|i| {
-                println!(
-                    "{:#016x} {:<10} {}",
-                    i.ip(),
-                    format!("{:?}", i.mnemonic()),
-                    i
-                );
-            })
-            .filter(|t| t.is_call_near())
-            .nth(1)
-            .ok_or(Il2CppBinaryError::BadInstruction(
-                "Could not find 2nd call to MetadataCache::Initialize".to_string(),
-                runtime_init_instr as u64,
-            ))?;
-        let register_generic_classes_call_vaddr =
-            vaddr_conv(pe, register_generic_classes_call.ip())? as usize;
-
-        debug_assert_eq!(
-            0x18033629c,
-            register_generic_classes_call.ip(),
-            "0x{:x}",
-            register_generic_classes_call.ip().abs_diff(0x18033629c)
-        );
-
-        let registry = analyze_reg_rel(
-            pe,
-            pe_rel,
-            &try_disassemble(
-                &pe.data()[metadata_cache_init_call_vaddr..register_generic_classes_call_vaddr],
-                runtime_init_instr as u64,
-            )?,
-        )?;
-
-        // finally get s_Il2CppMetadataRegistration
-        metadata_registration = registry.get(&Register::RCX).copied();
-        debug_assert_eq!(
-            0x1821f1c28,
-            metadata_registration.unwrap(),
-            "0x{:x}",
-            metadata_registration.unwrap().abs_diff(0x1821f1c28)
-        );
+        unity6_debug_println!("RCX load instruction: {:#x?}", rcx_value);
+        metadata_registration = Some(rcx_value.memory_displacement64());
     }
 
-    // time to find the address of g_MetadataRegistration
-    // in the following asm, it is `DAT_182ef38d0`
-
-    /*
-              1802ceb17 48 8b 0d        MOV        RCX,qword ptr [DAT_182ef38d0]
-                    b2 4d c2 02
-          1802ceb1e 8b 11           MOV        EDX,dword ptr [RCX]
-    */
-
-    println!(
+    unity6_debug_println!(
         "metadata_registration address: {:#x?}",
         metadata_registration
+    );
+
+    unity6_debug_assert_eq!(
+        0x1821f1c28,
+        metadata_registration.unwrap(),
+        "0x{:x}",
+        metadata_registration.unwrap().abs_diff(0x1821f1c28)
     );
 
     Ok((
@@ -296,8 +316,8 @@ pub fn analyze_reg_rel(
     Ok(registry)
 }
 
-fn try_disassemble(code: &[u8], addr: u64) -> loader::Result<Vec<Instruction>> {
-    let decoder = Decoder::with_ip(64, code, addr, DecoderOptions::NONE);
+fn try_disassemble(code: &[u8], start_addr: u64) -> loader::Result<Vec<Instruction>> {
+    let decoder = Decoder::with_ip(64, code, start_addr, DecoderOptions::NONE);
 
     Ok(decoder.into_iter().collect::<Vec<Instruction>>())
 }
@@ -328,16 +348,17 @@ fn nth_indirect_call(
     let offset = indirect_call.ip();
     let file_offset_vaddr = vaddr_conv(pe, offset)? as usize;
 
-    println!(
+    unity6_debug_println!(
         "nth_indirect_call: disassemble from {:#x} to {:#x}",
-        start_addr_vaddr, file_offset_vaddr
+        start_addr_vaddr,
+        file_offset_vaddr
     );
     let instructions = try_disassemble(
         &pe.data()[start_addr_vaddr as usize..file_offset_vaddr],
         start_addr,
     )?;
 
-    assert_eq!(
+    unity6_debug_assert_eq!(
         0x1802e1187,
         indirect_call.ip(),
         "0x{:x}",

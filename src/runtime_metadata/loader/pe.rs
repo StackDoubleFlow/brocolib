@@ -408,7 +408,7 @@ impl Il2CppMetadataRegistration {
 impl<'data> RuntimeMetadata<'data> {
     pub fn read_pe(pe: &PeFile<'data>, global_metadata: &GlobalMetadata) -> Result<Self> {
         let pe_data = pe.data();
-        let pe_rel = process_relocations(pe, pe_data.to_vec())?;
+        let pe_rel: Vec<u8> = process_relocations(pe, pe_data.to_vec())?;
 
         let (cr_addr, mr_addr) = match pe.architecture() {
             #[cfg(feature = "pe_x64")]
@@ -416,7 +416,7 @@ impl<'data> RuntimeMetadata<'data> {
             _ => unimplemented!("unsupported architecture"),
         };
 
-        let code_registration = Il2CppCodeRegistration::read_pe(pe, pe_data, cr_addr)?;
+        let code_registration = Il2CppCodeRegistration::read_pe(pe, pe.data(), cr_addr)?;
         let metadata_registration =
             Il2CppMetadataRegistration::read_pe(pe, pe_data, mr_addr, global_metadata)?;
         Ok(RuntimeMetadata {
