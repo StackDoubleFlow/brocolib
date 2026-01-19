@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
 use iced_x86::{Decoder, DecoderOptions, Instruction, OpKind, Register};
-use object::Object;
+use object::{Object, ObjectSection};
 
 use crate::runtime_metadata::loader::{self, pe::PeFile, vaddr_conv, Il2CppBinaryError};
 use iced_x86::Mnemonic;
 
-/// Returns address to (g_CodeRegistration, g_MetadataRegistration)
+/// Returns address to (g_CodegenRegistration, g_MetadataRegistration)
 pub fn find_registration(pe: &PeFile, pe_rel: &[u8]) -> loader::Result<(u64, u64)> {
     /*
 
@@ -56,70 +56,129 @@ pub fn find_registration(pe: &PeFile, pe_rel: &[u8]) -> loader::Result<(u64, u64
     let mut metadata_registration: Option<u64> = None;
 
     // find `call` to Runtime::Init
-    let runtime_init_instr = nth_call(pe, il2cpp_init, 2)? as usize;
+    let runtime_init_instr = nth_call(pe, il2cpp_init, 1)? as usize;
     println!("runtime_init_instr: {:#x}", runtime_init_instr);
     assert_eq!(
         0x1802e1080,
         runtime_init_instr,
         "{}",
-        runtime_init_instr.wrapping_sub(0x1802e1080)
+        runtime_init_instr.abs_diff(0x1802e1080)
     );
 
     println!();
-    println!();
-
-    let code_registration_call = nth_indirect_call(pe, runtime_init_instr as u64, 1)?;
-    println!("code_registration address: {:#x?}", code_registration);
-
-    assert_eq!(
-        0x1802e1187,
-        code_registration_call,
-        "{}",
-        code_registration_call.wrapping_sub(0x1802e1187)
-    );
-
-    let runtime_init_instr_vaddr = vaddr_conv(pe, runtime_init_instr as u64)? as usize;
-    let code_registration_call_vaddr = vaddr_conv(pe, code_registration_call)? as usize;
+    println!("code_registration search:");
 
     // disassemble Runtime::Init to find the call to s_Il2CppCodegenRegistration
-    // it is 1802b4973		CALL qword ptr [->FUN_18019c2a0]	Read
     // find the first indirect call (call via register)
-    let instructions = try_disassemble(
-        &pe.data()[runtime_init_instr_vaddr..code_registration_call_vaddr as usize],
-        runtime_init_instr as u64,
-    )?;
-
-    // This relocation points to s_Il2CppCodegenRegistration
-    let regs = analyze_reg_rel(pe, pe_rel, &instructions);
-
     // find this indirect call in Runtime::Init
     /*
           1802b4973 ff 15 cf        CALL       qword ptr [->FUN_18019c2a0]                      undefined FUN_18019c2a0()
                 d5 9a 02                                                                    = 18019c2a0
 
     */
-    for instr in &instructions {
-        if instr.is_call_near_indirect()
-            && instr.op0_kind() == OpKind::Memory
-            && instr.memory_base() == Register::RIP
-        {
-            let target_addr = instr.near_branch_target();
-            let target_offset = vaddr_conv(pe, target_addr)? as usize;
-            let code = &pe.data()[target_offset..target_offset + 7 * 4];
-        }
+    code_registration = nth_indirect_call(pe, pe_rel, runtime_init_instr as u64, 2)?;
+    println!("code_registration_global: {:#x?}", code_registration);
+
+    if let Some(code_registration) = code_registration {
+        assert_eq!(
+            0x1802e118d,
+            code_registration,
+            "0x{:x}",
+            code_registration.abs_diff(0x1802e118d)
+        );
+
+        // now to find s_Il2CppMetadataRegistration, we look for call to MetadataCache::Initialize,
+        // immediately after codegen registration store and call
+
+        /*
+                  1802b4979 e8 62 a1        CALL       FUN_1802ceae0                                    undefined FUN_1802ceae0()
+                        01 00
+        */
+
+        // this is MetadataCache::Initialize
+        let metadata_cache_init_call = nth_call(
+            pe,
+            code_registration, // after the store and call
+            0,
+        )?;
+        let metadata_cache_init_call_vaddr = vaddr_conv(pe, metadata_cache_init_call)? as usize;
+
+        debug_assert_eq!(
+            0x180336250,
+            metadata_cache_init_call,
+            "0x{:x}",
+            metadata_cache_init_call.abs_diff(0x180336250)
+        );
+
+        // s_MetadataRegistration is the first argument to MetadataCache::Initialize which is dereferenced [DAT_1821f1c28]
+
+        /*
+                18033628f 48 8b 0d        MOV        RCX,qword ptr [DAT_1821f1c28]
+                  92 b9 eb 01
+        180336296 8b 11           MOV        EDX,dword ptr [RCX]
+        180336298 48 8b 49 08     MOV        RCX,qword ptr [RCX + 0x8]
+
+        18033629c e8 5f f6        CALL       FUN_180345900                                    undefined FUN_180345900()
+            00 00
+
+
+          */
+        // we need to disassemble to the 2nd call to get the parameters
+        let decoder = Decoder::with_ip(
+            64,
+            &pe.data()[metadata_cache_init_call_vaddr..],
+            runtime_init_instr as u64,
+            DecoderOptions::NONE,
+        );
+
+        // il2cpp::metadata::GenericMetadata::RegisterGenericClasses(
+        //  s_MetadataCache_Il2CppMetadataRegistration->genericClasses,
+        //  s_MetadataCache_Il2CppMetadataRegistration->genericClassesCount
+        // )
+        let register_generic_classes_call = decoder
+            .into_iter()
+            .inspect(|i| {
+                println!(
+                    "{:#016x} {:<10} {}",
+                    i.ip(),
+                    format!("{:?}", i.mnemonic()),
+                    i
+                );
+            })
+            .filter(|t| t.is_call_near())
+            .nth(1)
+            .ok_or(Il2CppBinaryError::BadInstruction(
+                "Could not find 2nd call to MetadataCache::Initialize".to_string(),
+                runtime_init_instr as u64,
+            ))?;
+        let register_generic_classes_call_vaddr =
+            vaddr_conv(pe, register_generic_classes_call.ip())? as usize;
+
+        debug_assert_eq!(
+            0x18033629c,
+            register_generic_classes_call.ip(),
+            "0x{:x}",
+            register_generic_classes_call.ip().abs_diff(0x18033629c)
+        );
+
+        let registry = analyze_reg_rel(
+            pe,
+            pe_rel,
+            &try_disassemble(
+                &pe.data()[metadata_cache_init_call_vaddr..register_generic_classes_call_vaddr],
+                runtime_init_instr as u64,
+            )?,
+        )?;
+
+        // finally get s_Il2CppMetadataRegistration
+        metadata_registration = registry.get(&Register::RCX).copied();
+        debug_assert_eq!(
+            0x1821f1c28,
+            metadata_registration.unwrap(),
+            "0x{:x}",
+            metadata_registration.unwrap().abs_diff(0x1821f1c28)
+        );
     }
-
-    println!("code_registration address: {:#x?}", code_registration);
-
-    // now to find s_Il2CppMetadataRegistration, we look for call to MetadataCache::Initialize,
-    // immediately after codegen registration store and call
-
-    /*
-              1802b4979 e8 62 a1        CALL       FUN_1802ceae0                                    undefined FUN_1802ceae0()
-                    01 00
-    */
-    let metadata_cache_init_instr = nth_call(pe, il2cpp_init, 1)?;
-    let metadata_cache_init_offset = vaddr_conv(pe, metadata_cache_init_instr)? as usize;
 
     // time to find the address of g_MetadataRegistration
     // in the following asm, it is `DAT_182ef38d0`
@@ -129,24 +188,6 @@ pub fn find_registration(pe: &PeFile, pe_rel: &[u8]) -> loader::Result<(u64, u64
                     b2 4d c2 02
           1802ceb1e 8b 11           MOV        EDX,dword ptr [RCX]
     */
-    let instructions = try_disassemble(
-        &pe.data()[metadata_cache_init_offset..metadata_cache_init_offset + 100],
-        metadata_cache_init_instr,
-    )?;
-    for instr in &instructions {
-        if instr.mnemonic() == Mnemonic::Mov
-            && instr.op_count() == 2
-            && instr.op0_kind() == OpKind::Register
-            && instr.op1_kind() == OpKind::Memory
-        {
-            let regs = analyze_reg_rel(pe, pe_rel, &instructions);
-            let reg = instr.op0_register();
-            if let Some(&addr) = regs.get(&reg) {
-                metadata_registration = Some(addr);
-                break;
-            }
-        }
-    }
 
     println!(
         "metadata_registration address: {:#x?}",
@@ -159,114 +200,91 @@ pub fn find_registration(pe: &PeFile, pe_rel: &[u8]) -> loader::Result<(u64, u64
     ))
 }
 
-/// Analyze instructions to find the values of registers
-fn analyze_reg_rel(
-    pe: &object::read::pe::PeFile<'_, object::pe::ImageNtHeaders64>,
+/// Simple static register analysis for RIP-relative memory loads.
+/// Tracks the latest known values of registers in straight-line code.
+///
+/// # Arguments
+/// * `pe` - The PE file (needed if you want file-to-VA mapping; optional here)
+/// * `pe_rel` - Virtual memory image of the PE
+/// * `idx` - Slice of Instructions to analyze
+///
+/// # Returns
+/// HashMap mapping `Register` → known `u64` value
+///
+/// Generated by AI
+pub fn analyze_reg_rel(
+    pe: &PeFile,
     pe_rel: &[u8],
     idx: &[Instruction],
-) -> HashMap<Register, u64> {
-    let mut regs: HashMap<Register, u64> = HashMap::new();
+) -> loader::Result<HashMap<Register, u64>> {
+    let mut registry: HashMap<Register, u64> = HashMap::new();
 
-    for ins in idx {
-        // helper to read a u64 from a virtual address in the PE
-        let read_u64 = |addr: u64| -> Option<u64> {
-            if let Ok(off) = vaddr_conv(pe, addr) {
-                let off = off as usize;
-                if off + 8 <= pe_rel.len() {
-                    let mut arr = [0u8; 8];
-                    arr.copy_from_slice(&pe_rel[off..off + 8]);
-                    return Some(u64::from_le_bytes(arr));
-                }
-            }
-            None
-        };
-
-        match ins.mnemonic() {
-            Mnemonic::Mov => {
-                if ins.op_count() >= 2 && ins.op0_kind() == OpKind::Register {
-                    let dst = ins.op0_register();
-
-                    match ins.op1_kind() {
-                        // mov reg, imm
-                        OpKind::Immediate8
-                        | OpKind::Immediate16
-                        | OpKind::Immediate32
-                        | OpKind::Immediate64 => {
-                            regs.insert(dst, ins.immediate64());
-                        }
-
-                        // mov reg, reg
-                        OpKind::Register => {
-                            let src = ins.op1_register();
-                            if let Some(&v) = regs.get(&src) {
-                                regs.insert(dst, v);
-                            }
-                        }
-
-                        // mov reg, [mem]
-                        OpKind::Memory => {
-                            // rip-relative: address = ip + len + disp
-                            if ins.memory_base() == Register::RIP {
-                                let addr = ins
-                                    .ip()
-                                    .wrapping_add(ins.len() as u64)
-                                    .wrapping_add(ins.memory_displacement64());
-                                if let Some(v) = read_u64(addr) {
-                                    regs.insert(dst, v);
-                                }
-                            } else {
-                                // base register + disp (if base value known)
-                                let base = ins.memory_base();
-                                if base != Register::None {
-                                    if let Some(&base_val) = regs.get(&base) {
-                                        let addr =
-                                            base_val.wrapping_add(ins.memory_displacement64());
-                                        if let Some(v) = read_u64(addr) {
-                                            regs.insert(dst, v);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        _ => {}
+    for instr in idx {
+        match instr.code() {
+            // mov reg, imm64
+            iced_x86::Code::Mov_r64_imm64 => {
+                if let OpKind::Register = instr.op0_kind() {
+                    if let OpKind::Immediate64 = instr.op1_kind() {
+                        let reg = instr.op0_register();
+                        let val = instr.immediate64();
+                        registry.insert(reg, val);
                     }
                 }
             }
 
-            Mnemonic::Lea => {
-                if ins.op_count() >= 2
-                    && ins.op0_kind() == OpKind::Register
-                    && ins.op1_kind() == OpKind::Memory
-                {
-                    let dst = ins.op0_register();
-                    if ins.memory_base() == Register::RIP {
-                        let addr = ins
-                            .ip()
-                            .wrapping_add(ins.len() as u64)
-                            .wrapping_add(ins.memory_displacement64());
-                        regs.insert(dst, addr);
-                    } else {
-                        let base = ins.memory_base();
-                        if base != Register::None {
-                            if let Some(&base_val) = regs.get(&base) {
-                                let addr = base_val.wrapping_add(ins.memory_displacement64());
-                                regs.insert(dst, addr);
-                            }
+            // mov reg, [rip+disp]
+            iced_x86::Code::Mov_r64_rm64 => {
+                if let OpKind::Register = instr.op0_kind() {
+                    if let OpKind::Memory = instr.op1_kind() {
+                        let reg = instr.op0_register();
+                        let base = instr.memory_base();
+
+                        // displacements can be 4 or 8 bytes. If 4 bytes, they are
+                        // signed 32-bit and must be sign-extended before adding.
+                        let disp_signed: i64 = if instr.memory_displ_size() == 4 {
+                            instr.memory_displacement32() as i64
+                        } else {
+                            instr.memory_displacement64() as i64
+                        };
+
+                        let addr = if base == Register::RIP {
+                            (instr.ip() as i64 + instr.len() as i64 + disp_signed) as u64
+                        } else if let Some(base_val) = registry.get(&base) {
+                            (*base_val as i64 + disp_signed) as u64
+                        } else {
+                            continue; // cannot resolve base
+                        };
+
+                        // convert virtual address to file offset and read 8 bytes
+                        let file_off = vaddr_conv(pe, addr)?;
+                        if let Some(val_bytes) =
+                            pe_rel.get(file_off as usize..file_off as usize + 8)
+                        {
+                            let val = u64::from_le_bytes(val_bytes.try_into().unwrap());
+                            registry.insert(reg, val);
                         }
                     }
                 }
             }
 
-            Mnemonic::Xor => {
-                // xor reg, reg -> zero the register
-                if ins.op_count() >= 2
-                    && ins.op0_kind() == OpKind::Register
-                    && ins.op1_kind() == OpKind::Register
-                {
-                    let dst = ins.op0_register();
-                    let src = ins.op1_register();
-                    if dst == src {
-                        regs.insert(dst, 0);
+            // add reg, imm64
+            iced_x86::Code::Add_rm64_imm32 | iced_x86::Code::Add_rm64_imm8 => {
+                if let OpKind::Register = instr.op0_kind() {
+                    let reg = instr.op0_register();
+                    if let Some(cur) = registry.get_mut(&reg) {
+                        let imm = instr.immediate64();
+                        *cur = cur.wrapping_add(imm);
+                    }
+                }
+            }
+
+            // mov reg, reg (copy)
+            iced_x86::Code::Mov_rm64_r64 => {
+                if let (OpKind::Register, OpKind::Register) = (instr.op0_kind(), instr.op1_kind()) {
+                    let dst = instr.op0_register();
+                    let src = instr.op1_register();
+                    if let Some(val) = registry.get(&src).copied() {
+                        registry.insert(dst, val);
                     }
                 }
             }
@@ -274,7 +292,8 @@ fn analyze_reg_rel(
             _ => {}
         }
     }
-    regs
+
+    Ok(registry)
 }
 
 fn try_disassemble(code: &[u8], addr: u64) -> loader::Result<Vec<Instruction>> {
@@ -283,73 +302,109 @@ fn try_disassemble(code: &[u8], addr: u64) -> loader::Result<Vec<Instruction>> {
     Ok(decoder.into_iter().collect::<Vec<Instruction>>())
 }
 
-fn nth_indirect_call(pe: &PeFile, addr: u64, n: usize) -> loader::Result<u64> {
-    let target = matching_call(pe, addr, n, |addr, call| Ok(call.is_call_near_indirect()))?;
-    target.ok_or(Il2CppBinaryError::BadInstruction(
-        "Could not find nth indirect call".to_string(),
-        addr,
-    ))
+fn nth_indirect_call(
+    pe: &PeFile,
+    pe_rel: &[u8],
+    start_addr: u64,
+    n: usize,
+) -> loader::Result<Option<u64>> {
+    let decoder = Decoder::with_ip(
+        64,
+        &pe.data()[vaddr_conv(pe, start_addr)? as usize..],
+        start_addr,
+        DecoderOptions::NONE,
+    );
+
+    let Some(indirect_call) = decoder
+        .into_iter()
+        .filter(|t| t.is_call_near_indirect())
+        .nth(n)
+    else {
+        return Ok(None);
+    };
+
+    let start_addr_vaddr = vaddr_conv(pe, start_addr)? as usize;
+
+    let offset = indirect_call.ip();
+    let file_offset_vaddr = vaddr_conv(pe, offset)? as usize;
+
+    println!(
+        "nth_indirect_call: disassemble from {:#x} to {:#x}",
+        start_addr_vaddr, file_offset_vaddr
+    );
+    let instructions = try_disassemble(
+        &pe.data()[start_addr_vaddr as usize..file_offset_vaddr],
+        start_addr,
+    )?;
+
+    assert_eq!(
+        0x1802e1187,
+        indirect_call.ip(),
+        "0x{:x}",
+        indirect_call.ip().abs_diff(0x1802e1187)
+    );
+
+    // ---- Resolve the indirect call target ----
+
+    let target = match indirect_call.op0_kind() {
+        // ---------------------------------------
+        // call qword ptr [rip + disp]
+        // ---------------------------------------
+        OpKind::Memory => indirect_call.next_ip(),
+
+        // ---------------------------------------
+        // call rax / call rcx / etc
+        // ---------------------------------------
+        OpKind::Register => {
+            let registry: HashMap<Register, u64> = analyze_reg_rel(pe, pe_rel, &instructions)?;
+
+            let reg = indirect_call.op0_register();
+            let target = *registry.get(&reg).ok_or_else(|| {
+                Il2CppBinaryError::BadInstruction(
+                    format!("Unresolved register {:?}", reg),
+                    indirect_call.ip(),
+                )
+            })?;
+            target
+        }
+
+        _ => {
+            return Err(Il2CppBinaryError::BadInstruction(
+                "Unsupported indirect call operand".to_string(),
+                indirect_call.ip(),
+            ));
+        }
+    };
+
+    Ok(Some(target))
 }
 
 /// Find the nth call instruction starting from addr
 /// Returns the target address of the call
 fn nth_call(pe: &PeFile, addr: u64, n: usize) -> loader::Result<u64> {
-    let mut target = None;
-    matching_call(pe, addr, n, |addr, ins| {
-        target = Some(addr);
-        Ok(false)
-    })?;
-    target.ok_or(Il2CppBinaryError::BadInstruction(
-        "Could not find nth call".to_string(),
+    let decoder = Decoder::with_ip(
+        64,
+        &pe.data()[vaddr_conv(pe, addr)? as usize..],
         addr,
-    ))
-}
-
-/// Find the nth call instruction starting from addr
-/// If the closure returns true, the search stops and the address is returned
-/// If the limit is reached, None is returned
-///
-/// The closure is called with the target address of the call instruction
-fn matching_call<F>(elf: &PeFile, addr: u64, limit: usize, mut f: F) -> loader::Result<Option<u64>>
-where
-    F: FnMut(u64, &Instruction) -> loader::Result<bool>,
-{
-    // Disassemble a contiguous window of bytes starting at `addr` instead
-    // of stepping fixed 4-byte chunks (instructions are variable length).
-    let start_off = vaddr_conv(elf, addr)? as usize;
-    println!(
-        "matching_call: start disassemble at offset {:#x}",
-        start_off
+        DecoderOptions::NONE,
     );
+    let call_instr = decoder
+        .into_iter()
+        .filter(|t| t.is_call_near())
+        .nth(n)
+        .ok_or_else(|| {
+            Il2CppBinaryError::BadInstruction("Could not find nth call".to_string(), addr)
+        })?;
 
-    let data = &elf.data()[start_off..];
-    let max_bytes = std::cmp::min(data.len(), 0x10000); // cap to avoid huge disassembly
-    let instructions = try_disassemble(&data[..max_bytes], addr)?;
+    Ok(call_instr.near_branch_target())
 
-    let mut count = 0;
-    for ins in &instructions {
-        if matches!(ins.flow_control(), iced_x86::FlowControl::Call | iced_x86::FlowControl::IndirectCall) {
-            // Only handle direct (near) calls which have an immediate branch target.
-
-            if ins.is_call_near() {
-                let target = ins.near_branch_target();
-                println!("found call to {:#x}", target);
-                if f(target, ins)? {
-                    return Ok(Some(target));
-                }
-            }
-
-            if ins.is_call_far() {
-                eprintln!("encountered far call at {:#x}, unsupported", ins.ip());
-                continue;
-            }
-
-            count += 1;
-            if count == limit {
-                return Ok(None);
-            }
-        }
-    }
-
-    Ok(None)
+    // let mut target = None;
+    // matching_call(pe, addr, n, |addr, _| {
+    //     target = Some(addr);
+    //     Ok(false)
+    // })?;
+    // target.ok_or(Il2CppBinaryError::BadInstruction(
+    //     "Could not find nth call".to_string(),
+    //     addr,
+    // ))
 }
