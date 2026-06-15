@@ -1,7 +1,6 @@
 use std::path::Path;
 
-use anyhow::{Context, ensure};
-
+use anyhow::{ensure, Context};
 
 fn read_fixture(path: &str) -> anyhow::Result<Vec<u8>> {
     let base = std::env::var("CARGO_MANIFEST_DIR")?;
@@ -9,7 +8,11 @@ fn read_fixture(path: &str) -> anyhow::Result<Vec<u8>> {
     std::fs::read(&p).context(format!("reading fixture file {}", p.display()))
 }
 
-pub fn run_checks_helper(unity_version: &str, os: &str, lib_name: &str) -> Result<(), anyhow::Error> {
+pub fn run_checks_helper(
+    unity_version: &str,
+    os: &str,
+    lib_name: &str,
+) -> Result<(), anyhow::Error> {
     let global_p = format!("tests/{}/{}/global-metadata.dat", unity_version, os);
     let lib_p = format!("tests/{}/{}/{}", unity_version, os, lib_name);
 

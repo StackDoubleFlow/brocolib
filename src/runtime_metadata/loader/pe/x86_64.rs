@@ -44,82 +44,14 @@ pub fn find_registration(pe: &PeFile, pe_rel: &[u8]) -> loader::Result<(u64, u64
 /// * `pe_rel` - Raw PE file data with relocations applied
 /// * `instructions` - Slice of Instructions to analyze
 pub fn analyze_reg_rel(
-    pe: &PeFile,
-    pe_rel: &[u8],
+    _pe: &PeFile,
+    _pe_rel: &[u8],
     instructions: &[Instruction],
 ) -> loader::Result<HashMap<Register, u64>> {
     let mut registry: HashMap<Register, u64> = HashMap::new();
 
     for instr in instructions {
         match instr.code() {
-            // mov reg, imm64
-            iced_x86::Code::Mov_r64_imm64 => {
-                if let OpKind::Register = instr.op0_kind() {
-                    if let OpKind::Immediate64 = instr.op1_kind() {
-                        let reg = instr.op0_register();
-                        let val = instr.immediate64();
-                        registry.insert(reg, val);
-                    }
-                }
-            }
-
-            // mov reg, [rip+disp]
-            iced_x86::Code::Mov_r64_rm64 => {
-                if let OpKind::Register = instr.op0_kind() {
-                    if let OpKind::Memory = instr.op1_kind() {
-                        let reg = instr.op0_register();
-                        let base = instr.memory_base();
-
-                        // displacements can be 4 or 8 bytes. If 4 bytes, they are
-                        // signed 32-bit and must be sign-extended before adding.
-                        let disp_signed: i64 = if instr.memory_displ_size() == 4 {
-                            instr.memory_displacement32() as i64
-                        } else {
-                            instr.memory_displacement64() as i64
-                        };
-
-                        let addr = if base == Register::RIP {
-                            (instr.ip() as i64 + instr.len() as i64 + disp_signed) as u64
-                        } else if let Some(base_val) = registry.get(&base) {
-                            (*base_val as i64 + disp_signed) as u64
-                        } else {
-                            continue; // cannot resolve base
-                        };
-
-                        // convert virtual address to file offset and read 8 bytes
-                        let file_off = vaddr_conv(pe, addr)?;
-                        if let Some(val_bytes) =
-                            pe_rel.get(file_off as usize..file_off as usize + 8)
-                        {
-                            let val = u64::from_le_bytes(val_bytes.try_into().unwrap());
-                            registry.insert(reg, val);
-                        }
-                    }
-                }
-            }
-
-            // add reg, imm64
-            iced_x86::Code::Add_rm64_imm32 | iced_x86::Code::Add_rm64_imm8 => {
-                if let OpKind::Register = instr.op0_kind() {
-                    let reg = instr.op0_register();
-                    if let Some(cur) = registry.get_mut(&reg) {
-                        let imm = instr.immediate64();
-                        *cur = cur.wrapping_add(imm);
-                    }
-                }
-            }
-
-            // mov reg, reg (copy)
-            iced_x86::Code::Mov_rm64_r64 => {
-                if let (OpKind::Register, OpKind::Register) = (instr.op0_kind(), instr.op1_kind()) {
-                    let dst = instr.op0_register();
-                    let src = instr.op1_register();
-                    if let Some(val) = registry.get(&src).copied() {
-                        registry.insert(dst, val);
-                    }
-                }
-            }
-
             // lea reg, [disp]
             iced_x86::Code::Lea_r64_m => {
                 let reg = instr.op0_register();
@@ -165,33 +97,11 @@ fn nth_indirect_call(
 
     let target = match indirect_call.op0_kind() {
         // ---------------------------------------
-        // call qword ptr [rip + disp]
+        // call qword ptr [disp]
         // ---------------------------------------
         OpKind::Memory => {
             let addr = indirect_call.memory_displacement64();
             read_u64(pe, addr, pe_rel)?
-        }
-
-        // ---------------------------------------
-        // call rax / call rcx / etc
-        // ---------------------------------------
-        OpKind::Register => {
-            let start_offset = vaddr_conv(pe, start_vaddr)? as usize;
-            let call_instr_offset = vaddr_conv(pe, indirect_call.ip())? as usize;
-            let instructions = try_disassemble(
-                &pe.data()[start_offset as usize..call_instr_offset],
-                start_vaddr,
-            )?;
-            let registry: HashMap<Register, u64> = analyze_reg_rel(pe, pe_rel, &instructions)?;
-
-            let reg = indirect_call.op0_register();
-            let target = *registry.get(&reg).ok_or_else(|| {
-                Il2CppBinaryError::BadInstruction(
-                    format!("Unresolved register {:?}", reg),
-                    indirect_call.ip(),
-                )
-            })?;
-            target
         }
 
         _ => {
