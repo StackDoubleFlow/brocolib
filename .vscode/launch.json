@@ -27,24 +27,24 @@
             }
         },
         {
-            "name": "Debug integration test 'unity2022_3_33'",
+            "name": "Debug integration test 'unity2022_3_33f1'",
             "type": "lldb",
             "request": "launch",
             "cargo": {
                 "args": [
                     "test",
-                    "--test=unity2022_3_33"
+                    "--test=unity-2022_3_33f1"
                 ]
             }
         },
         {
-            "name": "Debug integration test 'unity6'",
+            "name": "Debug integration test 'unity-6000_0_65f1'",
             "type": "lldb",
             "request": "launch",
             "cargo": {
                 "args": [
                     "test",
-                    "--test=unity6"
+                    "--test=unity-6000_0_65f1"
                 ]
             }
         }
