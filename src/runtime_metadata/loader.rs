@@ -1,4 +1,8 @@
-use std::{backtrace::Backtrace, io::{self, Cursor}, str};
+use std::{
+    backtrace::Backtrace,
+    io::{self, Cursor},
+    str,
+};
 
 use bad64::DecodeError;
 use binde::LittleEndian;
@@ -18,6 +22,9 @@ pub enum Il2CppBinaryError {
 
     #[error("failed to convert virtual address {0:#016x}")]
     VAddrConv(u64),
+
+    #[error("bad address {0:#016x}")]
+    BadAddress(u64),
 
     #[error("could not find il2cpp_init symbol in elf")]
     MissingIl2CppInit,
@@ -62,6 +69,17 @@ pub fn get_str(data: &[u8], offset: usize) -> Result<&str> {
     let len = strlen(data, offset);
     let str = str::from_utf8(&data[offset..offset + len])?;
     Ok(str)
+}
+
+pub fn read_u64<'a>(file: &impl Object<'a>, vaddr: u64, image: &[u8]) -> Result<u64> {
+    let offset = vaddr_conv(file, vaddr)? as usize;
+    let bytes = image
+        .get(offset..offset + 8)
+        .ok_or(Il2CppBinaryError::BadAddress(vaddr))?;
+
+    let mut arr = [0u8; 8];
+    arr.copy_from_slice(bytes);
+    Ok(u64::from_le_bytes(arr))
 }
 
 /// Convert a virtual address to a file offset

@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use iced_x86::{Decoder, DecoderOptions, Instruction, OpKind, Register};
 use object::Object;
 
-use crate::runtime_metadata::loader::{self, pe::PeFile, vaddr_conv, Il2CppBinaryError};
+use crate::runtime_metadata::loader::{self, pe::PeFile, read_u64, vaddr_conv, Il2CppBinaryError};
 use iced_x86::Mnemonic;
 
-const UNITY_6: bool = false;
+const UNITY_6: bool = true;
 
 macro_rules! unity6_debug_println {
     ($($arg:tt)*) => {
@@ -104,10 +104,10 @@ pub fn find_registration(pe: &PeFile, pe_rel: &[u8]) -> loader::Result<(u64, u64
 
     if let Some(code_registration) = code_registration {
         unity6_debug_assert_eq!(
-            0x1802e118d,
+            0x182055290,
             code_registration,
             "0x{:x}",
-            code_registration.abs_diff(0x1802e118d)
+            code_registration.abs_diff(0x182055290)
         );
 
         // now to find s_Il2CppMetadataRegistration, we look for call to MetadataCache::Initialize,
@@ -371,7 +371,10 @@ fn nth_indirect_call(
         // ---------------------------------------
         // call qword ptr [rip + disp]
         // ---------------------------------------
-        OpKind::Memory => indirect_call.next_ip(),
+        OpKind::Memory => {
+            let addr = indirect_call.next_ip() + indirect_call.memory_displacement64();
+            read_u64(pe, addr, pe_rel)?
+        }
 
         // ---------------------------------------
         // call rax / call rcx / etc
