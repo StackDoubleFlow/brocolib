@@ -37,22 +37,6 @@ pub fn addr_in_bss(elf: &Elf, vaddr: u64) -> bool {
     }
 }
 
-/// Converts a virtual address in the elf to a file offset
-// pub fn vaddr_conv(elf: &Elf, vaddr: u64) -> Result<u64> {
-//     for segment in elf.segments() {
-//         if segment.address() <= vaddr {
-//             let offset = vaddr - segment.address();
-//             if offset < segment.size() {
-//                 // println!("{:08x} -> {:08x}", vaddr, segment.file_range().0 + offset);
-//                 return Ok(segment.file_range().0 + offset);
-//             }
-//         }
-//     }
-//     Err(Il2CppBinaryError::VAddrConv(vaddr))
-// }
-
-
-
 struct ElfReader<'elf, 'data, 'elf_rel> {
     elf: &'elf Elf<'data>,
     elf_rel: &'elf_rel [u8],
@@ -411,7 +395,11 @@ impl<'data> RuntimeMetadata<'data> {
         let (cr_addr, mr_addr) = match elf.architecture() {
             #[cfg(feature = "elf_aarch64")]
             object::Architecture::Aarch64 => aarch64::find_registration(elf, &elf_rel)?,
-            _ => unimplemented!("unsupported architecture"),
+            _ => {
+                return Err(Il2CppBinaryError::UnsupportedArchitecture(
+                    elf.architecture(),
+                ))
+            }
         };
 
         let code_registration = Il2CppCodeRegistration::read_elf(elf, &elf_rel, cr_addr)?;

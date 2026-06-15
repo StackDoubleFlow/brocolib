@@ -7,7 +7,7 @@ use std::{
 use bad64::DecodeError;
 use binde::LittleEndian;
 use byteorder::WriteBytesExt;
-use object::{Object, ObjectSection, RelocationEncoding, RelocationTarget};
+use object::{Architecture, Object, ObjectSection, RelocationEncoding, RelocationTarget};
 use thiserror::Error;
 
 #[cfg(feature = "elf")]
@@ -34,6 +34,9 @@ pub enum Il2CppBinaryError {
 
     #[error("bad instruction encountered during disassembly {0} at {1:#016x}")]
     BadInstruction(String, u64),
+
+    #[error("Architecture {0:?} is not supported")]
+    UnsupportedArchitecture(Architecture),
 
     #[error("invalid Il2CppType with type {0}")]
     InvalidType(u8),
