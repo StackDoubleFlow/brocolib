@@ -49,16 +49,7 @@ pub enum MetadataParseError {
 impl<'gmd, 'rmd> Metadata<'gmd, 'rmd> {
     pub fn parse(global_metadata: &'gmd [u8], lib: &'rmd [u8]) -> Result<Self, MetadataParseError> {
         let global_metadata = global_metadata::deserialize(global_metadata)?;
-        let object = object::File::parse(lib)
-            .map_err(|e| MetadataParseError::Binary(Il2CppBinaryError::Object(e)))?;
-
-        let runtime_metadata = match object {
-            #[cfg(feature = "elf")]
-            object::File::Elf64(elf) => RuntimeMetadata::read_elf(&elf, &global_metadata),
-            #[cfg(feature = "pe")]
-            object::File::Pe64(pe) => RuntimeMetadata::read_pe(&pe, &global_metadata),
-            _ => panic!("unsupported binary format (feature must be enabled)"),
-        }?;
+        let runtime_metadata = RuntimeMetadata::read_obj(lib, &global_metadata)?;
 
         Ok(Metadata {
             global_metadata,
