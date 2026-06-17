@@ -69,7 +69,8 @@ impl<'data> ObjectReader<'data> {
         len
     }
 
-    pub fn get_str(&self, offset: u64) -> Result<&'data str> {
+    pub fn get_str(&self, vaddr: u64) -> Result<&'data str> {
+        let offset = self.vaddr_conv(vaddr)?;
         let len = self.strlen(offset);
         let str = str::from_utf8(&self.obj_data()[offset as usize..offset as usize + len])?;
         Ok(str)
@@ -131,13 +132,15 @@ impl<'data> ObjectReader<'data> {
     }
 }
 
-fn process_relocations<'a>(obj: &impl Object<'a>, obj_data: Vec<u8>) -> Result<Vec<u8>> {
+fn process_relocations<'a>(obj: &object::File, obj_data: Vec<u8>) -> Result<Vec<u8>> {
     let mut obj_data = obj_data;
 
     if let Some(relocations) = obj.dynamic_relocations() {
         for (addr, rel) in relocations {
-            if rel.encoding() != RelocationEncoding::Generic
-                || rel.target() != RelocationTarget::Absolute
+            if !matches!(
+                rel.encoding(),
+                RelocationEncoding::Generic | RelocationEncoding::Unknown
+            ) || rel.target() != RelocationTarget::Absolute
             {
                 // TODO: handle more relocation types
                 continue;
