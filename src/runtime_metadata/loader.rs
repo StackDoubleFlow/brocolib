@@ -1,5 +1,6 @@
 use std::{io, str};
 
+#[cfg(feature = "aarch64")]
 use bad64::DecodeError;
 use object::Architecture;
 use thiserror::Error;
@@ -16,6 +17,7 @@ pub mod structs;
 
 #[derive(Error, Debug)]
 pub enum Il2CppBinaryError {
+    #[cfg(feature = "aarch64")]
     #[error("error disassembling code")]
     Disassemble(DecodeError),
 
