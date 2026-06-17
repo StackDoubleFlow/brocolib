@@ -14,7 +14,7 @@ pub fn find_registration(obj: &ObjectReader) -> Result<(u64, u64)> {
         #[cfg(feature = "aarch64")]
         object::Architecture::Aarch64 => aarch64::find_registration(obj),
         #[cfg(feature = "x86_64")]
-        object::Architecture::X86_64 => aarch64::find_registration(obj),
+        object::Architecture::X86_64 => x86_64::find_registration(obj),
         _ => return Err(Il2CppBinaryError::UnsupportedArchitecture(arch)),
     }
 }
