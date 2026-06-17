@@ -1,118 +1,35 @@
-//! ELF runtime metadata parsing.
-//!
-//! For IL2CPP Unity games that are built for linux or linux-based platforms,
-//! you will find a shared object file named `libil2cpp.so`. This file contains
-//! the libil2cpp library, code generated from C#, as well as certain metadata
-//! information.
-//!
-//! To read metadata information from `libil2cpp.so`, see
-//! [`RuntimeMetadata::read()`] and [`RuntimeMetadata::read_elf()`].
+use std::collections::HashMap;
+use std::io::Cursor;
 
-use super::*;
+use binread::BinReaderExt;
+use byteorder::{LittleEndian, ReadBytesExt};
+
 use crate::global_metadata::{GenericParameterIndex, GlobalMetadata, TypeDefinitionIndex};
+use crate::runtime_metadata::loader::object_reader::ObjectReader;
+use crate::runtime_metadata::loader::{Il2CppBinaryError, Result};
 use crate::runtime_metadata::{
     Il2CppArrayType, Il2CppCodeGenModule, Il2CppCodeRegistration, Il2CppGenericClass,
     Il2CppGenericContext, Il2CppGenericInst, Il2CppMetadataRegistration, Il2CppType,
-    Il2CppTypeEnum, RuntimeMetadata, TypeData,
+    Il2CppTypeEnum, TypeData,
 };
-use binread::{BinRead, BinReaderExt};
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use object::read::elf::ElfFile64;
-use object::{
-    Endianness, Object, ObjectSection, ObjectSegment, RelocationEncoding, RelocationTarget,
-};
-use std::collections::HashMap;
-use std::io::Cursor;
-use std::str;
-
-pub type Elf<'data> = ElfFile64<'data, Endianness>;
-
-#[cfg(feature = "elf_aarch64")]
-pub mod aarch64;
-
-pub fn addr_in_bss(elf: &Elf, vaddr: u64) -> bool {
-    match elf.section_by_name(".bss") {
-        Some(bss) => bss.address() <= vaddr && vaddr - bss.address() < bss.size(),
-        None => false,
-    }
-}
-
-struct ElfReader<'elf, 'data, 'elf_rel> {
-    elf: &'elf Elf<'data>,
-    elf_rel: &'elf_rel [u8],
-}
-
-impl<'elf, 'data, 'elf_rel> ElfReader<'elf, 'data, 'elf_rel> {
-    fn new(elf: &'elf Elf<'data>, elf_rel: &'elf_rel [u8]) -> Self {
-        Self { elf, elf_rel }
-    }
-
-    fn make_cur(&self, vaddr: u64) -> Result<Cursor<&[u8]>> {
-        let pos = vaddr_conv(self.elf, vaddr)?;
-        let mut cur = Cursor::new(self.elf_rel);
-        cur.set_position(pos);
-        Ok(cur)
-    }
-
-    fn get_str(&self, vaddr: u64) -> Result<&'data str> {
-        let offset = vaddr_conv(self.elf, vaddr)?;
-        get_str(self.elf.data(), offset as usize)
-    }
-}
-
-fn read_arr<T>(reader: &ElfReader, vaddr: u64, len: usize) -> Result<Vec<T>>
-where
-    T: BinRead,
-{
-    let mut cur = reader.make_cur(vaddr)?;
-    let mut vec = Vec::with_capacity(len);
-    for _ in 0..len {
-        vec.push(cur.read_le()?);
-    }
-    Ok(vec)
-}
-
-fn read_len_arr<T>(reader: &ElfReader, cur: &mut Cursor<&[u8]>) -> Result<Vec<T>>
-where
-    T: BinRead,
-{
-    let count = cur.read_u32::<LittleEndian>()? as usize;
-    let _padding = cur.read_u32::<LittleEndian>()?;
-    let addr = cur.read_u64::<LittleEndian>()?;
-    read_arr(reader, addr, count)
-}
-
-fn read_len_arr_nullable<T>(reader: &ElfReader, cur: &mut Cursor<&[u8]>) -> Result<Vec<T>>
-where
-    T: BinRead + Default + Clone,
-{
-    let count = cur.read_u32::<LittleEndian>()? as usize;
-    let _padding = cur.read_u32::<LittleEndian>()?;
-    let addr = cur.read_u64::<LittleEndian>()?;
-    if addr_in_bss(reader.elf, addr) {
-        Ok(vec![Default::default(); count])
-    } else {
-        read_arr(reader, addr, count)
-    }
-}
 
 impl<'data> Il2CppCodeGenModule<'data> {
-    fn read_elf<'elf>(reader: &ElfReader<'elf, 'data, '_>, vaddr: u64) -> Result<Self> {
+    fn read(reader: &ObjectReader<'data>, vaddr: u64) -> Result<Self> {
         let mut cur = reader.make_cur(vaddr)?;
 
         let name = reader.get_str(cur.read_u64::<LittleEndian>()?)?;
 
-        let method_pointers = read_len_arr_nullable(reader, &mut cur)?;
-        let adjustor_thunks = read_len_arr(reader, &mut cur)?;
+        let method_pointers = reader.read_len_arr_nullable(&mut cur)?;
+        let adjustor_thunks = reader.read_len_arr(&mut cur)?;
 
         let addr = cur.read_u64::<LittleEndian>()?;
-        let invoker_indices = read_arr(reader, addr, method_pointers.len())?;
+        let invoker_indices = reader.read_arr(addr, method_pointers.len())?;
 
         // reverse_pinvoke_wrapper_indices
         let _todo = cur.read_u128::<LittleEndian>()?;
 
-        let rgctx_ranges = read_len_arr(reader, &mut cur)?;
-        let rgctxs = read_len_arr(reader, &mut cur)?;
+        let rgctx_ranges = reader.read_len_arr(&mut cur)?;
+        let rgctxs = reader.read_len_arr(&mut cur)?;
         Ok(Self {
             name,
             method_pointers,
@@ -125,35 +42,34 @@ impl<'data> Il2CppCodeGenModule<'data> {
 }
 
 impl<'data> Il2CppCodeRegistration<'data> {
-    fn read_elf(elf: &Elf<'data>, elf_rel: &[u8], addr: u64) -> Result<Self> {
-        let reader = ElfReader::new(elf, elf_rel);
+    pub fn read(reader: &ObjectReader<'data>, addr: u64) -> Result<Self> {
         let mut cur = reader.make_cur(addr)?;
 
-        let reverse_pinvoke_wrappers = read_len_arr(&reader, &mut cur)?;
+        let reverse_pinvoke_wrappers = reader.read_len_arr(&mut cur)?;
 
-        let generic_method_pointers = read_len_arr(&reader, &mut cur)?;
+        let generic_method_pointers = reader.read_len_arr(&mut cur)?;
         let addr = cur.read_u64::<LittleEndian>()?;
-        let generic_adjustor_thunks = read_arr(&reader, addr, generic_method_pointers.len())?;
+        let generic_adjustor_thunks = reader.read_arr(addr, generic_method_pointers.len())?;
 
-        let invoker_pointers = read_len_arr(&reader, &mut cur)?;
+        let invoker_pointers = reader.read_len_arr(&mut cur)?;
         // unresolvedIndirectCallCount
         // unresolvedVirtualCallPointers
-        let unresolved_virtual_call_pointers: Vec<u64> = read_len_arr(&reader, &mut cur)?;
+        let unresolved_virtual_call_pointers: Vec<u64> = reader.read_len_arr(&mut cur)?;
         let _unresolved_instance_call_pointers = cur.read_u64::<LittleEndian>()?;
         let _unresolved_static_call_pointers = cur.read_u64::<LittleEndian>()?;
 
         // interopDataCount
         // interopData
-        let _interop_data: Vec<u64> = read_len_arr(&reader, &mut cur)?;
+        let _interop_data: Vec<u64> = reader.read_len_arr(&mut cur)?;
 
         // windowsRuntimeFactoryCount
         // windowsRuntimeFactoryTable
-        let _windows_runtime_factory_table: Vec<u64> = read_len_arr(&reader, &mut cur)?;
+        let _windows_runtime_factory_table: Vec<u64> = reader.read_len_arr(&mut cur)?;
 
-        let module_addrs = read_len_arr(&reader, &mut cur)?;
+        let module_addrs = reader.read_len_arr(&mut cur)?;
         let mut code_gen_modules = Vec::with_capacity(module_addrs.len());
         for addr in module_addrs {
-            code_gen_modules.push(Il2CppCodeGenModule::read_elf(&reader, addr)?);
+            code_gen_modules.push(Il2CppCodeGenModule::read(&reader, addr)?);
         }
 
         Ok(Self {
@@ -169,7 +85,7 @@ impl<'data> Il2CppCodeRegistration<'data> {
 
 impl Il2CppType {
     fn read(
-        reader: &ElfReader,
+        reader: &ObjectReader,
         vaddr: u64,
         type_map: &HashMap<u64, usize>,
         generic_class_map: &HashMap<u64, usize>,
@@ -224,7 +140,7 @@ impl Il2CppType {
 
 impl Il2CppGenericClass {
     fn read(
-        reader: &ElfReader,
+        reader: &ObjectReader,
         vaddr: u64,
         generic_inst_map: &HashMap<u64, usize>,
         type_map: &HashMap<u64, usize>,
@@ -256,10 +172,10 @@ impl Il2CppGenericContext {
 }
 
 impl Il2CppGenericInst {
-    fn read(reader: &ElfReader, vaddr: u64, types_map: &HashMap<u64, usize>) -> Result<Self> {
+    fn read(reader: &ObjectReader, vaddr: u64, types_map: &HashMap<u64, usize>) -> Result<Self> {
         let mut cur = reader.make_cur(vaddr)?;
 
-        let type_ptrs = read_len_arr(reader, &mut cur)?;
+        let type_ptrs = reader.read_len_arr(&mut cur)?;
         let mut types = Vec::with_capacity(type_ptrs.len());
         for addr in type_ptrs {
             types.push(types_map[&addr]);
@@ -269,7 +185,7 @@ impl Il2CppGenericInst {
 }
 
 impl Il2CppArrayType {
-    fn read(reader: &ElfReader, vaddr: u64, types_map: &HashMap<u64, usize>) -> Result<Self> {
+    fn read(reader: &ObjectReader, vaddr: u64, types_map: &HashMap<u64, usize>) -> Result<Self> {
         let mut cur = reader.make_cur(vaddr)?;
 
         let elem_ty_ptr = cur.read_u64::<LittleEndian>()?;
@@ -283,10 +199,10 @@ impl Il2CppArrayType {
         let _padding = cur.read_u8()?;
 
         let sizes_ptr = cur.read_u64::<LittleEndian>()?;
-        let sizes = read_arr(reader, sizes_ptr, num_sizes as usize)?;
+        let sizes = reader.read_arr(sizes_ptr, num_sizes as usize)?;
 
         let lobounds_ptr = cur.read_u64::<LittleEndian>()?;
-        let lower_bounds = read_arr(reader, lobounds_ptr, num_lobounds as usize)?;
+        let lower_bounds = reader.read_arr(lobounds_ptr, num_lobounds as usize)?;
 
         Ok(Self {
             elem_ty,
@@ -298,17 +214,16 @@ impl Il2CppArrayType {
 }
 
 impl Il2CppMetadataRegistration {
-    fn read_elf(elf: &Elf, elf_rel: &[u8], addr: u64, metadata: &GlobalMetadata) -> Result<Self> {
-        let reader = ElfReader::new(elf, elf_rel);
+    pub fn read(reader: &ObjectReader, addr: u64, metadata: &GlobalMetadata) -> Result<Self> {
         let mut cur = reader.make_cur(addr)?;
 
-        let generic_class_addrs = read_len_arr(&reader, &mut cur)?;
-        let generic_inst_addrs = read_len_arr(&reader, &mut cur)?;
-        let generic_method_table = read_len_arr(&reader, &mut cur)?;
-        let type_addrs = read_len_arr(&reader, &mut cur)?;
-        let method_specs = read_len_arr(&reader, &mut cur)?;
-        let field_offset_ptrs = read_len_arr(&reader, &mut cur)?;
-        let type_definition_sizes_ptrs = read_len_arr(&reader, &mut cur)?;
+        let generic_class_addrs = reader.read_len_arr(&mut cur)?;
+        let generic_inst_addrs = reader.read_len_arr(&mut cur)?;
+        let generic_method_table = reader.read_len_arr(&mut cur)?;
+        let type_addrs = reader.read_len_arr(&mut cur)?;
+        let method_specs = reader.read_len_arr(&mut cur)?;
+        let field_offset_ptrs = reader.read_len_arr(&mut cur)?;
+        let type_definition_sizes_ptrs = reader.read_len_arr(&mut cur)?;
 
         let mut generic_inst_map = HashMap::new();
         for (i, &addr) in generic_inst_addrs.iter().enumerate() {
@@ -384,36 +299,5 @@ impl Il2CppMetadataRegistration {
             field_offsets: Some(field_offsets),
             type_definition_sizes: Some(type_definition_sizes),
         })
-    }
-}
-
-impl<'data> RuntimeMetadata<'data> {
-    /// Read runtime metadata information from an [`Elf`].
-    pub fn read_elf(elf: &Elf<'data>, global_metadata: &GlobalMetadata) -> Result<Self> {
-        let elf_rel = process_relocations(elf, elf.data().to_vec())?;
-
-        let (cr_addr, mr_addr) = match elf.architecture() {
-            #[cfg(feature = "elf_aarch64")]
-            object::Architecture::Aarch64 => aarch64::find_registration(elf, &elf_rel)?,
-            _ => {
-                return Err(Il2CppBinaryError::UnsupportedArchitecture(
-                    elf.architecture(),
-                ))
-            }
-        };
-
-        let code_registration = Il2CppCodeRegistration::read_elf(elf, &elf_rel, cr_addr)?;
-        let metadata_registration =
-            Il2CppMetadataRegistration::read_elf(elf, &elf_rel, mr_addr, global_metadata)?;
-        Ok(RuntimeMetadata {
-            code_registration,
-            metadata_registration,
-        })
-    }
-
-    /// Read runtime metadata information from raw ELF data.
-    pub fn read_elf_bytes(elf_data: &'data [u8], global_metadata: &GlobalMetadata) -> Result<Self> {
-        let elf = Elf::parse(elf_data)?;
-        Self::read_elf(&elf, global_metadata)
     }
 }

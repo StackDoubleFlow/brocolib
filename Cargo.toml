@@ -10,23 +10,23 @@ edition = "2021"
 thiserror = "2"
 binde = { git = "https://github.com/StackDoubleFlow/binde" }
 bad64 = { version = "0.12", optional = true }
-byteorder = "1.4"
-object = "0.38"
+byteorder = "1.5"
 binread = "2.2"
-
 iced-x86 = { version = "1.21", optional = true }
 
+[dependencies.object]
+version = "0.39"
+default-features = false
+features = ["read_core"]
+
 [features]
-default = ["elf", "pe", "elf_aarch64", "pe_x64", "il2cpp_v31"]
+default = ["elf", "pe", "aarch64", "x86_64", "il2cpp_v31"]
 elf = ["object/elf"]
 pe = ["object/pe"]
 
 # Target-specific features e.g xrefs
-elf_aarch64 = ["elf", "dep:bad64"]
-elf_x64 = ["elf", "dep:iced-x86"]
-
-pe_arm64 = ["pe", "dep:bad64"]
-pe_x64 = ["pe", "dep:iced-x86"]
+aarch64 = ["dep:bad64"]
+x86_64 = ["dep:iced-x86"]
 
 # IL2CPP Version-specific features
 il2cpp_v31 = []
