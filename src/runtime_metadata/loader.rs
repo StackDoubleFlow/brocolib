@@ -1,19 +1,18 @@
-use std::{
-    backtrace::Backtrace,
-    io::{self, Cursor},
-    str,
-};
+use std::{io, str};
 
 use bad64::DecodeError;
-use binde::LittleEndian;
-use byteorder::WriteBytesExt;
-use object::{Architecture, Object, ObjectSection, RelocationEncoding, RelocationTarget};
+use object::Architecture;
 use thiserror::Error;
 
-#[cfg(feature = "elf")]
-pub mod elf;
-#[cfg(feature = "pe")]
-pub mod pe;
+use crate::runtime_metadata::{loader::object_reader::ObjectReader, RuntimeMetadata};
+use crate::{
+    global_metadata::GlobalMetadata,
+    runtime_metadata::{Il2CppCodeRegistration, Il2CppMetadataRegistration},
+};
+
+pub mod arch;
+pub mod object_reader;
+pub mod structs;
 
 #[derive(Error, Debug)]
 pub enum Il2CppBinaryError {
@@ -60,70 +59,18 @@ pub type Result<T> = std::result::Result<T, Il2CppBinaryError>;
 #[error("error disassembling code")]
 pub struct DisassembleError;
 
-pub fn strlen(data: &[u8], offset: usize) -> usize {
-    let mut len = 0;
-    while data[offset + len] != 0 {
-        len += 1;
+impl<'data> RuntimeMetadata<'data> {
+    pub fn read_obj(obj_data: &'data [u8], global_metadata: &GlobalMetadata) -> Result<Self> {
+        let obj = ObjectReader::new(obj_data)?;
+
+        let (cr_addr, mr_addr) = arch::find_registration(&obj)?;
+
+        let code_registration = Il2CppCodeRegistration::read(&obj, cr_addr)?;
+        let metadata_registration =
+            Il2CppMetadataRegistration::read(&obj, mr_addr, global_metadata)?;
+        Ok(RuntimeMetadata {
+            code_registration,
+            metadata_registration,
+        })
     }
-    len
-}
-
-pub fn get_str(data: &[u8], offset: usize) -> Result<&str> {
-    let len = strlen(data, offset);
-    let str = str::from_utf8(&data[offset..offset + len])?;
-    Ok(str)
-}
-
-pub fn read_u64<'a>(file: &impl Object<'a>, vaddr: u64, image: &[u8]) -> Result<u64> {
-    let offset = vaddr_conv(file, vaddr)? as usize;
-    let bytes = image
-        .get(offset..offset + 8)
-        .ok_or(Il2CppBinaryError::BadAddress(vaddr))?;
-
-    let mut arr = [0u8; 8];
-    arr.copy_from_slice(bytes);
-    Ok(u64::from_le_bytes(arr))
-}
-
-/// Convert a virtual address to a file offset
-pub fn vaddr_conv<'a>(obj: &impl Object<'a>, vaddr: u64) -> Result<u64> {
-    // TODO: is this correct for vaddr 0?
-    if vaddr == 0 {
-        return Ok(0);
-    }
-
-    for section in obj.sections() {
-        let addr = section.address();
-        let size = section.size();
-        if addr <= vaddr && vaddr - addr < size {
-            if let Some((file_off, _)) = section.file_range() {
-                let offset = file_off + (vaddr - addr);
-                return Ok(offset);
-            }
-        }
-    }
-    Err(Il2CppBinaryError::VAddrConv(vaddr))
-}
-
-fn process_relocations<'a>(obj: &impl Object<'a>, obj_data: Vec<u8>) -> Result<Vec<u8>> {
-    let mut obj_data = obj_data;
-
-    if let Some(relocations) = obj.dynamic_relocations() {
-        for (addr, rel) in relocations {
-            if rel.encoding() != RelocationEncoding::Generic
-                || rel.target() != RelocationTarget::Absolute
-            {
-                // TODO: handle more relocation types
-                continue;
-            }
-
-            let target = rel.addend() as u64;
-
-            let mut cur = Cursor::new(&mut obj_data);
-            cur.set_position(vaddr_conv(obj, addr)?);
-            cur.write_u64::<LittleEndian>(target)?;
-        }
-    }
-
-    Ok(obj_data)
 }

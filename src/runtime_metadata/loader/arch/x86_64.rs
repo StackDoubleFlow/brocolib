@@ -1,37 +1,31 @@
 use std::collections::HashMap;
 
 use iced_x86::{Decoder, DecoderOptions, Instruction, OpKind, Register};
-use object::Object;
 
-use crate::runtime_metadata::loader::{self, pe::PeFile, read_u64, vaddr_conv, Il2CppBinaryError};
+use crate::runtime_metadata::loader::{self, object_reader::ObjectReader, Il2CppBinaryError};
 
 /// Returns address to (g_CodegenRegistration, g_MetadataRegistration)
-pub fn find_registration(pe: &PeFile, pe_rel: &[u8]) -> loader::Result<(u64, u64)> {
+pub fn find_registration(obj: &ObjectReader) -> loader::Result<(u64, u64)> {
     // il2cpp_init -> Runtime::Init -> s_Il2CppCodegenRegistration
     // From there, we read the arguments being passed into il2cpp_codegen_register
+    let il2cpp_init = obj
+        .find_export("il2cpp_init")?
+        .ok_or(Il2CppBinaryError::MissingIl2CppInit)?;
 
-    let il2cpp_init = pe
-        .exports()
-        .map_err(Il2CppBinaryError::Object)?
-        .iter()
-        .find(|n| str::from_utf8(n.name()) == Ok("il2cpp_init"))
-        .ok_or(Il2CppBinaryError::MissingIl2CppInit)?
-        .address();
-
-    let runtime_init_instr = nth_call(pe, il2cpp_init, 2)? as usize;
-    let code_registration = nth_indirect_call(pe, pe_rel, runtime_init_instr as u64, 3)?
+    let runtime_init_instr = nth_call(obj, il2cpp_init, 2)? as usize;
+    let code_registration = nth_indirect_call(obj, runtime_init_instr as u64, 3)?
         .ok_or(Il2CppBinaryError::MissingRegistration)?;
 
     // Collect the arguments to il2cpp_codegen_register
     let il2cpp_codegen_register_call =
-        nth_matching(pe, code_registration, 1, |t| t.is_jmp_short_or_near())?;
-    let start_offset = vaddr_conv(pe, code_registration)? as usize;
-    let call_instr_offset = vaddr_conv(pe, il2cpp_codegen_register_call)? as usize;
+        nth_matching(obj, code_registration, 1, |t| t.is_jmp_short_or_near())?;
+    let start_offset = obj.vaddr_conv(code_registration)? as usize;
+    let call_instr_offset = obj.vaddr_conv(il2cpp_codegen_register_call)? as usize;
     let instructions = try_disassemble(
-        &pe.data()[start_offset as usize..call_instr_offset],
+        &obj.data()[start_offset as usize..call_instr_offset],
         code_registration,
     )?;
-    let regs = analyze_reg_rel(pe, pe_rel, &instructions)?;
+    let regs = analyze_reg_rel(obj, &instructions)?;
 
     Ok((regs[&Register::RCX], regs[&Register::RDX]))
 }
@@ -41,11 +35,9 @@ pub fn find_registration(pe: &PeFile, pe_rel: &[u8]) -> loader::Result<(u64, u64
 ///
 /// # Arguments
 /// * `pe` - The PE file
-/// * `pe_rel` - Raw PE file data with relocations applied
 /// * `instructions` - Slice of Instructions to analyze
 pub fn analyze_reg_rel(
-    _pe: &PeFile,
-    _pe_rel: &[u8],
+    _obj: &ObjectReader,
     instructions: &[Instruction],
 ) -> loader::Result<HashMap<Register, u64>> {
     let mut registry: HashMap<Register, u64> = HashMap::new();
@@ -73,14 +65,13 @@ fn try_disassemble(code: &[u8], start_addr: u64) -> loader::Result<Vec<Instructi
 }
 
 fn nth_indirect_call(
-    pe: &PeFile,
-    pe_rel: &[u8],
+    obj: &ObjectReader,
     start_vaddr: u64,
     n: usize,
 ) -> loader::Result<Option<u64>> {
     let decoder = Decoder::with_ip(
         64,
-        &pe.data()[vaddr_conv(pe, start_vaddr)? as usize..],
+        &obj.data()[obj.vaddr_conv(start_vaddr)? as usize..],
         start_vaddr,
         DecoderOptions::NONE,
     );
@@ -101,7 +92,7 @@ fn nth_indirect_call(
         // ---------------------------------------
         OpKind::Memory => {
             let addr = indirect_call.memory_displacement64();
-            read_u64(pe, addr, pe_rel)?
+            obj.read_u64(addr)?
         }
 
         _ => {
@@ -117,10 +108,10 @@ fn nth_indirect_call(
 
 /// Find the nth call instruction starting from addr. n=1 is the first call.
 /// Returns the target address of the call
-fn nth_call(pe: &PeFile, addr: u64, n: usize) -> loader::Result<u64> {
+fn nth_call(obj: &ObjectReader, addr: u64, n: usize) -> loader::Result<u64> {
     let decoder = Decoder::with_ip(
         64,
-        &pe.data()[vaddr_conv(pe, addr)? as usize..],
+        &obj.data()[obj.vaddr_conv(addr)? as usize..],
         addr,
         DecoderOptions::NONE,
     );
@@ -137,14 +128,14 @@ fn nth_call(pe: &PeFile, addr: u64, n: usize) -> loader::Result<u64> {
 
 /// Returns the address of the nth instruction that matches the predicate
 fn nth_matching(
-    pe: &PeFile,
+    obj: &ObjectReader,
     addr: u64,
     n: usize,
     predicate: impl Fn(&Instruction) -> bool,
 ) -> loader::Result<u64> {
     let decoder = Decoder::with_ip(
         64,
-        &pe.data()[vaddr_conv(pe, addr)? as usize..],
+        &obj.data()[obj.vaddr_conv(addr)? as usize..],
         addr,
         DecoderOptions::NONE,
     );
