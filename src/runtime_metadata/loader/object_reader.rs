@@ -22,6 +22,10 @@ impl<'data> ObjectReader<'data> {
         &self.obj
     }
 
+    pub fn format(&self) -> object::BinaryFormat {
+        self.obj.format()
+    }
+
     pub fn find_export(&self, name: &str) -> Result<Option<u64>> {
         Ok(self
             .obj
