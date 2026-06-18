@@ -986,15 +986,13 @@ pub enum MetadataDeserializeError {
 }
 
 pub fn deserialize(data: &[u8]) -> Result<GlobalMetadata<'_>, MetadataDeserializeError> {
+    let version = brocolib_version_parser::get_il2cpp_version(data).ok_or(MetadataDeserializeError::SanityCheck)?;
+    
+    if version != VERSION {
+        return Err(MetadataDeserializeError::VersionCheck(version));
+    }
+    
     let header = Il2CppGlobalMetadataHeader::deserialize::<LittleEndian, _>(Cursor::new(data))?;
-
-    if header.sanity != SANITY {
-        return Err(MetadataDeserializeError::SanityCheck);
-    }
-
-    if header.version != VERSION {
-        return Err(MetadataDeserializeError::VersionCheck(header.version));
-    }
 
     GlobalMetadata::deserialize(data, header)
 }

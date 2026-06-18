@@ -13,6 +13,7 @@ bad64 = { version = "0.12", optional = true }
 byteorder = "1.5"
 binread = "2.2"
 iced-x86 = { version = "1.21", optional = true }
+brocolib_version_parser = { version = "*", path = "brocolib_version_parser" }
 
 [dependencies.object]
 version = "0.39"
@@ -33,3 +34,8 @@ il2cpp_v31 = []
 
 [dev-dependencies]
 anyhow = "1.0"
+
+[workspace]
+members = [
+    "brocolib_version_parser",
+]
