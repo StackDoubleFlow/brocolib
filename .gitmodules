@@ -1,0 +1,3 @@
+[submodule "tests/binaries"]
+	path = tests/binaries
+	url = https://github.com/StackDoubleFlow/brocolib_test_binaries.git
