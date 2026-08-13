@@ -11,5 +11,5 @@ parse metadata files for a different IL2CPP version will throw an error.
 The tests require the binaries submodule, so a recursive clone is required:
 
 ```
-git clone https://github.com/StackDoubleFlow/brocolib.git
+git clone https://github.com/StackDoubleFlow/brocolib.git --recursive
 ```
