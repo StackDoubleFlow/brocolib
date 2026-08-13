@@ -1,0 +1,49 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Fast formatter with less formatting options and with a masm-like syntax. Use it if formatting speed is more important than being able to re-assemble formatted instructions."><title>FastFormatter in iced_x86 - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-17e0aaed.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="iced_x86" data-themes="" data-resource-suffix="" data-rustdoc-version="1.97.1 (8bab26f4f 2026-07-14)" data-channel="1.97.1" data-search-js="search-fd9372ac.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../static.files/storage-41dd4d93.js"></script><script defer src="sidebar-items.js"></script><script defer src="../static.files/main-fcd733ba.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc type"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">FastFormatter</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><a class="logo-container" href="../iced_x86/index.html"><img src="https://raw.githubusercontent.com/icedland/iced/master/logo.png" alt="logo"></a><h2><a href="../iced_x86/index.html">iced_<wbr>x86</a><span class="version">1.21.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Fast<wbr>Formatter</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#examples" title="Examples">Examples</a></li><li><a href="#using-a-symbol-resolver" title="Using a symbol resolver">Using a symbol resolver</a></li></ul><h3><a href="#aliased-type">Aliased Type</a></h3></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="index.html">In crate iced_<wbr>x86</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="index.html">iced_x86</a></div><h1>Type Alias <span class="type">Fast<wbr>Formatter</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/iced_x86/formatter/fast.rs.html#1817">Source</a> </span></div><pre class="rust item-decl"><code>pub type FastFormatter = <a class="struct" href="struct.SpecializedFormatter.html" title="struct iced_x86::SpecializedFormatter">SpecializedFormatter</a>&lt;<a class="struct" href="struct.DefaultFastFormatterTraitOptions.html" title="struct iced_x86::DefaultFastFormatterTraitOptions">DefaultFastFormatterTraitOptions</a>&gt;;</code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Fast formatter with less formatting options and with a masm-like syntax.
+Use it if formatting speed is more important than being able to re-assemble formatted instructions.</p>
+<p>This is a variant of <a href="struct.SpecializedFormatter.html"><code>SpecializedFormatter&lt;TraitOptions&gt;</code></a> and allows changing the
+formatter options at runtime and the use of a symbol resolver. For fastest possible
+disassembly and smallest code, the options should be hard coded, so see <a href="struct.SpecializedFormatter.html"><code>SpecializedFormatter&lt;TraitOptions&gt;</code></a>.</p>
+<p>This formatter is ~2.8x faster than the gas/intel/masm/nasm formatters (the time includes decoding + formatting).</p>
+<h2 id="examples"><a class="doc-anchor" href="#examples">§</a>Examples</h2>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>iced_x86::<span class="kw-2">*</span>;
+
+<span class="kw">let </span>bytes = <span class="string">b"\x62\xF2\x4F\xDD\x72\x50\x01"</span>;
+<span class="kw">let </span><span class="kw-2">mut </span>decoder = Decoder::new(<span class="number">64</span>, bytes, DecoderOptions::NONE);
+<span class="kw">let </span>instr = decoder.decode();
+
+<span class="kw">let </span><span class="kw-2">mut </span>output = String::new();
+<span class="kw">let </span><span class="kw-2">mut </span>formatter = FastFormatter::new();
+formatter.options_mut().set_space_after_operand_separator(<span class="bool-val">true</span>);
+formatter.format(<span class="kw-2">&amp;</span>instr, <span class="kw-2">&amp;mut </span>output);
+<span class="macro">assert_eq!</span>(output, <span class="string">"vcvtne2ps2bf16 zmm2{k5}{z}, zmm6, dword bcst [rax+4h]"</span>);</code></pre></div><h2 id="using-a-symbol-resolver"><a class="doc-anchor" href="#using-a-symbol-resolver">§</a>Using a symbol resolver</h2>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>iced_x86::<span class="kw-2">*</span>;
+<span class="kw">use </span>std::collections::HashMap;
+
+<span class="kw">let </span>bytes = <span class="string">b"\x48\x8B\x8A\xA5\x5A\xA5\x5A"</span>;
+<span class="kw">let </span><span class="kw-2">mut </span>decoder = Decoder::new(<span class="number">64</span>, bytes, DecoderOptions::NONE);
+<span class="kw">let </span>instr = decoder.decode();
+
+<span class="kw">struct </span>MySymbolResolver { map: HashMap&lt;u64, String&gt; }
+<span class="kw">impl </span>SymbolResolver <span class="kw">for </span>MySymbolResolver {
+    <span class="kw">fn </span>symbol(<span class="kw-2">&amp;mut </span><span class="self">self</span>, _instruction: <span class="kw-2">&amp;</span>Instruction, _operand: u32, _instruction_operand: <span class="prelude-ty">Option</span>&lt;u32&gt;,
+         address: u64, _address_size: u32) -&gt; <span class="prelude-ty">Option</span>&lt;SymbolResult&gt; {
+        <span class="kw">if let </span><span class="prelude-val">Some</span>(symbol_string) = <span class="self">self</span>.map.get(<span class="kw-2">&amp;</span>address) {
+            <span class="comment">// The 'address' arg is the address of the symbol and doesn't have to be identical
+            // to the 'address' arg passed to symbol(). If it's different from the input
+            // address, the formatter will add +N or -N, eg. '[rax+symbol+123]'
+            </span><span class="prelude-val">Some</span>(SymbolResult::with_str(address, symbol_string.as_str()))
+        } <span class="kw">else </span>{
+            <span class="prelude-val">None
+        </span>}
+    }
+}
+
+<span class="comment">// Hard code the symbols, it's just an example!😄
+</span><span class="kw">let </span><span class="kw-2">mut </span>sym_map: HashMap&lt;u64, String&gt; = HashMap::new();
+sym_map.insert(<span class="number">0x5AA55AA5</span>, String::from(<span class="string">"my_data"</span>));
+
+<span class="kw">let </span><span class="kw-2">mut </span>output = String::new();
+<span class="kw">let </span>resolver = Box::new(MySymbolResolver { map: sym_map });
+<span class="kw">let </span><span class="kw-2">mut </span>formatter = FastFormatter::try_with_options(<span class="prelude-val">Some</span>(resolver)).unwrap();
+formatter.format(<span class="kw-2">&amp;</span>instr, <span class="kw-2">&amp;mut </span>output);
+<span class="macro">assert_eq!</span>(<span class="string">"mov rcx,[rdx+my_data]"</span>, output);</code></pre></div></div></details><h2 id="aliased-type" class="section-header">Aliased Type<a href="#aliased-type" class="anchor">§</a></h2><pre class="rust item-decl"><code>pub struct FastFormatter { <span class="comment">/* private fields */</span> }</code></pre><script src="../type.impl/iced_x86/struct.SpecializedFormatter.js" data-self-path="iced_x86::formatter::fast::FastFormatter" async></script></section></div></main></body></html>

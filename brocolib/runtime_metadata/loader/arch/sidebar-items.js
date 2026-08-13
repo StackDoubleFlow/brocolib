@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["find_registration"],"mod":["aarch64","x86_64"]};

@@ -1,0 +1,9 @@
+(function() {
+    const implementors = Object.fromEntries([["iced_x86",[["impl&lt;'a&gt; <a class=\"trait\" href=\"https://doc.rust-lang.org/1.97.1/core/iter/traits/collect/trait.IntoIterator.html\" title=\"trait core::iter::traits::collect::IntoIterator\">IntoIterator</a> for <a class=\"struct\" href=\"iced_x86/struct.Decoder.html\" title=\"struct iced_x86::Decoder\">Decoder</a>&lt;'a&gt;",0],["impl&lt;'a, 'b&gt; <a class=\"trait\" href=\"https://doc.rust-lang.org/1.97.1/core/iter/traits/collect/trait.IntoIterator.html\" title=\"trait core::iter::traits::collect::IntoIterator\">IntoIterator</a> for &amp;'b mut <a class=\"struct\" href=\"iced_x86/struct.Decoder.html\" title=\"struct iced_x86::Decoder\">Decoder</a>&lt;'a&gt;",0]]],["object",[["impl&lt;'a, 'data, Elf: <a class=\"trait\" href=\"object/read/elf/trait.FileHeader.html\" title=\"trait object::read::elf::FileHeader\">FileHeader</a>, R: <a class=\"trait\" href=\"object/read/trait.ReadRef.html\" title=\"trait object::read::ReadRef\">ReadRef</a>&lt;'data&gt;&gt; <a class=\"trait\" href=\"https://doc.rust-lang.org/1.97.1/core/iter/traits/collect/trait.IntoIterator.html\" title=\"trait core::iter::traits::collect::IntoIterator\">IntoIterator</a> for &amp;'a <a class=\"struct\" href=\"object/read/elf/struct.DynamicTable.html\" title=\"struct object::read::elf::DynamicTable\">DynamicTable</a>&lt;'data, Elf, R&gt;",0]]],["proc_macro2",[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.97.1/core/iter/traits/collect/trait.IntoIterator.html\" title=\"trait core::iter::traits::collect::IntoIterator\">IntoIterator</a> for <a class=\"struct\" href=\"proc_macro2/struct.TokenStream.html\" title=\"struct proc_macro2::TokenStream\">TokenStream</a>",0]]]]);
+    if (window.register_implementors) {
+        window.register_implementors(implementors);
+    } else {
+        window.pending_implementors = implementors;
+    }
+})()
+//{"start":59,"fragment_lengths":[680,654,341]}

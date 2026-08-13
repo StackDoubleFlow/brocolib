@@ -1,0 +1,342 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Formats instructions"><title>Formatter in iced_x86 - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-17e0aaed.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="iced_x86" data-themes="" data-resource-suffix="" data-rustdoc-version="1.97.1 (8bab26f4f 2026-07-14)" data-channel="1.97.1" data-search-js="search-fd9372ac.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../static.files/storage-41dd4d93.js"></script><script defer src="sidebar-items.js"></script><script defer src="../static.files/main-fcd733ba.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc trait"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Formatter</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><a class="logo-container" href="../iced_x86/index.html"><img src="https://raw.githubusercontent.com/icedland/iced/master/logo.png" alt="logo"></a><h2><a href="../iced_x86/index.html">iced_<wbr>x86</a><span class="version">1.21.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Formatter</a></h2><h3><a href="#required-methods">Required Methods</a></h3><ul class="block"><li><a href="#tymethod.format" title="format">format</a></li><li><a href="#tymethod.format_all_operands" title="format_all_operands">format_all_operands</a></li><li><a href="#tymethod.format_i8" title="format_i8">format_i8</a></li><li><a href="#tymethod.format_i8_options" title="format_i8_options">format_i8_options</a></li><li><a href="#tymethod.format_i16" title="format_i16">format_i16</a></li><li><a href="#tymethod.format_i32" title="format_i32">format_i32</a></li><li><a href="#tymethod.format_i64" title="format_i64">format_i64</a></li><li><a href="#tymethod.format_i16_options" title="format_i16_options">format_i16_options</a></li><li><a href="#tymethod.format_i32_options" title="format_i32_options">format_i32_options</a></li><li><a href="#tymethod.format_i64_options" title="format_i64_options">format_i64_options</a></li><li><a href="#tymethod.format_mnemonic_options" title="format_mnemonic_options">format_mnemonic_options</a></li><li><a href="#tymethod.format_operand" title="format_operand">format_operand</a></li><li><a href="#tymethod.format_operand_separator" title="format_operand_separator">format_operand_separator</a></li><li><a href="#tymethod.format_register" title="format_register">format_register</a></li><li><a href="#tymethod.format_u8" title="format_u8">format_u8</a></li><li><a href="#tymethod.format_u8_options" title="format_u8_options">format_u8_options</a></li><li><a href="#tymethod.format_u16" title="format_u16">format_u16</a></li><li><a href="#tymethod.format_u32" title="format_u32">format_u32</a></li><li><a href="#tymethod.format_u64" title="format_u64">format_u64</a></li><li><a href="#tymethod.format_u16_options" title="format_u16_options">format_u16_options</a></li><li><a href="#tymethod.format_u32_options" title="format_u32_options">format_u32_options</a></li><li><a href="#tymethod.format_u64_options" title="format_u64_options">format_u64_options</a></li><li><a href="#tymethod.get_formatter_operand" title="get_formatter_operand">get_formatter_operand</a></li><li><a href="#tymethod.get_instruction_operand" title="get_instruction_operand">get_instruction_operand</a></li><li><a href="#tymethod.op_access" title="op_access">op_access</a></li><li><a href="#tymethod.operand_count" title="operand_count">operand_count</a></li><li><a href="#tymethod.options" title="options">options</a></li><li><a href="#tymethod.options_mut" title="options_mut">options_mut</a></li></ul><h3><a href="#provided-methods">Provided Methods</a></h3><ul class="block"><li><a href="#method.format_mnemonic" title="format_mnemonic">format_mnemonic</a></li></ul><h3><a href="#implementors">Implementors</a></h3></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="index.html">In crate iced_<wbr>x86</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="index.html">iced_x86</a></div><h1>Trait <span class="trait">Formatter</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/iced_x86/formatter/mod.rs.html#368-634">Source</a> </span></div><pre class="rust item-decl"><code>pub trait Formatter: Sealed {
+<details class="toggle type-contents-toggle"><summary class="hideme"><span>Show 29 methods</span></summary>    // Required methods
+    fn <a href="#tymethod.format" class="fn">format</a>(
+        &amp;mut self,
+        instruction: &amp;<a class="struct" href="struct.Instruction.html" title="struct iced_x86::Instruction">Instruction</a>,
+        output: &amp;mut dyn <a class="trait" href="trait.FormatterOutput.html" title="trait iced_x86::FormatterOutput">FormatterOutput</a>,
+    );
+<span class="item-spacer"></span>    fn <a href="#tymethod.options" class="fn">options</a>(&amp;self) -&gt; &amp;<a class="struct" href="struct.FormatterOptions.html" title="struct iced_x86::FormatterOptions">FormatterOptions</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.options_mut" class="fn">options_mut</a>(&amp;mut self) -&gt; &amp;mut <a class="struct" href="struct.FormatterOptions.html" title="struct iced_x86::FormatterOptions">FormatterOptions</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.format_mnemonic_options" class="fn">format_mnemonic_options</a>(
+        &amp;mut self,
+        instruction: &amp;<a class="struct" href="struct.Instruction.html" title="struct iced_x86::Instruction">Instruction</a>,
+        output: &amp;mut dyn <a class="trait" href="trait.FormatterOutput.html" title="trait iced_x86::FormatterOutput">FormatterOutput</a>,
+        options: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u32.html">u32</a>,
+    );
+<span class="item-spacer"></span>    fn <a href="#tymethod.operand_count" class="fn">operand_count</a>(&amp;mut self, instruction: &amp;<a class="struct" href="struct.Instruction.html" title="struct iced_x86::Instruction">Instruction</a>) -&gt; <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u32.html">u32</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.op_access" class="fn">op_access</a>(
+        &amp;mut self,
+        instruction: &amp;<a class="struct" href="struct.Instruction.html" title="struct iced_x86::Instruction">Instruction</a>,
+        operand: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u32.html">u32</a>,
+    ) -&gt; <a class="enum" href="https://doc.rust-lang.org/1.97.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="enum" href="https://doc.rust-lang.org/1.97.1/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="enum" href="enum.OpAccess.html" title="enum iced_x86::OpAccess">OpAccess</a>&gt;, <a class="struct" href="struct.IcedError.html" title="struct iced_x86::IcedError">IcedError</a>&gt;;
+<span class="item-spacer"></span>    fn <a href="#tymethod.get_instruction_operand" class="fn">get_instruction_operand</a>(
+        &amp;mut self,
+        instruction: &amp;<a class="struct" href="struct.Instruction.html" title="struct iced_x86::Instruction">Instruction</a>,
+        operand: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u32.html">u32</a>,
+    ) -&gt; <a class="enum" href="https://doc.rust-lang.org/1.97.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="enum" href="https://doc.rust-lang.org/1.97.1/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u32.html">u32</a>&gt;, <a class="struct" href="struct.IcedError.html" title="struct iced_x86::IcedError">IcedError</a>&gt;;
+<span class="item-spacer"></span>    fn <a href="#tymethod.get_formatter_operand" class="fn">get_formatter_operand</a>(
+        &amp;mut self,
+        instruction: &amp;<a class="struct" href="struct.Instruction.html" title="struct iced_x86::Instruction">Instruction</a>,
+        instruction_operand: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u32.html">u32</a>,
+    ) -&gt; <a class="enum" href="https://doc.rust-lang.org/1.97.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="enum" href="https://doc.rust-lang.org/1.97.1/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u32.html">u32</a>&gt;, <a class="struct" href="struct.IcedError.html" title="struct iced_x86::IcedError">IcedError</a>&gt;;
+<span class="item-spacer"></span>    fn <a href="#tymethod.format_operand" class="fn">format_operand</a>(
+        &amp;mut self,
+        instruction: &amp;<a class="struct" href="struct.Instruction.html" title="struct iced_x86::Instruction">Instruction</a>,
+        output: &amp;mut dyn <a class="trait" href="trait.FormatterOutput.html" title="trait iced_x86::FormatterOutput">FormatterOutput</a>,
+        operand: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u32.html">u32</a>,
+    ) -&gt; <a class="enum" href="https://doc.rust-lang.org/1.97.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.unit.html">()</a>, <a class="struct" href="struct.IcedError.html" title="struct iced_x86::IcedError">IcedError</a>&gt;;
+<span class="item-spacer"></span>    fn <a href="#tymethod.format_operand_separator" class="fn">format_operand_separator</a>(
+        &amp;mut self,
+        instruction: &amp;<a class="struct" href="struct.Instruction.html" title="struct iced_x86::Instruction">Instruction</a>,
+        output: &amp;mut dyn <a class="trait" href="trait.FormatterOutput.html" title="trait iced_x86::FormatterOutput">FormatterOutput</a>,
+    );
+<span class="item-spacer"></span>    fn <a href="#tymethod.format_all_operands" class="fn">format_all_operands</a>(
+        &amp;mut self,
+        instruction: &amp;<a class="struct" href="struct.Instruction.html" title="struct iced_x86::Instruction">Instruction</a>,
+        output: &amp;mut dyn <a class="trait" href="trait.FormatterOutput.html" title="trait iced_x86::FormatterOutput">FormatterOutput</a>,
+    );
+<span class="item-spacer"></span>    fn <a href="#tymethod.format_register" class="fn">format_register</a>(&amp;mut self, register: <a class="enum" href="enum.Register.html" title="enum iced_x86::Register">Register</a>) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.format_i8" class="fn">format_i8</a>(&amp;mut self, value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.i8.html">i8</a>) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.format_i16" class="fn">format_i16</a>(&amp;mut self, value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.i16.html">i16</a>) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.format_i32" class="fn">format_i32</a>(&amp;mut self, value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.i32.html">i32</a>) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.format_i64" class="fn">format_i64</a>(&amp;mut self, value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.i64.html">i64</a>) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.format_u8" class="fn">format_u8</a>(&amp;mut self, value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u8.html">u8</a>) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.format_u16" class="fn">format_u16</a>(&amp;mut self, value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u16.html">u16</a>) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.format_u32" class="fn">format_u32</a>(&amp;mut self, value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u32.html">u32</a>) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.format_u64" class="fn">format_u64</a>(&amp;mut self, value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u64.html">u64</a>) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.format_i8_options" class="fn">format_i8_options</a>(
+        &amp;mut self,
+        value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.i8.html">i8</a>,
+        number_options: &amp;<a class="struct" href="struct.NumberFormattingOptions.html" title="struct iced_x86::NumberFormattingOptions">NumberFormattingOptions</a>&lt;'_&gt;,
+    ) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.format_i16_options" class="fn">format_i16_options</a>(
+        &amp;mut self,
+        value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.i16.html">i16</a>,
+        number_options: &amp;<a class="struct" href="struct.NumberFormattingOptions.html" title="struct iced_x86::NumberFormattingOptions">NumberFormattingOptions</a>&lt;'_&gt;,
+    ) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.format_i32_options" class="fn">format_i32_options</a>(
+        &amp;mut self,
+        value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.i32.html">i32</a>,
+        number_options: &amp;<a class="struct" href="struct.NumberFormattingOptions.html" title="struct iced_x86::NumberFormattingOptions">NumberFormattingOptions</a>&lt;'_&gt;,
+    ) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.format_i64_options" class="fn">format_i64_options</a>(
+        &amp;mut self,
+        value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.i64.html">i64</a>,
+        number_options: &amp;<a class="struct" href="struct.NumberFormattingOptions.html" title="struct iced_x86::NumberFormattingOptions">NumberFormattingOptions</a>&lt;'_&gt;,
+    ) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.format_u8_options" class="fn">format_u8_options</a>(
+        &amp;mut self,
+        value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u8.html">u8</a>,
+        number_options: &amp;<a class="struct" href="struct.NumberFormattingOptions.html" title="struct iced_x86::NumberFormattingOptions">NumberFormattingOptions</a>&lt;'_&gt;,
+    ) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.format_u16_options" class="fn">format_u16_options</a>(
+        &amp;mut self,
+        value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u16.html">u16</a>,
+        number_options: &amp;<a class="struct" href="struct.NumberFormattingOptions.html" title="struct iced_x86::NumberFormattingOptions">NumberFormattingOptions</a>&lt;'_&gt;,
+    ) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.format_u32_options" class="fn">format_u32_options</a>(
+        &amp;mut self,
+        value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u32.html">u32</a>,
+        number_options: &amp;<a class="struct" href="struct.NumberFormattingOptions.html" title="struct iced_x86::NumberFormattingOptions">NumberFormattingOptions</a>&lt;'_&gt;,
+    ) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>;
+<span class="item-spacer"></span>    fn <a href="#tymethod.format_u64_options" class="fn">format_u64_options</a>(
+        &amp;mut self,
+        value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u64.html">u64</a>,
+        number_options: &amp;<a class="struct" href="struct.NumberFormattingOptions.html" title="struct iced_x86::NumberFormattingOptions">NumberFormattingOptions</a>&lt;'_&gt;,
+    ) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a>;
+
+    // Provided method
+    fn <a href="#method.format_mnemonic" class="fn">format_mnemonic</a>(
+        &amp;mut self,
+        instruction: &amp;<a class="struct" href="struct.Instruction.html" title="struct iced_x86::Instruction">Instruction</a>,
+        output: &amp;mut dyn <a class="trait" href="trait.FormatterOutput.html" title="trait iced_x86::FormatterOutput">FormatterOutput</a>,
+    ) { ... }
+</details>}</code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Formats instructions</p>
+<p>This trait is sealed and cannot be implemented by your own types.</p>
+</div></details><h2 id="required-methods" class="section-header">Required Methods<a href="#required-methods" class="anchor">§</a></h2><div class="methods"><details class="toggle method-toggle" open><summary><section id="tymethod.format" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#375">Source</a><h4 class="code-header">fn <a href="#tymethod.format" class="fn">format</a>(
+    &amp;mut self,
+    instruction: &amp;<a class="struct" href="struct.Instruction.html" title="struct iced_x86::Instruction">Instruction</a>,
+    output: &amp;mut dyn <a class="trait" href="trait.FormatterOutput.html" title="trait iced_x86::FormatterOutput">FormatterOutput</a>,
+)</h4></section></summary><div class="docblock"><p>Formats the whole instruction: prefixes, mnemonic, operands</p>
+<h5 id="arguments"><a class="doc-anchor" href="#arguments">§</a>Arguments</h5>
+<ul>
+<li><code>instruction</code>: Instruction</li>
+<li><code>output</code>: Output, eg. a <code>String</code></li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.options" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#379">Source</a><h4 class="code-header">fn <a href="#tymethod.options" class="fn">options</a>(&amp;self) -&gt; &amp;<a class="struct" href="struct.FormatterOptions.html" title="struct iced_x86::FormatterOptions">FormatterOptions</a></h4></section></summary><div class="docblock"><p>Gets the formatter options (immutable)</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.options_mut" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#383">Source</a><h4 class="code-header">fn <a href="#tymethod.options_mut" class="fn">options_mut</a>(&amp;mut self) -&gt; &amp;mut <a class="struct" href="struct.FormatterOptions.html" title="struct iced_x86::FormatterOptions">FormatterOptions</a></h4></section></summary><div class="docblock"><p>Gets the formatter options (mutable)</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.format_mnemonic_options" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#405">Source</a><h4 class="code-header">fn <a href="#tymethod.format_mnemonic_options" class="fn">format_mnemonic_options</a>(
+    &amp;mut self,
+    instruction: &amp;<a class="struct" href="struct.Instruction.html" title="struct iced_x86::Instruction">Instruction</a>,
+    output: &amp;mut dyn <a class="trait" href="trait.FormatterOutput.html" title="trait iced_x86::FormatterOutput">FormatterOutput</a>,
+    options: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u32.html">u32</a>,
+)</h4></section></summary><div class="docblock"><p>Formats the mnemonic and/or any prefixes</p>
+<h5 id="arguments-1"><a class="doc-anchor" href="#arguments-1">§</a>Arguments</h5>
+<ul>
+<li><code>instruction</code>: Instruction</li>
+<li><code>output</code>: Output, eg. a <code>String</code></li>
+<li><code>options</code>: Options, see <a href="struct.FormatMnemonicOptions.html"><code>FormatMnemonicOptions</code></a></li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.operand_count" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#413">Source</a><h4 class="code-header">fn <a href="#tymethod.operand_count" class="fn">operand_count</a>(&amp;mut self, instruction: &amp;<a class="struct" href="struct.Instruction.html" title="struct iced_x86::Instruction">Instruction</a>) -&gt; <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u32.html">u32</a></h4></section></summary><div class="docblock"><p>Gets the number of operands that will be formatted. A formatter can add and remove operands</p>
+<h5 id="arguments-2"><a class="doc-anchor" href="#arguments-2">§</a>Arguments</h5>
+<ul>
+<li><code>instruction</code>: Instruction</li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.op_access" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#431">Source</a><h4 class="code-header">fn <a href="#tymethod.op_access" class="fn">op_access</a>(
+    &amp;mut self,
+    instruction: &amp;<a class="struct" href="struct.Instruction.html" title="struct iced_x86::Instruction">Instruction</a>,
+    operand: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u32.html">u32</a>,
+) -&gt; <a class="enum" href="https://doc.rust-lang.org/1.97.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="enum" href="https://doc.rust-lang.org/1.97.1/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="enum" href="enum.OpAccess.html" title="enum iced_x86::OpAccess">OpAccess</a>&gt;, <a class="struct" href="struct.IcedError.html" title="struct iced_x86::IcedError">IcedError</a>&gt;</h4></section></summary><div class="docblock"><p>Returns the operand access but only if it’s an operand added by the formatter. If it’s an
+operand that is part of <a href="struct.Instruction.html"><code>Instruction</code></a>, you should call eg. <a href="struct.InstructionInfoFactory.html#method.info"><code>InstructionInfoFactory::info()</code></a>.</p>
+<h5 id="arguments-3"><a class="doc-anchor" href="#arguments-3">§</a>Arguments</h5>
+<ul>
+<li><code>instruction</code>: Instruction</li>
+<li><code>operand</code>: Operand number, 0-based. This is a formatter operand and isn’t necessarily the same as an instruction operand. See <a href="#tymethod.operand_count"><code>operand_count()</code></a></li>
+</ul>
+<h5 id="errors"><a class="doc-anchor" href="#errors">§</a>Errors</h5>
+<p>This fails if <code>operand</code> is invalid.</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.get_instruction_operand" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#445">Source</a><h4 class="code-header">fn <a href="#tymethod.get_instruction_operand" class="fn">get_instruction_operand</a>(
+    &amp;mut self,
+    instruction: &amp;<a class="struct" href="struct.Instruction.html" title="struct iced_x86::Instruction">Instruction</a>,
+    operand: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u32.html">u32</a>,
+) -&gt; <a class="enum" href="https://doc.rust-lang.org/1.97.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="enum" href="https://doc.rust-lang.org/1.97.1/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u32.html">u32</a>&gt;, <a class="struct" href="struct.IcedError.html" title="struct iced_x86::IcedError">IcedError</a>&gt;</h4></section></summary><div class="docblock"><p>Converts a formatter operand index to an instruction operand index. Returns <code>None</code> if it’s an operand added by the formatter</p>
+<h5 id="arguments-4"><a class="doc-anchor" href="#arguments-4">§</a>Arguments</h5>
+<ul>
+<li><code>instruction</code>: Instruction</li>
+<li><code>operand</code>: Operand number, 0-based. This is a formatter operand and isn’t necessarily the same as an instruction operand. See <a href="#tymethod.operand_count"><code>operand_count()</code></a></li>
+</ul>
+<h5 id="errors-1"><a class="doc-anchor" href="#errors-1">§</a>Errors</h5>
+<p>This fails if <code>operand</code> is invalid.</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.get_formatter_operand" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#457">Source</a><h4 class="code-header">fn <a href="#tymethod.get_formatter_operand" class="fn">get_formatter_operand</a>(
+    &amp;mut self,
+    instruction: &amp;<a class="struct" href="struct.Instruction.html" title="struct iced_x86::Instruction">Instruction</a>,
+    instruction_operand: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u32.html">u32</a>,
+) -&gt; <a class="enum" href="https://doc.rust-lang.org/1.97.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="enum" href="https://doc.rust-lang.org/1.97.1/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u32.html">u32</a>&gt;, <a class="struct" href="struct.IcedError.html" title="struct iced_x86::IcedError">IcedError</a>&gt;</h4></section></summary><div class="docblock"><p>Converts an instruction operand index to a formatter operand index. Returns <code>None</code> if the instruction operand isn’t used by the formatter</p>
+<h5 id="arguments-5"><a class="doc-anchor" href="#arguments-5">§</a>Arguments</h5>
+<ul>
+<li><code>instruction</code>: Instruction</li>
+<li><code>instruction_operand</code>: Instruction operand</li>
+</ul>
+<h5 id="errors-2"><a class="doc-anchor" href="#errors-2">§</a>Errors</h5>
+<p>This fails if <code>instruction_operand</code> is invalid.</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.format_operand" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#473">Source</a><h4 class="code-header">fn <a href="#tymethod.format_operand" class="fn">format_operand</a>(
+    &amp;mut self,
+    instruction: &amp;<a class="struct" href="struct.Instruction.html" title="struct iced_x86::Instruction">Instruction</a>,
+    output: &amp;mut dyn <a class="trait" href="trait.FormatterOutput.html" title="trait iced_x86::FormatterOutput">FormatterOutput</a>,
+    operand: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u32.html">u32</a>,
+) -&gt; <a class="enum" href="https://doc.rust-lang.org/1.97.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.unit.html">()</a>, <a class="struct" href="struct.IcedError.html" title="struct iced_x86::IcedError">IcedError</a>&gt;</h4></section></summary><div class="docblock"><p>Formats an operand. This is a formatter operand and not necessarily a real instruction operand.
+A formatter can add and remove operands.</p>
+<h5 id="arguments-6"><a class="doc-anchor" href="#arguments-6">§</a>Arguments</h5>
+<ul>
+<li><code>instruction</code>: Instruction</li>
+<li><code>output</code>: Output, eg. a <code>String</code></li>
+<li><code>operand</code>: Operand number, 0-based. This is a formatter operand and isn’t necessarily the same as an instruction operand. See <a href="#tymethod.operand_count"><code>operand_count()</code></a></li>
+</ul>
+<h5 id="errors-3"><a class="doc-anchor" href="#errors-3">§</a>Errors</h5>
+<p>This fails if <code>operand</code> is invalid.</p>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.format_operand_separator" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#481">Source</a><h4 class="code-header">fn <a href="#tymethod.format_operand_separator" class="fn">format_operand_separator</a>(
+    &amp;mut self,
+    instruction: &amp;<a class="struct" href="struct.Instruction.html" title="struct iced_x86::Instruction">Instruction</a>,
+    output: &amp;mut dyn <a class="trait" href="trait.FormatterOutput.html" title="trait iced_x86::FormatterOutput">FormatterOutput</a>,
+)</h4></section></summary><div class="docblock"><p>Formats an operand separator</p>
+<h5 id="arguments-7"><a class="doc-anchor" href="#arguments-7">§</a>Arguments</h5>
+<ul>
+<li><code>instruction</code>: Instruction</li>
+<li><code>output</code>: Output, eg. a <code>String</code></li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.format_all_operands" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#489">Source</a><h4 class="code-header">fn <a href="#tymethod.format_all_operands" class="fn">format_all_operands</a>(
+    &amp;mut self,
+    instruction: &amp;<a class="struct" href="struct.Instruction.html" title="struct iced_x86::Instruction">Instruction</a>,
+    output: &amp;mut dyn <a class="trait" href="trait.FormatterOutput.html" title="trait iced_x86::FormatterOutput">FormatterOutput</a>,
+)</h4></section></summary><div class="docblock"><p>Formats all operands</p>
+<h5 id="arguments-8"><a class="doc-anchor" href="#arguments-8">§</a>Arguments</h5>
+<ul>
+<li><code>instruction</code>: Instruction</li>
+<li><code>output</code>: Output, eg. a <code>String</code></li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.format_register" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#497">Source</a><h4 class="code-header">fn <a href="#tymethod.format_register" class="fn">format_register</a>(&amp;mut self, register: <a class="enum" href="enum.Register.html" title="enum iced_x86::Register">Register</a>) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a></h4></section></summary><div class="docblock"><p>Formats a register</p>
+<h5 id="arguments-9"><a class="doc-anchor" href="#arguments-9">§</a>Arguments</h5>
+<ul>
+<li><code>register</code>: Register</li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.format_i8" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#505">Source</a><h4 class="code-header">fn <a href="#tymethod.format_i8" class="fn">format_i8</a>(&amp;mut self, value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.i8.html">i8</a>) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a></h4></section></summary><div class="docblock"><p>Formats a <code>i8</code></p>
+<h5 id="arguments-10"><a class="doc-anchor" href="#arguments-10">§</a>Arguments</h5>
+<ul>
+<li><code>value</code>: Value</li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.format_i16" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#513">Source</a><h4 class="code-header">fn <a href="#tymethod.format_i16" class="fn">format_i16</a>(&amp;mut self, value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.i16.html">i16</a>) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a></h4></section></summary><div class="docblock"><p>Formats a <code>i16</code></p>
+<h5 id="arguments-11"><a class="doc-anchor" href="#arguments-11">§</a>Arguments</h5>
+<ul>
+<li><code>value</code>: Value</li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.format_i32" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#521">Source</a><h4 class="code-header">fn <a href="#tymethod.format_i32" class="fn">format_i32</a>(&amp;mut self, value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.i32.html">i32</a>) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a></h4></section></summary><div class="docblock"><p>Formats a <code>i32</code></p>
+<h5 id="arguments-12"><a class="doc-anchor" href="#arguments-12">§</a>Arguments</h5>
+<ul>
+<li><code>value</code>: Value</li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.format_i64" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#529">Source</a><h4 class="code-header">fn <a href="#tymethod.format_i64" class="fn">format_i64</a>(&amp;mut self, value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.i64.html">i64</a>) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a></h4></section></summary><div class="docblock"><p>Formats a <code>i64</code></p>
+<h5 id="arguments-13"><a class="doc-anchor" href="#arguments-13">§</a>Arguments</h5>
+<ul>
+<li><code>value</code>: Value</li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.format_u8" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#537">Source</a><h4 class="code-header">fn <a href="#tymethod.format_u8" class="fn">format_u8</a>(&amp;mut self, value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u8.html">u8</a>) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a></h4></section></summary><div class="docblock"><p>Formats a <code>u8</code></p>
+<h5 id="arguments-14"><a class="doc-anchor" href="#arguments-14">§</a>Arguments</h5>
+<ul>
+<li><code>value</code>: Value</li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.format_u16" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#545">Source</a><h4 class="code-header">fn <a href="#tymethod.format_u16" class="fn">format_u16</a>(&amp;mut self, value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u16.html">u16</a>) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a></h4></section></summary><div class="docblock"><p>Formats a <code>u16</code></p>
+<h5 id="arguments-15"><a class="doc-anchor" href="#arguments-15">§</a>Arguments</h5>
+<ul>
+<li><code>value</code>: Value</li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.format_u32" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#553">Source</a><h4 class="code-header">fn <a href="#tymethod.format_u32" class="fn">format_u32</a>(&amp;mut self, value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u32.html">u32</a>) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a></h4></section></summary><div class="docblock"><p>Formats a <code>u32</code></p>
+<h5 id="arguments-16"><a class="doc-anchor" href="#arguments-16">§</a>Arguments</h5>
+<ul>
+<li><code>value</code>: Value</li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.format_u64" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#561">Source</a><h4 class="code-header">fn <a href="#tymethod.format_u64" class="fn">format_u64</a>(&amp;mut self, value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u64.html">u64</a>) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a></h4></section></summary><div class="docblock"><p>Formats a <code>u64</code></p>
+<h5 id="arguments-17"><a class="doc-anchor" href="#arguments-17">§</a>Arguments</h5>
+<ul>
+<li><code>value</code>: Value</li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.format_i8_options" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#570">Source</a><h4 class="code-header">fn <a href="#tymethod.format_i8_options" class="fn">format_i8_options</a>(
+    &amp;mut self,
+    value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.i8.html">i8</a>,
+    number_options: &amp;<a class="struct" href="struct.NumberFormattingOptions.html" title="struct iced_x86::NumberFormattingOptions">NumberFormattingOptions</a>&lt;'_&gt;,
+) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a></h4></section></summary><div class="docblock"><p>Formats a <code>i8</code></p>
+<h5 id="arguments-18"><a class="doc-anchor" href="#arguments-18">§</a>Arguments</h5>
+<ul>
+<li><code>value</code>: Value</li>
+<li><code>number_options</code>: Options</li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.format_i16_options" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#579">Source</a><h4 class="code-header">fn <a href="#tymethod.format_i16_options" class="fn">format_i16_options</a>(
+    &amp;mut self,
+    value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.i16.html">i16</a>,
+    number_options: &amp;<a class="struct" href="struct.NumberFormattingOptions.html" title="struct iced_x86::NumberFormattingOptions">NumberFormattingOptions</a>&lt;'_&gt;,
+) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a></h4></section></summary><div class="docblock"><p>Formats a <code>i16</code></p>
+<h5 id="arguments-19"><a class="doc-anchor" href="#arguments-19">§</a>Arguments</h5>
+<ul>
+<li><code>value</code>: Value</li>
+<li><code>number_options</code>: Options</li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.format_i32_options" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#588">Source</a><h4 class="code-header">fn <a href="#tymethod.format_i32_options" class="fn">format_i32_options</a>(
+    &amp;mut self,
+    value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.i32.html">i32</a>,
+    number_options: &amp;<a class="struct" href="struct.NumberFormattingOptions.html" title="struct iced_x86::NumberFormattingOptions">NumberFormattingOptions</a>&lt;'_&gt;,
+) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a></h4></section></summary><div class="docblock"><p>Formats a <code>i32</code></p>
+<h5 id="arguments-20"><a class="doc-anchor" href="#arguments-20">§</a>Arguments</h5>
+<ul>
+<li><code>value</code>: Value</li>
+<li><code>number_options</code>: Options</li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.format_i64_options" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#597">Source</a><h4 class="code-header">fn <a href="#tymethod.format_i64_options" class="fn">format_i64_options</a>(
+    &amp;mut self,
+    value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.i64.html">i64</a>,
+    number_options: &amp;<a class="struct" href="struct.NumberFormattingOptions.html" title="struct iced_x86::NumberFormattingOptions">NumberFormattingOptions</a>&lt;'_&gt;,
+) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a></h4></section></summary><div class="docblock"><p>Formats a <code>i64</code></p>
+<h5 id="arguments-21"><a class="doc-anchor" href="#arguments-21">§</a>Arguments</h5>
+<ul>
+<li><code>value</code>: Value</li>
+<li><code>number_options</code>: Options</li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.format_u8_options" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#606">Source</a><h4 class="code-header">fn <a href="#tymethod.format_u8_options" class="fn">format_u8_options</a>(
+    &amp;mut self,
+    value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u8.html">u8</a>,
+    number_options: &amp;<a class="struct" href="struct.NumberFormattingOptions.html" title="struct iced_x86::NumberFormattingOptions">NumberFormattingOptions</a>&lt;'_&gt;,
+) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a></h4></section></summary><div class="docblock"><p>Formats a <code>u8</code></p>
+<h5 id="arguments-22"><a class="doc-anchor" href="#arguments-22">§</a>Arguments</h5>
+<ul>
+<li><code>value</code>: Value</li>
+<li><code>number_options</code>: Options</li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.format_u16_options" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#615">Source</a><h4 class="code-header">fn <a href="#tymethod.format_u16_options" class="fn">format_u16_options</a>(
+    &amp;mut self,
+    value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u16.html">u16</a>,
+    number_options: &amp;<a class="struct" href="struct.NumberFormattingOptions.html" title="struct iced_x86::NumberFormattingOptions">NumberFormattingOptions</a>&lt;'_&gt;,
+) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a></h4></section></summary><div class="docblock"><p>Formats a <code>u16</code></p>
+<h5 id="arguments-23"><a class="doc-anchor" href="#arguments-23">§</a>Arguments</h5>
+<ul>
+<li><code>value</code>: Value</li>
+<li><code>number_options</code>: Options</li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.format_u32_options" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#624">Source</a><h4 class="code-header">fn <a href="#tymethod.format_u32_options" class="fn">format_u32_options</a>(
+    &amp;mut self,
+    value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u32.html">u32</a>,
+    number_options: &amp;<a class="struct" href="struct.NumberFormattingOptions.html" title="struct iced_x86::NumberFormattingOptions">NumberFormattingOptions</a>&lt;'_&gt;,
+) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a></h4></section></summary><div class="docblock"><p>Formats a <code>u32</code></p>
+<h5 id="arguments-24"><a class="doc-anchor" href="#arguments-24">§</a>Arguments</h5>
+<ul>
+<li><code>value</code>: Value</li>
+<li><code>number_options</code>: Options</li>
+</ul>
+</div></details><details class="toggle method-toggle" open><summary><section id="tymethod.format_u64_options" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#633">Source</a><h4 class="code-header">fn <a href="#tymethod.format_u64_options" class="fn">format_u64_options</a>(
+    &amp;mut self,
+    value: <a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.u64.html">u64</a>,
+    number_options: &amp;<a class="struct" href="struct.NumberFormattingOptions.html" title="struct iced_x86::NumberFormattingOptions">NumberFormattingOptions</a>&lt;'_&gt;,
+) -&gt; &amp;<a class="primitive" href="https://doc.rust-lang.org/1.97.1/std/primitive.str.html">str</a></h4></section></summary><div class="docblock"><p>Formats a <code>u64</code></p>
+<h5 id="arguments-25"><a class="doc-anchor" href="#arguments-25">§</a>Arguments</h5>
+<ul>
+<li><code>value</code>: Value</li>
+<li><code>number_options</code>: Options</li>
+</ul>
+</div></details></div><h2 id="provided-methods" class="section-header">Provided Methods<a href="#provided-methods" class="anchor">§</a></h2><div class="methods"><details class="toggle method-toggle" open><summary><section id="method.format_mnemonic" class="method"><a class="src rightside" href="../src/iced_x86/formatter/mod.rs.html#392-394">Source</a><h4 class="code-header">fn <a href="#method.format_mnemonic" class="fn">format_mnemonic</a>(
+    &amp;mut self,
+    instruction: &amp;<a class="struct" href="struct.Instruction.html" title="struct iced_x86::Instruction">Instruction</a>,
+    output: &amp;mut dyn <a class="trait" href="trait.FormatterOutput.html" title="trait iced_x86::FormatterOutput">FormatterOutput</a>,
+)</h4></section></summary><div class="docblock"><p>Formats the mnemonic and any prefixes</p>
+<h5 id="arguments-26"><a class="doc-anchor" href="#arguments-26">§</a>Arguments</h5>
+<ul>
+<li><code>instruction</code>: Instruction</li>
+<li><code>output</code>: Output, eg. a <code>String</code></li>
+</ul>
+</div></details></div><h2 id="implementors" class="section-header">Implementors<a href="#implementors" class="anchor">§</a></h2><div id="implementors-list"><div class="negative-marker"></div><section id="impl-Formatter-for-GasFormatter" class="impl"><a class="src rightside" href="../src/iced_x86/formatter/gas.rs.html#1324-1538">Source</a><a href="#impl-Formatter-for-GasFormatter" class="anchor">§</a><h3 class="code-header">impl <a class="trait" href="trait.Formatter.html" title="trait iced_x86::Formatter">Formatter</a> for <a class="struct" href="struct.GasFormatter.html" title="struct iced_x86::GasFormatter">GasFormatter</a></h3></section><section id="impl-Formatter-for-IntelFormatter" class="impl"><a class="src rightside" href="../src/iced_x86/formatter/intel.rs.html#1464-1678">Source</a><a href="#impl-Formatter-for-IntelFormatter" class="anchor">§</a><h3 class="code-header">impl <a class="trait" href="trait.Formatter.html" title="trait iced_x86::Formatter">Formatter</a> for <a class="struct" href="struct.IntelFormatter.html" title="struct iced_x86::IntelFormatter">IntelFormatter</a></h3></section><section id="impl-Formatter-for-MasmFormatter" class="impl"><a class="src rightside" href="../src/iced_x86/formatter/masm.rs.html#1550-1764">Source</a><a href="#impl-Formatter-for-MasmFormatter" class="anchor">§</a><h3 class="code-header">impl <a class="trait" href="trait.Formatter.html" title="trait iced_x86::Formatter">Formatter</a> for <a class="struct" href="struct.MasmFormatter.html" title="struct iced_x86::MasmFormatter">MasmFormatter</a></h3></section><section id="impl-Formatter-for-NasmFormatter" class="impl"><a class="src rightside" href="../src/iced_x86/formatter/nasm.rs.html#1505-1719">Source</a><a href="#impl-Formatter-for-NasmFormatter" class="anchor">§</a><h3 class="code-header">impl <a class="trait" href="trait.Formatter.html" title="trait iced_x86::Formatter">Formatter</a> for <a class="struct" href="struct.NasmFormatter.html" title="struct iced_x86::NasmFormatter">NasmFormatter</a></h3></section></div><script src="../trait.impl/iced_x86/formatter/trait.Formatter.js" async></script></section></div></main></body></html>

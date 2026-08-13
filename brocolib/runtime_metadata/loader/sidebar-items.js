@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Il2CppBinaryError"],"mod":["arch","object_reader","structs"],"struct":["DisassembleError"],"type":["Result"]};
