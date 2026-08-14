@@ -67,6 +67,8 @@ impl BinaryDeserialize for TypeIndex {
 #[cfg(feature = "il2cpp_v39")]
 mod il2cpp_v39;
 #[cfg(feature = "il2cpp_v39")]
+use brocolib_macros::VarRead;
+#[cfg(feature = "il2cpp_v39")]
 use il2cpp_v39::{VarRead, VarSize};
 
 macro_rules! range_helper {
@@ -202,6 +204,7 @@ impl Il2CppStringLiteral {
 /// Defined at `vm/GlobalMetadataFileInternals.h:168`
 #[derive(Debug)]
 #[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppEventDefinition {
     pub name_index: StringIndex,
     pub type_index: TypeIndex,
@@ -221,6 +224,7 @@ impl Il2CppEventDefinition {
 /// Defined at `vm/GlobalMetadataFileInternals.h:154`
 #[derive(Debug)]
 #[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppMethodDefinition {
     pub name_index: StringIndex,
     pub declaring_type: TypeDefinitionIndex,
@@ -289,6 +293,7 @@ impl Il2CppMethodDefinition {
 /// Defined at `vm/GlobalMetadataFileInternals.h:140`
 #[derive(Debug)]
 #[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppParameterDefinition {
     pub name_index: StringIndex,
     pub token: Token,
@@ -302,6 +307,7 @@ impl Il2CppParameterDefinition {
 /// Defined at `vm/GlobalMetadataFileInternals.h:66`
 #[derive(Debug)]
 #[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppTypeDefinition {
     pub name_index: StringIndex,
     pub namespace_index: StringIndex,
@@ -422,6 +428,7 @@ impl Il2CppTypeDefinition {
 /// Defined at `vm/GlobalMetadataFileInternals.h:208`
 #[derive(Debug)]
 #[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppImageDefinition {
     pub name_index: StringIndex,
     pub assembly_index: AssemblyIndex,
@@ -479,6 +486,7 @@ impl Il2CppImageDefinition {
 /// Defined at `vm/GlobalMetadataFileInternals.h:113`
 #[derive(Debug)]
 #[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppFieldDefinition {
     pub name_index: StringIndex,
     pub type_index: TypeIndex,
@@ -535,6 +543,7 @@ impl Il2CppPropertyDefinition {
 /// Defined at `vm/GlobalMetadataFileInternals.h:147`
 #[derive(Debug)]
 #[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppParameterDefaultValue {
     pub parameter_index: ParameterIndex,
     pub type_index: TypeIndex,
@@ -555,6 +564,7 @@ impl Il2CppParameterDefaultValue {
 /// Defined at `vm/GlobalMetadataFileInternals.h:120`
 #[derive(Debug)]
 #[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppFieldDefaultValue {
     pub field_index: FieldIndex,
     pub type_index: TypeIndex,
@@ -570,6 +580,7 @@ impl Il2CppFieldDefaultValue {
 /// Defined at `vm/GlobalMetadataFileInternals.h:127`
 #[derive(Debug)]
 #[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppFieldMarshaledSize {
     pub field_index: FieldIndex,
     pub type_index: TypeIndex,
@@ -583,6 +594,7 @@ impl Il2CppFieldMarshaledSize {
 /// Defined at `vm/GlobalMetadataFileInternals.h:258`
 #[derive(Debug)]
 #[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppGenericParameter {
     /// Type or method this parameter was defined in.
     pub owner_index: GenericContainerIndex,
@@ -653,6 +665,7 @@ impl Il2CppGenericContainer {
 /// Defined at `vm/GlobalMetadataFileInternals.h:60`
 #[derive(Debug)]
 #[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppInterfaceOffsetPair {
     pub interface_type_index: TypeIndex,
     pub offset: u32,
@@ -720,6 +733,7 @@ pub struct Il2CppMetadataRange {
 /// Defined at `vm/GlobalMetadataFileInternals.h:269`
 #[derive(Debug)]
 #[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppWindowsRuntimeTypeNamePair {
     pub name_index: StringIndex,
     pub type_index: TypeIndex,
@@ -728,6 +742,7 @@ pub struct Il2CppWindowsRuntimeTypeNamePair {
 /// Defined at `vm/GlobalMetadataFileInternals.h:134`
 #[derive(Debug)]
 #[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppFieldRef {
     pub type_index: TypeIndex,
     /// local offset into type fields

@@ -13,6 +13,7 @@ bad64 = { version = "0.12", optional = true }
 byteorder = "1.5"
 binread = "2.2"
 iced-x86 = { version = "1.21", optional = true }
+brocolib-macros = { path = "macros", optional = true }
 
 [dependencies.object]
 version = "0.39"
@@ -30,7 +31,7 @@ x86_64 = ["dep:iced-x86"]
 
 # IL2CPP Version-specific features. Exactly one must be enabled.
 il2cpp_v31 = []
-il2cpp_v39 = []
+il2cpp_v39 = ["dep:brocolib-macros"]
 
 [dev-dependencies]
 anyhow = "1.0"

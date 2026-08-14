@@ -9,7 +9,10 @@
 //! compile-time-constant size, so tables of such structs need their row
 //! count computed from a runtime element size instead of `BinaryDeserialize::SIZE`.
 //! This module holds all of that v39-specific logic, kept separate from the
-//! version-agnostic struct definitions in [`super`].
+//! version-agnostic struct definitions in [`super`]. Structs containing one
+//! of the four variable-width index kinds derive [`VarRead`] (see the
+//! `#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]` on their
+//! definitions in `super`) rather than listing their fields here by hand.
 
 use super::*;
 use crate::variable_length_integer::{IndexSizes, VariableWidthCursor};
@@ -63,7 +66,9 @@ impl VarSize for ParameterIndex {
 /// gets this for free (see the blanket impl below, which just ignores
 /// `sizes`); [`TypeIndex`] and the other three variable-width index kinds
 /// implement it by hand above instead, since their width isn't known until
-/// runtime.
+/// runtime. Structs containing one of those four (or nested structs that
+/// do) get it via `#[derive(VarRead)]` (see `brocolib_macros`) instead of a
+/// hand-written impl.
 pub(super) trait VarRead: Sized {
     fn var_read(cursor: &mut Cursor<&[u8]>, sizes: &IndexSizes) -> std::io::Result<Self>;
 }
@@ -90,148 +95,3 @@ impl<T: BinaryDeserialize> VarSize for T {
         T::SIZE
     }
 }
-
-/// Generates [`VarRead`] and [`VarSize`] impls for a struct whose fields are
-/// all read in declaration order. Every field type implements both traits
-/// already (either via the blanket impls above, for fixed-width types, or
-/// by hand above, for the four variable-width index kinds) - fields are
-/// listed in on-disk order, excluding any that don't exist in the v39
-/// layout (e.g. `Il2CppTypeDefinition::element_type_index`, which is
-/// v31-only).
-macro_rules! var_read_struct {
-    ($name:ident { $($field:ident: $fty:ty),* $(,)? }) => {
-        impl VarRead for $name {
-            fn var_read(cursor: &mut Cursor<&[u8]>, sizes: &IndexSizes) -> std::io::Result<Self> {
-                Ok(Self {
-                    $(
-                        $field: VarRead::var_read(cursor, sizes)?,
-                    )*
-                })
-            }
-        }
-
-        impl VarSize for $name {
-            fn var_size(sizes: &IndexSizes) -> usize {
-                0 $( + <$fty as VarSize>::var_size(sizes) )*
-            }
-        }
-    };
-}
-
-var_read_struct!(Il2CppEventDefinition {
-    name_index: StringIndex,
-    type_index: TypeIndex,
-    add: MethodIndex,
-    remove: MethodIndex,
-    raise: MethodIndex,
-    token: Token,
-});
-
-var_read_struct!(Il2CppMethodDefinition {
-    name_index: StringIndex,
-    declaring_type: TypeDefinitionIndex,
-    return_type: TypeIndex,
-    return_parameter_token: Token,
-    parameter_start: ParameterIndex,
-    generic_container_index: GenericContainerIndex,
-    token: Token,
-    flags: u16,
-    iflags: u16,
-    slot: u16,
-    parameter_count: u16,
-});
-
-var_read_struct!(Il2CppParameterDefinition {
-    name_index: StringIndex,
-    token: Token,
-    type_index: TypeIndex,
-});
-
-var_read_struct!(Il2CppTypeDefinition {
-    name_index: StringIndex,
-    namespace_index: StringIndex,
-    byval_type_index: TypeIndex,
-    declaring_type_index: TypeIndex,
-    parent_index: TypeIndex,
-    generic_container_index: GenericContainerIndex,
-    flags: u32,
-    field_start: FieldIndex,
-    method_start: MethodIndex,
-    event_start: EventIndex,
-    property_start: PropertyIndex,
-    nested_types_start: NestedTypeIndex,
-    interfaces_start: InterfaceIndex,
-    vtable_start: VTableMethodIndex,
-    interface_offsets_start: InterfaceOffsetIndex,
-    method_count: u16,
-    property_count: u16,
-    field_count: u16,
-    event_count: u16,
-    nested_type_count: u16,
-    vtable_count: u16,
-    interfaces_count: u16,
-    interface_offsets_count: u16,
-    bitfield: u32,
-    token: Token,
-});
-
-var_read_struct!(Il2CppImageDefinition {
-    name_index: StringIndex,
-    assembly_index: AssemblyIndex,
-    type_start: TypeDefinitionIndex,
-    type_count: u32,
-    exported_type_start: TypeDefinitionIndex,
-    exported_type_count: u32,
-    entry_point_index: MethodIndex,
-    token: Token,
-    custom_attribute_start: AttributeDataRangeIndex,
-    custom_attribute_count: u32,
-});
-
-var_read_struct!(Il2CppFieldDefinition {
-    name_index: StringIndex,
-    type_index: TypeIndex,
-    token: Token,
-});
-
-var_read_struct!(Il2CppParameterDefaultValue {
-    parameter_index: ParameterIndex,
-    type_index: TypeIndex,
-    data_index: FieldAndParameterDefaultValueIndex,
-});
-
-var_read_struct!(Il2CppFieldDefaultValue {
-    field_index: FieldIndex,
-    type_index: TypeIndex,
-    data_index: FieldAndParameterDefaultValueIndex,
-});
-
-var_read_struct!(Il2CppFieldMarshaledSize {
-    field_index: FieldIndex,
-    type_index: TypeIndex,
-    size: u32,
-});
-
-var_read_struct!(Il2CppGenericParameter {
-    owner_index: GenericContainerIndex,
-    name_index: StringIndex,
-    constraints_start: GenericParameterConstraintIndex,
-    constraints_count: u16,
-    num: u16,
-    flags: u16,
-});
-
-var_read_struct!(Il2CppInterfaceOffsetPair {
-    interface_type_index: TypeIndex,
-    offset: u32,
-});
-
-var_read_struct!(Il2CppWindowsRuntimeTypeNamePair {
-    name_index: StringIndex,
-    type_index: TypeIndex,
-});
-
-var_read_struct!(Il2CppFieldRef {
-    type_index: TypeIndex,
-    field_index: u32,
-});
