@@ -7,6 +7,7 @@
 
 pub mod global_metadata;
 pub mod runtime_metadata;
+pub(crate) mod variable_length_integer;
 
 use global_metadata::{GlobalMetadata, MetadataDeserializeError};
 use runtime_metadata::RuntimeMetadata;
@@ -48,18 +49,7 @@ pub enum MetadataParseError {
 
 impl<'gmd, 'rmd> Metadata<'gmd, 'rmd> {
     pub fn parse(global_metadata: &'gmd [u8], lib: &'rmd [u8]) -> Result<Self, MetadataParseError> {
-        #[cfg(feature = "il2cpp_v31")]
         let global_metadata = global_metadata::deserialize(global_metadata)?;
-
-        // v39 needs to know the runtime metadata's `types` count before it
-        // can parse global metadata at all, since that count determines the
-        // on-disk width of `TypeIndex` fields. See `global_metadata::IndexSizes`.
-        #[cfg(feature = "il2cpp_v39")]
-        let global_metadata = {
-            let types_count = runtime_metadata::loader::peek_types_count(lib)?;
-            global_metadata::deserialize(global_metadata, types_count)?
-        };
-
         let runtime_metadata = RuntimeMetadata::read_obj(lib, &global_metadata)?;
 
         Ok(Metadata {

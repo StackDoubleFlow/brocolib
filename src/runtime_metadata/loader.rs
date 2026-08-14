@@ -63,30 +63,6 @@ pub type Result<T> = std::result::Result<T, Il2CppBinaryError>;
 #[error("error disassembling code")]
 pub struct DisassembleError;
 
-/// Reads just `Il2CppMetadataRegistration::typesCount` from the game binary,
-/// without needing the global metadata to already be parsed.
-///
-/// v39's global metadata encodes `TypeIndex` fields at a width chosen based
-/// on how many entries are in the runtime's `types` array, so this count has
-/// to be known *before* global metadata can be parsed at all. See
-/// `global_metadata::IndexSizes`.
-#[cfg(feature = "il2cpp_v39")]
-pub fn peek_types_count(obj_data: &[u8]) -> Result<u32> {
-    let obj = ObjectReader::new(obj_data)?;
-    let (_, mr_addr) = arch::find_registration(&obj)?;
-    let mut cur = obj.make_cur(mr_addr)?;
-
-    // Il2CppMetadataRegistration starts with (count: u32, pad: u32, ptr: u64)
-    // triples for genericClasses, genericInsts, genericMethodTable, then
-    // types - skip the first three to get to the types count.
-    for _ in 0..3 {
-        cur.read_u32::<LittleEndian>()?;
-        cur.read_u32::<LittleEndian>()?;
-        cur.read_u64::<LittleEndian>()?;
-    }
-    Ok(cur.read_u32::<LittleEndian>()?)
-}
-
 impl<'data> RuntimeMetadata<'data> {
     pub fn read_obj(obj_data: &'data [u8], global_metadata: &GlobalMetadata) -> Result<Self> {
         let obj = ObjectReader::new(obj_data)?;

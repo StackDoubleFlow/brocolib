@@ -20,7 +20,7 @@ default-features = false
 features = ["read_core"]
 
 [features]
-default = ["elf", "pe", "aarch64", "x86_64", "il2cpp_v31"]
+default = ["elf", "pe", "aarch64", "x86_64"]
 elf = ["object/elf"]
 pe = ["object/pe"]
 
@@ -28,8 +28,9 @@ pe = ["object/pe"]
 aarch64 = ["dep:bad64"]
 x86_64 = ["dep:iced-x86"]
 
-# IL2CPP Version-specific features
+# IL2CPP Version-specific features. Exactly one must be enabled.
 il2cpp_v31 = []
+il2cpp_v39 = []
 
 [dev-dependencies]
 anyhow = "1.0"
