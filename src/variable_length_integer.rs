@@ -13,10 +13,30 @@ pub struct IndexSizes {
     /// Width (in bytes) of `TypeIndex` fields, sized against the *runtime*
     /// metadata's `types` array (not anything in this file), since that's
     /// the table `TypeIndex` actually indexes into.
-    type_index: usize,
-    type_definition_index: usize,
-    generic_container_index: usize,
-    parameter_index: usize,
+    pub(crate) type_index: usize,
+    pub(crate) type_definition_index: usize,
+    pub(crate) generic_container_index: usize,
+    pub(crate) parameter_index: usize,
+}
+
+impl IndexSizes {
+    /// Computes each index kind's width from the row count of the table it
+    /// indexes into: `types_count` comes from the *runtime* metadata (see
+    /// the field docs above), while the other three come from this file's
+    /// own section row counts (see [`crate::global_metadata::Il2CppSectionMetadata::count`]).
+    pub fn new(
+        types_count: u32,
+        type_definitions_count: u32,
+        generic_containers_count: u32,
+        parameters_count: u32,
+    ) -> Self {
+        Self {
+            type_index: index_size(types_count),
+            type_definition_index: index_size(type_definitions_count),
+            generic_container_index: index_size(generic_containers_count),
+            parameter_index: index_size(parameters_count),
+        }
+    }
 }
 
 pub fn index_size(num_elements: u32) -> usize {
@@ -32,7 +52,10 @@ pub fn index_size(num_elements: u32) -> usize {
 /// Reads a variable-width index: an unsigned integer of `width` bytes whose
 /// max value (the "no value" sentinel) is normalized to `u32::MAX`, matching
 /// the fixed-width indices elsewhere in this file (see `IndexType::is_valid`).
-pub fn read_var_index(cursor: &mut Cursor<&[u8]>, width: usize) -> std::io::Result<u32> {
+pub fn read_var_index<T>(cursor: &mut Cursor<T>, width: usize) -> std::io::Result<u32>
+where
+    Cursor<T>: std::io::Read,
+{
     Ok(match width {
         1 => {
             let v = cursor.read_u8()?;
@@ -44,4 +67,17 @@ pub fn read_var_index(cursor: &mut Cursor<&[u8]>, width: usize) -> std::io::Resu
         }
         _ => cursor.read_u32::<LittleEndian>()?,
     })
+}
+
+pub trait VariableWidthCursor {
+    fn read_var_index(&mut self, width: usize) -> std::io::Result<u32>;
+}
+
+impl<T> VariableWidthCursor for Cursor<T>
+where
+    Cursor<T>: std::io::Read,
+{
+    fn read_var_index(&mut self, width: usize) -> std::io::Result<u32> {
+        read_var_index(self, width)
+    }
 }
