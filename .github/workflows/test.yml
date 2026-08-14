@@ -9,6 +9,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    # il2cpp_v31 and il2cpp_v39 are mutually exclusive (exactly one must be
+    # enabled - see the compile_error!s in src/global_metadata.rs), so they
+    # can't both be covered by a single `--all-features` run. Run the suite
+    # once per version instead.
+    strategy:
+      fail-fast: false
+      matrix:
+        il2cpp_version: [il2cpp_v31, il2cpp_v39]
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,8 +28,8 @@ jobs:
           toolchain: stable
           default: true
 
-      - name: Run cargo tests (all features)
+      - name: Run cargo tests (${{ matrix.il2cpp_version }})
         env:
           RUST_BACKTRACE: 1
         run: |
-          cargo test --all-features -- --nocapture
+          cargo test --features ${{ matrix.il2cpp_version }} -- --nocapture
