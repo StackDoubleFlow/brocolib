@@ -13,8 +13,11 @@ pub fn run_checks_helper(
     os: &str,
     lib_name: &str,
 ) -> Result<(), anyhow::Error> {
-    let global_p = format!("tests/{}/{}/global-metadata.dat", unity_version, os);
-    let lib_p = format!("tests/{}/{}/{}", unity_version, os, lib_name);
+    let global_p = format!(
+        "tests/binaries/{}/{}/global-metadata.dat",
+        unity_version, os
+    );
+    let lib_p = format!("tests/binaries/{}/{}/{}", unity_version, os, lib_name);
 
     run_checks(&global_p, &lib_p).context(format!("Unity {unity_version} {os}"))
 }
