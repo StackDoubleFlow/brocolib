@@ -2,6 +2,8 @@ use std::{io, str};
 
 #[cfg(feature = "aarch64")]
 use bad64::DecodeError;
+#[cfg(feature = "il2cpp_v39")]
+use byteorder::{LittleEndian, ReadBytesExt};
 use object::Architecture;
 use thiserror::Error;
 
@@ -75,4 +77,30 @@ impl<'data> RuntimeMetadata<'data> {
             metadata_registration,
         })
     }
+}
+
+/// Reads just the row count of `Il2CppMetadataRegistration::types` from the
+/// game binary, without needing (or being able to build) a [`GlobalMetadata`]
+/// yet. v39 global metadata needs this count up front to size its
+/// variable-width `TypeIndex` fields (see
+/// [`crate::variable_length_integer::IndexSizes`]), which creates a
+/// dependency cycle with the normal [`RuntimeMetadata::read_obj`] path (that
+/// needs an already-parsed `GlobalMetadata`) - so this peeks at just the
+/// `type_addrs` length-prefixed array header field, four fields into
+/// `Il2CppMetadataRegistration`, and stops there.
+#[cfg(feature = "il2cpp_v39")]
+pub fn peek_types_count(obj_data: &[u8]) -> Result<u32> {
+    let obj = ObjectReader::new(obj_data)?;
+    let (_cr_addr, mr_addr) = arch::find_registration(&obj)?;
+    let mut cur = obj.make_cur(mr_addr)?;
+
+    // Skip generic_class_addrs, generic_inst_addrs, and generic_method_table
+    // (each a `count: u32, padding: u32, ptr: u64` length-prefixed array -
+    // see `ObjectReader::read_len_arr`) to reach `type_addrs`.
+    for _ in 0..3 {
+        cur.read_u32::<LittleEndian>()?;
+        cur.read_u32::<LittleEndian>()?;
+        cur.read_u64::<LittleEndian>()?;
+    }
+    Ok(cur.read_u32::<LittleEndian>()?)
 }

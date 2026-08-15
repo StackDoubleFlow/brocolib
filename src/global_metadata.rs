@@ -1,22 +1,75 @@
 //! Global metadata types.
 
-use crate::runtime_metadata::TypeData;
 use crate::Metadata;
+use crate::runtime_metadata::TypeData;
+#[cfg(feature = "il2cpp_v39")]
+use crate::variable_length_integer::IndexSizes;
 use binde::{BinaryDeserialize, LittleEndian};
 use binread::BinRead;
+use byteorder::ReadBytesExt;
 use std::io::Cursor;
 use std::ops::Index;
 use std::{concat, str, stringify};
 use thiserror::Error;
-// TODO: Feature lock types by version
-// or make version-specific modules
-const SANITY: u32 = 0xFAB11BAF;
+
+#[cfg(all(feature = "il2cpp_v31", feature = "il2cpp_v39"))]
+compile_error!(
+    "Only one IL2CPP version feature may be enabled at a time: il2cpp_v31 or il2cpp_v39"
+);
+
+#[cfg(not(any(feature = "il2cpp_v31", feature = "il2cpp_v39")))]
+compile_error!("An IL2CPP version feature must be enabled: il2cpp_v31 or il2cpp_v39");
 
 #[cfg(feature = "il2cpp_v31")]
 const VERSION: u32 = 31;
+#[cfg(feature = "il2cpp_v39")]
+const VERSION: u32 = 39;
 
-// TODO
-pub type TypeIndex = u32;
+const SANITY: u32 = 0xFAB11BAF;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct TypeIndex(pub u32);
+
+impl TypeIndex {
+    pub fn new(index: u32) -> Self {
+        Self(index)
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.0 != u32::MAX
+    }
+}
+
+impl From<TypeIndex> for u32 {
+    fn from(index: TypeIndex) -> Self {
+        index.0
+    }
+}
+
+impl From<u32> for TypeIndex {
+    fn from(index: u32) -> Self {
+        Self(index)
+    }
+}
+
+#[cfg(feature = "il2cpp_v31")]
+impl BinaryDeserialize for TypeIndex {
+    const SIZE: usize = u32::SIZE;
+    fn deserialize<E, R>(reader: R) -> std::io::Result<Self>
+    where
+        E: binde::ByteOrder,
+        R: std::io::Read,
+    {
+        Ok(Self(binde::deserialize::<E, _, _>(reader)?))
+    }
+}
+
+#[cfg(feature = "il2cpp_v39")]
+mod il2cpp_v39;
+#[cfg(feature = "il2cpp_v39")]
+use brocolib_macros::VarRead;
+#[cfg(feature = "il2cpp_v39")]
+use il2cpp_v39::{VarRead, VarSize};
 
 macro_rules! range_helper {
     ($name:ident, $table:ident, $start:ident, $count:ident, $ty:ty) => {
@@ -83,8 +136,8 @@ impl EncodedMethodIndex {
                 1 => InvalidMethodIndex::AmbiguousMethod,
                 _ => panic!("Unknown invalid method index type: {}", invalid),
             }),
-            1 => DecodedMethodIndex::TypeInfo(idx),
-            2 => DecodedMethodIndex::Il2CppType(idx),
+            1 => DecodedMethodIndex::TypeInfo(TypeIndex::new(idx)),
+            2 => DecodedMethodIndex::Il2CppType(TypeIndex::new(idx)),
             3 => DecodedMethodIndex::MethodDef(MethodIndex::new(idx)),
             4 => DecodedMethodIndex::FieldInfo(FieldRefIndex::new(idx)),
             5 => DecodedMethodIndex::StringLiteral(StringLiteralIndex::new(idx)),
@@ -139,6 +192,7 @@ impl BinaryDeserialize for Token {
 /// Defined at `vm/GlobalMetadataFileInternals.h:187`
 #[derive(Debug, BinaryDeserialize)]
 pub struct Il2CppStringLiteral {
+    #[cfg(feature = "il2cpp_v31")]
     pub length: u32,
     pub data_index: StringLiteralDataIndex,
 }
@@ -148,7 +202,9 @@ impl Il2CppStringLiteral {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:168`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppEventDefinition {
     pub name_index: StringIndex,
     pub type_index: TypeIndex,
@@ -166,7 +222,9 @@ impl Il2CppEventDefinition {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:154`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppMethodDefinition {
     pub name_index: StringIndex,
     pub declaring_type: TypeDefinitionIndex,
@@ -210,7 +268,7 @@ impl Il2CppMethodDefinition {
     pub fn full_name(&self, metadata: &Metadata) -> String {
         let mr = &metadata.runtime_metadata.metadata_registration;
         let mut full_name = String::new();
-        full_name.push_str(&mr.types[self.return_type as usize].full_name(metadata));
+        full_name.push_str(&mr.types[self.return_type.0 as usize].full_name(metadata));
         full_name.push(' ');
         full_name.push_str(&self.declaring_type(metadata).full_name(metadata, true));
         full_name.push_str("::");
@@ -223,7 +281,7 @@ impl Il2CppMethodDefinition {
             if i > 0 {
                 full_name.push_str(", ");
             }
-            full_name.push_str(&mr.types[param.type_index as usize].full_name(metadata));
+            full_name.push_str(&mr.types[param.type_index.0 as usize].full_name(metadata));
             full_name.push(' ');
             full_name.push_str(param.name(metadata));
         }
@@ -233,7 +291,9 @@ impl Il2CppMethodDefinition {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:140`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppParameterDefinition {
     pub name_index: StringIndex,
     pub token: Token,
@@ -245,7 +305,9 @@ impl Il2CppParameterDefinition {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:66`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppTypeDefinition {
     pub name_index: StringIndex,
     pub namespace_index: StringIndex,
@@ -254,6 +316,7 @@ pub struct Il2CppTypeDefinition {
     pub declaring_type_index: TypeIndex,
     pub parent_index: TypeIndex,
 
+    #[cfg(feature = "il2cpp_v31")]
     /// Only used for enums
     pub element_type_index: TypeIndex,
 
@@ -345,9 +408,9 @@ impl Il2CppTypeDefinition {
             full_name.push('.');
         }
 
-        if self.declaring_type_index != u32::MAX {
+        if self.declaring_type_index.is_valid() {
             let s = metadata.runtime_metadata.metadata_registration.types
-                [self.declaring_type_index as usize]
+                [self.declaring_type_index.0 as usize]
                 .full_name(metadata)
                 + "::";
             full_name.push_str(s.as_str());
@@ -363,7 +426,9 @@ impl Il2CppTypeDefinition {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:208`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppImageDefinition {
     pub name_index: StringIndex,
     pub assembly_index: AssemblyIndex,
@@ -419,7 +484,9 @@ impl Il2CppImageDefinition {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:113`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppFieldDefinition {
     pub name_index: StringIndex,
     pub type_index: TypeIndex,
@@ -474,7 +541,9 @@ impl Il2CppPropertyDefinition {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:147`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppParameterDefaultValue {
     pub parameter_index: ParameterIndex,
     pub type_index: TypeIndex,
@@ -493,7 +562,9 @@ impl Il2CppParameterDefaultValue {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:120`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppFieldDefaultValue {
     pub field_index: FieldIndex,
     pub type_index: TypeIndex,
@@ -507,7 +578,9 @@ impl Il2CppFieldDefaultValue {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:127`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppFieldMarshaledSize {
     pub field_index: FieldIndex,
     pub type_index: TypeIndex,
@@ -519,7 +592,9 @@ impl Il2CppFieldMarshaledSize {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:258`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppGenericParameter {
     /// Type or method this parameter was defined in.
     pub owner_index: GenericContainerIndex,
@@ -588,7 +663,9 @@ impl Il2CppGenericContainer {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:60`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppInterfaceOffsetPair {
     pub interface_type_index: TypeIndex,
     pub offset: u32,
@@ -622,6 +699,8 @@ impl Il2CppAssemblyNameDefinition {
 pub struct Il2CppAssemblyDefinition {
     pub image_index: ImageIndex,
     pub token: Token,
+    #[cfg(feature = "il2cpp_v39")]
+    pub module_token: u32,
     pub referenced_assembly_start: ReferencedAssemblyIndex,
     pub referenced_assembly_count: u32,
     pub aname: Il2CppAssemblyNameDefinition,
@@ -652,14 +731,18 @@ pub struct Il2CppMetadataRange {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:269`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppWindowsRuntimeTypeNamePair {
     pub name_index: StringIndex,
     pub type_index: TypeIndex,
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:134`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "il2cpp_v31", derive(BinaryDeserialize))]
+#[cfg_attr(feature = "il2cpp_v39", derive(VarRead))]
 pub struct Il2CppFieldRef {
     pub type_index: TypeIndex,
     /// local offset into type fields
@@ -669,7 +752,7 @@ pub struct Il2CppFieldRef {
 impl Il2CppFieldRef {
     pub fn resolve_field(&self, metadata: &Metadata) -> FieldIndex {
         let ty_data =
-            &metadata.runtime_metadata.metadata_registration.types[self.type_index as usize].data;
+            &metadata.runtime_metadata.metadata_registration.types[self.type_index.0 as usize].data;
         let TypeData::TypeDefinitionIndex(ty_def_idx) = ty_data else {
             panic!("Bad Il2CppFieldRef type data type: {:?}", ty_data);
         };
@@ -679,26 +762,42 @@ impl Il2CppFieldRef {
 }
 
 #[derive(Debug, BinaryDeserialize)]
-struct OffsetLen {
+struct Il2CppSectionMetadata {
     offset: u32,
     len: u32,
+    /// Row count for this section. Not a reliable row count for most tables
+    /// (which instead compute their row count from `len` and their element's
+    /// size - a runtime value in v39, since it depends on [`IndexSizes`],
+    /// rather than a `BinaryDeserialize::SIZE` constant). It's only read for
+    /// exactly three sections - `type_definitions`, `generic_containers`,
+    /// and `parameters` - to build `IndexSizes` in the first place: v39
+    /// encodes `TypeIndex`/`TypeDefinitionIndex`/`GenericContainerIndex`/
+    /// `ParameterIndex` fields at a variable width (1, 2, or 4 bytes)
+    /// depending on how many rows the table they index into has.
+    #[cfg(feature = "il2cpp_v39")]
+    count: u32,
 }
 
 trait ReadMetadataTable<'a>
 where
     Self: std::marker::Sized,
 {
+    #[cfg(feature = "il2cpp_v31")]
     fn read(cursor: &mut Cursor<&'a [u8]>, size: usize) -> std::io::Result<Self>;
+
+    #[cfg(feature = "il2cpp_v39")]
+    fn read(cursor: &mut Cursor<&'a [u8]>, len: usize, sizes: &IndexSizes) -> std::io::Result<Self>;
 }
 
 macro_rules! metadata {
     ($($(#[$($attrss:tt)*])* $name:ident: $ty:ty,)*) => {
         #[derive(Debug, BinaryDeserialize)]
+        #[allow(unused)]
         struct Il2CppGlobalMetadataHeader {
             sanity: u32,
             version: u32,
             $(
-                $name: OffsetLen,
+                $name: Il2CppSectionMetadata,
             )*
         }
 
@@ -710,6 +809,7 @@ macro_rules! metadata {
             )*
         }
 
+        #[cfg(feature = "il2cpp_v31")]
         impl<'a> GlobalMetadata<'a> {
             fn deserialize(
                 data: &'a [u8],
@@ -731,11 +831,70 @@ macro_rules! metadata {
                 })
             }
         }
+
+        #[cfg(feature = "il2cpp_v39")]
+        impl<'a> GlobalMetadata<'a> {
+            fn deserialize(
+                data: &'a [u8],
+                header: Il2CppGlobalMetadataHeader,
+                sizes: &IndexSizes,
+            ) -> Result<GlobalMetadata<'a>, MetadataDeserializeError> {
+                let mut cursor = Cursor::new(data);
+                Ok(GlobalMetadata {
+                    $(
+                        $name: {
+                            let len = header.$name.len as usize;
+                            if len > 0 {
+                                cursor.set_position(header.$name.offset as u64);
+                                ReadMetadataTable::read(&mut cursor, len, sizes)?
+                            } else {
+                                Default::default()
+                            }
+                        },
+                    )*
+                })
+            }
+        }
     };
 }
 
 macro_rules! index_type {
     ($name:ident, $ty:ty, $for:ident) => {
+        index_type!(@struct $name, $ty, $for);
+
+        impl BinaryDeserialize for $name {
+            const SIZE: usize = <$ty>::SIZE;
+            fn deserialize<E, R>(reader: R) -> std::io::Result<Self>
+            where
+                E: binde::ByteOrder,
+                R: std::io::Read,
+            {
+                Ok(Self(binde::deserialize::<E, _, _>(reader)?))
+            }
+        }
+    };
+
+    // Like the arm above, but for the index kinds whose width is fixed at 4
+    // bytes in v31 but varies at runtime in v39 (see [`IndexSizes`]). The
+    // v39 `VarRead` impl lives in `global_metadata::il2cpp_v39`, since it
+    // needs to know which `IndexSizes` field to read against.
+    (variable $name:ident, $ty:ty, $for:ident, $field:ident) => {
+        index_type!(@struct $name, $ty, $for);
+
+        #[cfg(feature = "il2cpp_v31")]
+        impl BinaryDeserialize for $name {
+            const SIZE: usize = <$ty>::SIZE;
+            fn deserialize<E, R>(reader: R) -> std::io::Result<Self>
+            where
+                E: binde::ByteOrder,
+                R: std::io::Read,
+            {
+                Ok(Self(binde::deserialize::<E, _, _>(reader)?))
+            }
+        }
+    };
+
+    (@struct $name:ident, $ty:ty, $for:ident) => {
 #[rustfmt::skip]
         #[doc = concat!(
             "Index type for [`",
@@ -766,22 +925,12 @@ macro_rules! index_type {
                 self.0 != <$ty>::MAX
             }
         }
-
-        impl BinaryDeserialize for $name {
-            const SIZE: usize = <$ty>::SIZE;
-            fn deserialize<E, R>(reader: R) -> std::io::Result<Self>
-            where
-                E: binde::ByteOrder,
-                R: std::io::Read,
-            {
-                Ok(Self(binde::deserialize::<E, _, _>(reader)?))
-            }
-        }
     };
 }
 
 macro_rules! basic_table {
-    ($name:ident: $ty:ty, $idx_name:ident: $idx_ty:ty) => {
+    // Shared struct + Index impls, common to every read strategy below.
+    (@common $name:ident: $ty:ty, $idx_name:ident) => {
         #[doc =
             concat!(
                 "A metadata table of [`",
@@ -801,19 +950,6 @@ macro_rules! basic_table {
                 &self.table
             }
         }
-
-        impl ReadMetadataTable<'_> for $name {
-            fn read(cursor: &mut Cursor<&[u8]>, size: usize) -> std::io::Result<Self> {
-                let count = size / <$ty>::SIZE;
-                let mut vec = Vec::new();
-                for _ in 0..count {
-                    vec.push(<$ty>::deserialize::<LittleEndian, _>(&mut *cursor)?);
-                }
-                Ok($name { table: vec })
-            }
-        }
-
-        index_type!($idx_name, $idx_ty, $name);
 
         impl Index<$idx_name> for $name {
             type Output = $ty;
@@ -844,9 +980,102 @@ macro_rules! basic_table {
             }
         }
     };
+
+    (@body $name:ident: $ty:ty, $idx_name:ident) => {
+        basic_table!(@common $name: $ty, $idx_name);
+
+        #[cfg(feature = "il2cpp_v31")]
+        impl ReadMetadataTable<'_> for $name {
+            fn read(cursor: &mut Cursor<&[u8]>, size: usize) -> std::io::Result<Self> {
+                let count = size / <$ty>::SIZE;
+                let mut vec = Vec::new();
+                for _ in 0..count {
+                    vec.push(<$ty>::deserialize::<LittleEndian, _>(&mut *cursor)?);
+                }
+                Ok($name { table: vec })
+            }
+        }
+
+        #[cfg(feature = "il2cpp_v39")]
+        impl ReadMetadataTable<'_> for $name {
+            fn read(cursor: &mut Cursor<&[u8]>, len: usize, sizes: &IndexSizes) -> std::io::Result<Self> {
+                let count = len / <$ty as VarSize>::var_size(sizes);
+                let mut vec = Vec::with_capacity(count);
+                for _ in 0..count {
+                    vec.push(<$ty as VarRead>::var_read(cursor, sizes)?);
+                }
+                Ok($name { table: vec })
+            }
+        }
+    };
+
+    // For tables whose rows are a variable-width index *kind* (TypeIndex,
+    // TypeDefinitionIndex, ...) but which, per il2cpp's own
+    // MetadataDeserialization.cpp, are stored as a bare fixed-width array
+    // rather than going through that index kind's usual v39 compact
+    // encoding - e.g. `nested_types` and `exported_type_definitions` are
+    // read as `(const TypeDefinitionIndex*)` (plain int32 array) even
+    // though `TypeDefinitionIndex` fields elsewhere (like
+    // `Il2CppMethodDefinition::declaringType`) use the variable-width
+    // `SerializedIndexSizes`-based encoding. Always reads 4-byte rows,
+    // regardless of feature.
+    (@body_fixed $name:ident: $ty:ty, $idx_name:ident) => {
+        basic_table!(@common $name: $ty, $idx_name);
+
+        #[cfg(feature = "il2cpp_v31")]
+        impl ReadMetadataTable<'_> for $name {
+            fn read(cursor: &mut Cursor<&[u8]>, size: usize) -> std::io::Result<Self> {
+                let count = size / <$ty>::SIZE;
+                let mut vec = Vec::new();
+                for _ in 0..count {
+                    vec.push(<$ty>::deserialize::<LittleEndian, _>(&mut *cursor)?);
+                }
+                Ok($name { table: vec })
+            }
+        }
+
+        #[cfg(feature = "il2cpp_v39")]
+        impl ReadMetadataTable<'_> for $name {
+            fn read(cursor: &mut Cursor<&[u8]>, len: usize, _sizes: &IndexSizes) -> std::io::Result<Self> {
+                const ROW_SIZE: usize = 4;
+                let count = len / ROW_SIZE;
+                let mut vec = Vec::with_capacity(count);
+                for _ in 0..count {
+                    let raw = cursor.read_u32::<LittleEndian>()?;
+                    vec.push(<$ty>::new(raw));
+                }
+                Ok($name { table: vec })
+            }
+        }
+    };
+
+    ($name:ident: $ty:ty, $idx_name:ident: $idx_ty:ty) => {
+        index_type!($idx_name, $idx_ty, $name);
+        basic_table!(@body $name: $ty, $idx_name);
+    };
+    // For tables whose row type is itself one of the variable-width index
+    // kinds (already declared via `index_type!(variable ...)` at its own
+    // table's definition) - skips redeclaring it as an index type. Must
+    // come before the bare `$idx_name:ident` arm below, which would
+    // otherwise greedily match just the `existing` token and leave
+    // `$idx_name` unmatched.
+    ($name:ident: $ty:ty, existing $idx_name:ident) => {
+        basic_table!(@body $name: $ty, $idx_name);
+    };
     ($name:ident: $ty:ty, $idx_name:ident) => {
         basic_table!($name: $ty, $idx_name: u32);
-    }
+    };
+    // Same as the `existing` arm above, but for tables that need the
+    // `@body_fixed` (always-4-byte-row) read strategy - see its doc comment.
+    (fixed $name:ident: $ty:ty, existing $idx_name:ident) => {
+        basic_table!(@body_fixed $name: $ty, $idx_name);
+    };
+    // Same as the plain `$idx_name:ident` arm above (declares a fresh
+    // `$idx_name` index type), but for tables that need `@body_fixed`.
+    (fixed $name:ident: $ty:ty, $idx_name:ident) => {
+        index_type!($idx_name, u32, $name);
+        basic_table!(@body_fixed $name: $ty, $idx_name);
+    };
 }
 
 macro_rules! string_data_table {
@@ -887,11 +1116,26 @@ macro_rules! string_data_table {
             }
         }
 
+        #[cfg(feature = "il2cpp_v31")]
         impl<'data> ReadMetadataTable<'data> for $name<'data> {
             fn read(cursor: &mut Cursor<&'data [u8]>, size: usize) -> std::io::Result<Self> {
                 let start = cursor.position() as usize;
                 Ok($name {
                     data: &cursor.get_ref()[start..start + size],
+                })
+            }
+        }
+
+        #[cfg(feature = "il2cpp_v39")]
+        impl<'data> ReadMetadataTable<'data> for $name<'data> {
+            fn read(
+                cursor: &mut Cursor<&'data [u8]>,
+                len: usize,
+                _sizes: &IndexSizes,
+            ) -> std::io::Result<Self> {
+                let start = cursor.position() as usize;
+                Ok($name {
+                    data: &cursor.get_ref()[start..start + len],
                 })
             }
         }
@@ -909,16 +1153,19 @@ basic_table!(FieldDefaultValueTable: Il2CppFieldDefaultValue, FieldDefaultValueI
 // TODO: Read default value data
 basic_table!(FieldAndParameterDefaultValueTable: u8, FieldAndParameterDefaultValueIndex);
 basic_table!(FieldMarshaledSizeTable: Il2CppFieldMarshaledSize, FieldMarshaledSizeIndex);
-basic_table!(ParameterTable: Il2CppParameterDefinition, ParameterIndex);
+index_type!(variable ParameterIndex, u32, ParameterTable, parameter_index);
+basic_table!(ParameterTable: Il2CppParameterDefinition, existing ParameterIndex);
 basic_table!(FieldTable: Il2CppFieldDefinition, FieldIndex);
 basic_table!(GenericParameterTable: Il2CppGenericParameter, GenericParameterIndex);
 basic_table!(GenericParameterConstraintTable: TypeIndex, GenericParameterConstraintIndex: u16);
-basic_table!(GenericContainerTable: Il2CppGenericContainer, GenericContainerIndex);
-basic_table!(NestedTypeTable: TypeDefinitionIndex, NestedTypeIndex);
+index_type!(variable GenericContainerIndex, u32, GenericContainerTable, generic_container_index);
+basic_table!(GenericContainerTable: Il2CppGenericContainer, existing GenericContainerIndex);
+index_type!(variable TypeDefinitionIndex, u32, TypeDefinitionTable, type_definition_index);
+basic_table!(fixed NestedTypeTable: TypeDefinitionIndex, NestedTypeIndex);
 basic_table!(InterfaceTable: TypeIndex, InterfaceIndex);
 basic_table!(VTableMethodTable: EncodedMethodIndex, VTableMethodIndex);
 basic_table!(InterfaceOffsetTable: Il2CppInterfaceOffsetPair, InterfaceOffsetIndex);
-basic_table!(TypeDefinitionTable: Il2CppTypeDefinition, TypeDefinitionIndex);
+basic_table!(TypeDefinitionTable: Il2CppTypeDefinition, existing TypeDefinitionIndex);
 basic_table!(ImageTable: Il2CppImageDefinition, ImageIndex);
 basic_table!(AssemblyTable: Il2CppAssemblyDefinition, AssemblyIndex);
 basic_table!(FieldRefTable: Il2CppFieldRef, FieldRefIndex);
@@ -931,7 +1178,7 @@ basic_table!(UnresolvedIndirectCallParameterTypeTable: TypeIndex, UnresolvedIndi
 basic_table!(UnresolvedIndirectCallParameterRangeTable: Il2CppMetadataRange, UnresolvedIndirectCallParameterRangeIndex);
 basic_table!(WindowsRuntimeTypeNameTable: Il2CppWindowsRuntimeTypeNamePair, WindowsRuntimeTypeNameIndex);
 string_data_table!(WindowsRuntimeStringData, WindowsRuntimeStringDataIndex);
-basic_table!(ExportedTypeDefinitionTable: TypeDefinitionIndex, ExportedTypeDefinitionIndex);
+basic_table!(fixed ExportedTypeDefinitionTable: TypeDefinitionIndex, ExportedTypeDefinitionIndex);
 
 metadata! {
     string_literal: StringLiteralTable,
@@ -985,16 +1232,333 @@ pub enum MetadataDeserializeError {
     VersionCheck(u32),
 }
 
+#[cfg(feature = "il2cpp_v31")]
 pub fn deserialize(data: &[u8]) -> Result<GlobalMetadata<'_>, MetadataDeserializeError> {
-    let header = Il2CppGlobalMetadataHeader::deserialize::<LittleEndian, _>(Cursor::new(data))?;
+    let header = deserialize_header(data)?;
+    GlobalMetadata::deserialize(data, header)
+}
 
-    if header.sanity != SANITY {
+/// Deserializes v39 global metadata.
+///
+/// `types_count` is the row count of the *runtime* metadata's `types` array
+/// (`Il2CppMetadataRegistration::types`, read from the game binary, not this
+/// file) - it's needed up front to size `TypeIndex` fields, since v39 encodes
+/// them at a width that depends on how many types exist (see [`IndexSizes`]).
+#[cfg(feature = "il2cpp_v39")]
+pub fn deserialize(
+    data: &[u8],
+    types_count: u32,
+) -> Result<GlobalMetadata<'_>, MetadataDeserializeError> {
+    let header = deserialize_header(data)?;
+    let sizes = IndexSizes::new(
+        types_count,
+        header.type_definitions.count,
+        header.generic_containers.count,
+        header.parameters.count,
+    );
+    GlobalMetadata::deserialize(data, header, &sizes)
+}
+
+fn deserialize_header(data: &[u8]) -> Result<Il2CppGlobalMetadataHeader, MetadataDeserializeError> {
+    let mut cursor = Cursor::new(data);
+    let sanity = cursor.read_u32::<LittleEndian>()?;
+    let version = cursor.read_u32::<LittleEndian>()?;
+
+    if sanity != SANITY {
         return Err(MetadataDeserializeError::SanityCheck);
     }
 
-    if header.version != VERSION {
-        return Err(MetadataDeserializeError::VersionCheck(header.version));
+    if version != VERSION {
+        return Err(MetadataDeserializeError::VersionCheck(version));
     }
 
-    GlobalMetadata::deserialize(data, header)
+    Ok(Il2CppGlobalMetadataHeader::deserialize::<LittleEndian, _>(
+        Cursor::new(data),
+    )?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Section names in the exact order the `metadata!` invocation below
+    /// declares them. Keep this in sync if that list ever changes.
+    const SECTION_NAMES: &[&str] = &[
+        "string_literal",
+        "string_literal_data",
+        "string",
+        "events",
+        "properties",
+        "methods",
+        "parameter_default_values",
+        "field_default_values",
+        "field_and_parameter_default_value_data",
+        "field_marshaled_sizes",
+        "parameters",
+        "fields",
+        "generic_parameters",
+        "generic_parameter_constraints",
+        "generic_containers",
+        "nested_types",
+        "interfaces",
+        "vtable_methods",
+        "interface_offsets",
+        "type_definitions",
+        "images",
+        "assemblies",
+        "field_refs",
+        "referenced_assemblies",
+        "attribute_data",
+        "attribute_data_range",
+        "unresolved_indirect_call_parameter_types",
+        "unresolved_indirect_call_parameter_ranges",
+        "windows_runtime_type_names",
+        "windows_runtime_strings",
+        "exported_type_definitions",
+    ];
+
+    /// Assembles a synthetic `global-metadata.dat` buffer out of the given
+    /// section payloads. Sections not listed are emitted empty.
+    fn build_metadata(version: u32, sections: &[(&str, Vec<u8>)]) -> Vec<u8> {
+        build_metadata_with_counts(version, sections, &[])
+    }
+
+    /// Like [`build_metadata`], but lets the caller override individual
+    /// sections' header `count` field (only meaningful under v39 - see
+    /// `Il2CppSectionMetadata::count`). Every section not named in `counts`
+    /// still gets [`VAR_INDEX_COUNT`], same as `build_metadata`.
+    fn build_metadata_with_counts(
+        version: u32,
+        sections: &[(&str, Vec<u8>)],
+        counts: &[(&str, u32)],
+    ) -> Vec<u8> {
+        let entry_size = if cfg!(feature = "il2cpp_v39") { 12 } else { 8 };
+        let header_size = 8 + SECTION_NAMES.len() * entry_size;
+
+        let mut payload = Vec::new();
+        let mut entries = Vec::new();
+        for name in SECTION_NAMES {
+            let data = sections
+                .iter()
+                .find(|(n, _)| n == name)
+                .map(|(_, d)| d.as_slice())
+                .unwrap_or(&[]);
+            let offset = header_size + payload.len();
+            entries.push((offset as u32, data.len() as u32));
+            payload.extend_from_slice(data);
+        }
+
+        let mut buf = Vec::with_capacity(header_size + payload.len());
+        buf.extend_from_slice(&SANITY.to_le_bytes());
+        buf.extend_from_slice(&version.to_le_bytes());
+        for (name, (offset, size)) in SECTION_NAMES.iter().zip(entries) {
+            buf.extend_from_slice(&offset.to_le_bytes());
+            buf.extend_from_slice(&size.to_le_bytes());
+            if cfg!(feature = "il2cpp_v39") {
+                // Real row count, unused by v31. v39 uses this for exactly
+                // three sections (type_definitions, generic_containers,
+                // parameters) to size variable-width indices elsewhere (see
+                // `IndexSizes`) - report a huge count everywhere so those
+                // indices always come out 4 bytes wide, matching v31's fixed
+                // width and keeping every other test's hand-written byte
+                // layout valid under both features, unless the caller
+                // overrode this section's count explicitly.
+                let count = counts
+                    .iter()
+                    .find(|(n, _)| n == name)
+                    .map(|(_, c)| *c)
+                    .unwrap_or(VAR_INDEX_COUNT);
+                buf.extend_from_slice(&count.to_le_bytes());
+            }
+        }
+        buf.extend_from_slice(&payload);
+        buf
+    }
+
+    /// A row count large enough that `index_size` always picks 4 bytes.
+    /// Referenced from inside a runtime `cfg!()` branch in `build_metadata`
+    /// (rather than an `#[cfg]` attribute), so it must exist under both
+    /// features even though only v39 ever reads its value.
+    #[allow(dead_code)]
+    const VAR_INDEX_COUNT: u32 = u16::MAX as u32 + 1;
+
+    /// Deserializes a buffer built by [`build_metadata`], hiding v39's extra
+    /// `types_count` parameter (also forced to 4-byte width; see `VAR_INDEX_COUNT`).
+    fn call_deserialize(data: &[u8]) -> Result<GlobalMetadata<'_>, MetadataDeserializeError> {
+        #[cfg(feature = "il2cpp_v31")]
+        return deserialize(data);
+        #[cfg(feature = "il2cpp_v39")]
+        return deserialize(data, VAR_INDEX_COUNT);
+    }
+
+    #[test]
+    fn rejects_bad_sanity() {
+        let mut data = build_metadata(VERSION, &[]);
+        data[0] = !data[0];
+        assert!(matches!(
+            call_deserialize(&data).unwrap_err(),
+            MetadataDeserializeError::SanityCheck
+        ));
+    }
+
+    #[test]
+    fn rejects_wrong_version() {
+        let data = build_metadata(VERSION + 1, &[]);
+        assert!(matches!(
+            call_deserialize(&data).unwrap_err(),
+            MetadataDeserializeError::VersionCheck(v) if v == VERSION + 1
+        ));
+    }
+
+    #[test]
+    fn parses_empty_metadata() {
+        let data = build_metadata(VERSION, &[]);
+        let md = call_deserialize(&data).unwrap();
+        assert!(md.type_definitions.as_vec().is_empty());
+        assert!(md.images.as_vec().is_empty());
+        assert!(md.assemblies.as_vec().is_empty());
+        assert!(md.string_literal.as_vec().is_empty());
+    }
+
+    /// Writes an `Il2CppTypeDefinition` entry matching the active feature's
+    /// layout (with or without `element_type_index`).
+    fn write_type_definition(buf: &mut Vec<u8>, name_index: u32, namespace_index: u32, token: u32) {
+        buf.extend_from_slice(&name_index.to_le_bytes());
+        buf.extend_from_slice(&namespace_index.to_le_bytes());
+        buf.extend_from_slice(&0u32.to_le_bytes()); // byval_type_index
+        buf.extend_from_slice(&u32::MAX.to_le_bytes()); // declaring_type_index
+        buf.extend_from_slice(&u32::MAX.to_le_bytes()); // parent_index
+        #[cfg(feature = "il2cpp_v31")]
+        buf.extend_from_slice(&u32::MAX.to_le_bytes()); // element_type_index
+        buf.extend_from_slice(&u32::MAX.to_le_bytes()); // generic_container_index
+        buf.extend_from_slice(&0u32.to_le_bytes()); // flags
+        for _ in 0..8 {
+            buf.extend_from_slice(&0u32.to_le_bytes()); // field/method/event/property/nested_types/interfaces/vtable/interface_offsets start
+        }
+        for _ in 0..8 {
+            buf.extend_from_slice(&0u16.to_le_bytes()); // method/property/field/event/nested_type/vtable/interfaces/interface_offsets count
+        }
+        buf.extend_from_slice(&0u32.to_le_bytes()); // bitfield
+        buf.extend_from_slice(&token.to_le_bytes());
+    }
+
+    #[test]
+    fn parses_type_definition_layout() {
+        let mut strings = Vec::new();
+        let ns_off = strings.len() as u32;
+        strings.extend_from_slice(b"MyNamespace\0");
+        let name_off = strings.len() as u32;
+        strings.extend_from_slice(b"MyType\0");
+
+        let mut type_defs = Vec::new();
+        write_type_definition(&mut type_defs, name_off, ns_off, 0xDEADBEEF);
+
+        let data = build_metadata(
+            VERSION,
+            &[("string", strings), ("type_definitions", type_defs)],
+        );
+
+        let md = call_deserialize(&data).unwrap();
+        assert_eq!(md.type_definitions.as_vec().len(), 1);
+        let td = &md.type_definitions.as_vec()[0];
+        assert_eq!(&md.string[td.name_index], "MyType");
+        assert_eq!(&md.string[td.namespace_index], "MyNamespace");
+        // Reading the trailing `token` field correctly proves every field in
+        // between (including the version-gated `element_type_index`) is the
+        // right width, since any misalignment would shift this read.
+        assert_eq!(td.token.0, 0xDEADBEEF);
+    }
+
+    #[test]
+    fn parses_string_literal_layout() {
+        let mut literals = Vec::new();
+        #[cfg(feature = "il2cpp_v31")]
+        literals.extend_from_slice(&5u32.to_le_bytes()); // length
+        literals.extend_from_slice(&42u32.to_le_bytes()); // data_index
+
+        let data = build_metadata(VERSION, &[("string_literal", literals)]);
+        let md = call_deserialize(&data).unwrap();
+        assert_eq!(md.string_literal.as_vec().len(), 1);
+        assert_eq!(md.string_literal.as_vec()[0].data_index.index(), 42);
+    }
+
+    /// Writes an `Il2CppAssemblyDefinition` entry matching the active
+    /// feature's layout (with or without `module_token`).
+    fn write_assembly(buf: &mut Vec<u8>, image_index: u32, token: u32) {
+        buf.extend_from_slice(&image_index.to_le_bytes());
+        buf.extend_from_slice(&token.to_le_bytes());
+        #[cfg(feature = "il2cpp_v39")]
+        buf.extend_from_slice(&0xC0FFEEu32.to_le_bytes()); // module_token
+        buf.extend_from_slice(&0u32.to_le_bytes()); // referenced_assembly_start
+        buf.extend_from_slice(&0u32.to_le_bytes()); // referenced_assembly_count
+        // aname
+        buf.extend_from_slice(&0u32.to_le_bytes()); // name_index
+        buf.extend_from_slice(&0u32.to_le_bytes()); // culture_index
+        buf.extend_from_slice(&0u32.to_le_bytes()); // public_key_index
+        buf.extend_from_slice(&0u32.to_le_bytes()); // hash_alg
+        buf.extend_from_slice(&0u32.to_le_bytes()); // hash_len
+        buf.extend_from_slice(&0u32.to_le_bytes()); // flags
+        buf.extend_from_slice(&1234u32.to_le_bytes()); // major
+        buf.extend_from_slice(&0u32.to_le_bytes()); // minor
+        buf.extend_from_slice(&0u32.to_le_bytes()); // build
+        buf.extend_from_slice(&0u32.to_le_bytes()); // revision
+        buf.extend_from_slice(&[0u8; 8]); // public_key_token
+    }
+
+    #[test]
+    fn parses_assembly_definition_layout() {
+        let mut assemblies = Vec::new();
+        write_assembly(&mut assemblies, 7, 99);
+
+        let data = build_metadata(VERSION, &[("assemblies", assemblies)]);
+        let md = call_deserialize(&data).unwrap();
+        assert_eq!(md.assemblies.as_vec().len(), 1);
+        let asm = &md.assemblies.as_vec()[0];
+        assert_eq!(asm.image_index.index(), 7);
+        assert_eq!(asm.token.0, 99);
+        #[cfg(feature = "il2cpp_v39")]
+        assert_eq!(asm.module_token, 0xC0FFEE);
+        // Reading `aname.major` correctly proves `module_token` (v39) sits
+        // at the right offset and doesn't shift the rest of the struct.
+        assert_eq!(asm.aname.major, 1234);
+    }
+
+    /// Regression test: `nested_types` and `exported_type_definitions` hold
+    /// `TypeDefinitionIndex` values, but per il2cpp's own
+    /// `MetadataDeserialization.cpp` those two tables are read as a bare
+    /// `(const TypeDefinitionIndex*)` array - always 4 bytes per row - even
+    /// though `TypeDefinitionIndex` *fields* elsewhere (e.g.
+    /// `Il2CppMethodDefinition::declaringType`) use v39's variable-width
+    /// compact encoding sized off `type_definitions.count`.
+    ///
+    /// A prior version of `basic_table!` applied the variable-width
+    /// encoding uniformly to every table, so with `type_definitions.count`
+    /// in `256..=65535` (picking a 2-byte width) it would read each 4-byte
+    /// row as two bogus 2-byte entries, corrupting every downstream
+    /// `nested_types_start` lookup. Force that count into exactly that
+    /// range here so a regression trips this test.
+    #[test]
+    fn nested_type_and_exported_type_tables_use_fixed_width() {
+        let mut nested_types = Vec::new();
+        nested_types.extend_from_slice(&5u32.to_le_bytes());
+
+        let mut exported_type_definitions = Vec::new();
+        exported_type_definitions.extend_from_slice(&7u32.to_le_bytes());
+
+        let data = build_metadata_with_counts(
+            VERSION,
+            &[
+                ("nested_types", nested_types),
+                ("exported_type_definitions", exported_type_definitions),
+            ],
+            &[("type_definitions", 1000)],
+        );
+
+        let md = call_deserialize(&data).unwrap();
+        assert_eq!(md.nested_types.as_vec(), &[TypeDefinitionIndex::new(5)]);
+        assert_eq!(
+            md.exported_type_definitions.as_vec(),
+            &[TypeDefinitionIndex::new(7)]
+        );
+    }
 }

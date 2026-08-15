@@ -1,3 +1,6 @@
+//! These fixtures target il2cpp metadata v31 - skip entirely under v39.
+#![cfg(feature = "il2cpp_v31")]
+
 mod common;
 use anyhow::Context;
 
