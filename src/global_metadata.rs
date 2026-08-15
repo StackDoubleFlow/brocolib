@@ -929,7 +929,8 @@ macro_rules! index_type {
 }
 
 macro_rules! basic_table {
-    (@body $name:ident: $ty:ty, $idx_name:ident) => {
+    // Shared struct + Index impls, common to every read strategy below.
+    (@common $name:ident: $ty:ty, $idx_name:ident) => {
         #[doc =
             concat!(
                 "A metadata table of [`",
@@ -947,30 +948,6 @@ macro_rules! basic_table {
         impl $name {
             pub fn as_vec(&self) -> &Vec<$ty> {
                 &self.table
-            }
-        }
-
-        #[cfg(feature = "il2cpp_v31")]
-        impl ReadMetadataTable<'_> for $name {
-            fn read(cursor: &mut Cursor<&[u8]>, size: usize) -> std::io::Result<Self> {
-                let count = size / <$ty>::SIZE;
-                let mut vec = Vec::new();
-                for _ in 0..count {
-                    vec.push(<$ty>::deserialize::<LittleEndian, _>(&mut *cursor)?);
-                }
-                Ok($name { table: vec })
-            }
-        }
-
-        #[cfg(feature = "il2cpp_v39")]
-        impl ReadMetadataTable<'_> for $name {
-            fn read(cursor: &mut Cursor<&[u8]>, len: usize, sizes: &IndexSizes) -> std::io::Result<Self> {
-                let count = len / <$ty as VarSize>::var_size(sizes);
-                let mut vec = Vec::with_capacity(count);
-                for _ in 0..count {
-                    vec.push(<$ty as VarRead>::var_read(cursor, sizes)?);
-                }
-                Ok($name { table: vec })
             }
         }
 
@@ -1003,6 +980,75 @@ macro_rules! basic_table {
             }
         }
     };
+
+    (@body $name:ident: $ty:ty, $idx_name:ident) => {
+        basic_table!(@common $name: $ty, $idx_name);
+
+        #[cfg(feature = "il2cpp_v31")]
+        impl ReadMetadataTable<'_> for $name {
+            fn read(cursor: &mut Cursor<&[u8]>, size: usize) -> std::io::Result<Self> {
+                let count = size / <$ty>::SIZE;
+                let mut vec = Vec::new();
+                for _ in 0..count {
+                    vec.push(<$ty>::deserialize::<LittleEndian, _>(&mut *cursor)?);
+                }
+                Ok($name { table: vec })
+            }
+        }
+
+        #[cfg(feature = "il2cpp_v39")]
+        impl ReadMetadataTable<'_> for $name {
+            fn read(cursor: &mut Cursor<&[u8]>, len: usize, sizes: &IndexSizes) -> std::io::Result<Self> {
+                let count = len / <$ty as VarSize>::var_size(sizes);
+                let mut vec = Vec::with_capacity(count);
+                for _ in 0..count {
+                    vec.push(<$ty as VarRead>::var_read(cursor, sizes)?);
+                }
+                Ok($name { table: vec })
+            }
+        }
+    };
+
+    // For tables whose rows are a variable-width index *kind* (TypeIndex,
+    // TypeDefinitionIndex, ...) but which, per il2cpp's own
+    // MetadataDeserialization.cpp, are stored as a bare fixed-width array
+    // rather than going through that index kind's usual v39 compact
+    // encoding - e.g. `nested_types` and `exported_type_definitions` are
+    // read as `(const TypeDefinitionIndex*)` (plain int32 array) even
+    // though `TypeDefinitionIndex` fields elsewhere (like
+    // `Il2CppMethodDefinition::declaringType`) use the variable-width
+    // `SerializedIndexSizes`-based encoding. Always reads 4-byte rows,
+    // regardless of feature.
+    (@body_fixed $name:ident: $ty:ty, $idx_name:ident) => {
+        basic_table!(@common $name: $ty, $idx_name);
+
+        #[cfg(feature = "il2cpp_v31")]
+        impl ReadMetadataTable<'_> for $name {
+            fn read(cursor: &mut Cursor<&[u8]>, size: usize) -> std::io::Result<Self> {
+                let count = size / <$ty>::SIZE;
+                let mut vec = Vec::new();
+                for _ in 0..count {
+                    vec.push(<$ty>::deserialize::<LittleEndian, _>(&mut *cursor)?);
+                }
+                Ok($name { table: vec })
+            }
+        }
+
+        #[cfg(feature = "il2cpp_v39")]
+        impl ReadMetadataTable<'_> for $name {
+            fn read(cursor: &mut Cursor<&[u8]>, len: usize, _sizes: &IndexSizes) -> std::io::Result<Self> {
+                const ROW_SIZE: usize = 4;
+                let count = len / ROW_SIZE;
+                let mut vec = Vec::with_capacity(count);
+                for _ in 0..count {
+                    let raw = cursor.read_u32::<LittleEndian>()?;
+                    vec.push(<$ty>::new(raw));
+                }
+                Ok($name { table: vec })
+            }
+        }
+    };
+
     ($name:ident: $ty:ty, $idx_name:ident: $idx_ty:ty) => {
         index_type!($idx_name, $idx_ty, $name);
         basic_table!(@body $name: $ty, $idx_name);
@@ -1018,6 +1064,17 @@ macro_rules! basic_table {
     };
     ($name:ident: $ty:ty, $idx_name:ident) => {
         basic_table!($name: $ty, $idx_name: u32);
+    };
+    // Same as the `existing` arm above, but for tables that need the
+    // `@body_fixed` (always-4-byte-row) read strategy - see its doc comment.
+    (fixed $name:ident: $ty:ty, existing $idx_name:ident) => {
+        basic_table!(@body_fixed $name: $ty, $idx_name);
+    };
+    // Same as the plain `$idx_name:ident` arm above (declares a fresh
+    // `$idx_name` index type), but for tables that need `@body_fixed`.
+    (fixed $name:ident: $ty:ty, $idx_name:ident) => {
+        index_type!($idx_name, u32, $name);
+        basic_table!(@body_fixed $name: $ty, $idx_name);
     };
 }
 
@@ -1104,7 +1161,7 @@ basic_table!(GenericParameterConstraintTable: TypeIndex, GenericParameterConstra
 index_type!(variable GenericContainerIndex, u32, GenericContainerTable, generic_container_index);
 basic_table!(GenericContainerTable: Il2CppGenericContainer, existing GenericContainerIndex);
 index_type!(variable TypeDefinitionIndex, u32, TypeDefinitionTable, type_definition_index);
-basic_table!(NestedTypeTable: TypeDefinitionIndex, NestedTypeIndex);
+basic_table!(fixed NestedTypeTable: TypeDefinitionIndex, NestedTypeIndex);
 basic_table!(InterfaceTable: TypeIndex, InterfaceIndex);
 basic_table!(VTableMethodTable: EncodedMethodIndex, VTableMethodIndex);
 basic_table!(InterfaceOffsetTable: Il2CppInterfaceOffsetPair, InterfaceOffsetIndex);
@@ -1121,7 +1178,7 @@ basic_table!(UnresolvedIndirectCallParameterTypeTable: TypeIndex, UnresolvedIndi
 basic_table!(UnresolvedIndirectCallParameterRangeTable: Il2CppMetadataRange, UnresolvedIndirectCallParameterRangeIndex);
 basic_table!(WindowsRuntimeTypeNameTable: Il2CppWindowsRuntimeTypeNamePair, WindowsRuntimeTypeNameIndex);
 string_data_table!(WindowsRuntimeStringData, WindowsRuntimeStringDataIndex);
-basic_table!(ExportedTypeDefinitionTable: TypeDefinitionIndex, ExportedTypeDefinitionIndex);
+basic_table!(fixed ExportedTypeDefinitionTable: TypeDefinitionIndex, ExportedTypeDefinitionIndex);
 
 metadata! {
     string_literal: StringLiteralTable,
@@ -1263,6 +1320,18 @@ mod tests {
     /// Assembles a synthetic `global-metadata.dat` buffer out of the given
     /// section payloads. Sections not listed are emitted empty.
     fn build_metadata(version: u32, sections: &[(&str, Vec<u8>)]) -> Vec<u8> {
+        build_metadata_with_counts(version, sections, &[])
+    }
+
+    /// Like [`build_metadata`], but lets the caller override individual
+    /// sections' header `count` field (only meaningful under v39 - see
+    /// `Il2CppSectionMetadata::count`). Every section not named in `counts`
+    /// still gets [`VAR_INDEX_COUNT`], same as `build_metadata`.
+    fn build_metadata_with_counts(
+        version: u32,
+        sections: &[(&str, Vec<u8>)],
+        counts: &[(&str, u32)],
+    ) -> Vec<u8> {
         let entry_size = if cfg!(feature = "il2cpp_v39") { 12 } else { 8 };
         let header_size = 8 + SECTION_NAMES.len() * entry_size;
 
@@ -1282,7 +1351,7 @@ mod tests {
         let mut buf = Vec::with_capacity(header_size + payload.len());
         buf.extend_from_slice(&SANITY.to_le_bytes());
         buf.extend_from_slice(&version.to_le_bytes());
-        for (offset, size) in entries {
+        for (name, (offset, size)) in SECTION_NAMES.iter().zip(entries) {
             buf.extend_from_slice(&offset.to_le_bytes());
             buf.extend_from_slice(&size.to_le_bytes());
             if cfg!(feature = "il2cpp_v39") {
@@ -1292,8 +1361,14 @@ mod tests {
                 // `IndexSizes`) - report a huge count everywhere so those
                 // indices always come out 4 bytes wide, matching v31's fixed
                 // width and keeping every other test's hand-written byte
-                // layout valid under both features.
-                buf.extend_from_slice(&VAR_INDEX_COUNT.to_le_bytes());
+                // layout valid under both features, unless the caller
+                // overrode this section's count explicitly.
+                let count = counts
+                    .iter()
+                    .find(|(n, _)| n == name)
+                    .map(|(_, c)| *c)
+                    .unwrap_or(VAR_INDEX_COUNT);
+                buf.extend_from_slice(&count.to_le_bytes());
             }
         }
         buf.extend_from_slice(&payload);
@@ -1446,5 +1521,44 @@ mod tests {
         // Reading `aname.major` correctly proves `module_token` (v39) sits
         // at the right offset and doesn't shift the rest of the struct.
         assert_eq!(asm.aname.major, 1234);
+    }
+
+    /// Regression test: `nested_types` and `exported_type_definitions` hold
+    /// `TypeDefinitionIndex` values, but per il2cpp's own
+    /// `MetadataDeserialization.cpp` those two tables are read as a bare
+    /// `(const TypeDefinitionIndex*)` array - always 4 bytes per row - even
+    /// though `TypeDefinitionIndex` *fields* elsewhere (e.g.
+    /// `Il2CppMethodDefinition::declaringType`) use v39's variable-width
+    /// compact encoding sized off `type_definitions.count`.
+    ///
+    /// A prior version of `basic_table!` applied the variable-width
+    /// encoding uniformly to every table, so with `type_definitions.count`
+    /// in `256..=65535` (picking a 2-byte width) it would read each 4-byte
+    /// row as two bogus 2-byte entries, corrupting every downstream
+    /// `nested_types_start` lookup. Force that count into exactly that
+    /// range here so a regression trips this test.
+    #[test]
+    fn nested_type_and_exported_type_tables_use_fixed_width() {
+        let mut nested_types = Vec::new();
+        nested_types.extend_from_slice(&5u32.to_le_bytes());
+
+        let mut exported_type_definitions = Vec::new();
+        exported_type_definitions.extend_from_slice(&7u32.to_le_bytes());
+
+        let data = build_metadata_with_counts(
+            VERSION,
+            &[
+                ("nested_types", nested_types),
+                ("exported_type_definitions", exported_type_definitions),
+            ],
+            &[("type_definitions", 1000)],
+        );
+
+        let md = call_deserialize(&data).unwrap();
+        assert_eq!(md.nested_types.as_vec(), &[TypeDefinitionIndex::new(5)]);
+        assert_eq!(
+            md.exported_type_definitions.as_vec(),
+            &[TypeDefinitionIndex::new(7)]
+        );
     }
 }
