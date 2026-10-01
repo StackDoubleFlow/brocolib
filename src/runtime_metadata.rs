@@ -4,8 +4,8 @@ pub mod source;
 // TODO: Feature lock types by version
 // or make version-specific modules
 
-use crate::global_metadata::{GenericParameterIndex, MethodIndex, Token, TypeDefinitionIndex};
 use crate::Metadata;
+use crate::global_metadata::{GenericParameterIndex, MethodIndex, Token, TypeDefinitionIndex};
 use binread::BinRead;
 
 /// Defined at `il2cpp-class-internals:570`
@@ -310,7 +310,7 @@ impl Il2CppType {
                         )
                     }
                     _ => format!("({:?}?)", self.ty),
-                }
+                };
             }
         })
     }
@@ -401,6 +401,16 @@ pub struct Il2CppTypeDefinitionSizes {
     pub native_size: i32,
     pub static_fields_size: u32,
     pub thread_static_fields_size: u32,
+}
+
+pub struct RawIl2CppMetadataRegistration {
+    pub generic_class_addrs: Vec<u64>,
+    pub generic_inst_addrs: Vec<u64>,
+    pub generic_method_table: Vec<Il2CppGenericMethodFunctionsDefinitions>,
+    pub type_addrs: Vec<u64>,
+    pub method_specs: Vec<Il2CppMethodSpec>,
+    pub field_offset_ptrs: Vec<u64>,
+    pub type_definition_sizes_ptrs: Vec<u64>,
 }
 
 /// Defined at `il2cpp-class-internals.h:622`

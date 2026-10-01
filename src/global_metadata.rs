@@ -1,8 +1,10 @@
 //! Global metadata types.
 
-use crate::runtime_metadata::TypeData;
+mod deserialize;
+
 use crate::Metadata;
-use binde::{BinaryDeserialize, LittleEndian};
+use crate::global_metadata::deserialize::{LittleEndian, MetadataDeserialize};
+use crate::runtime_metadata::TypeData;
 use binread::BinRead;
 use std::io::Cursor;
 use std::ops::Index;
@@ -12,11 +14,37 @@ use thiserror::Error;
 // or make version-specific modules
 const SANITY: u32 = 0xFAB11BAF;
 
-#[cfg(feature = "il2cpp_v31")]
-const VERSION: u32 = 31;
+const VERSION: u32 = 39;
 
-// TODO
-pub type TypeIndex = u32;
+#[derive(Default)]
+enum IndexSize {
+    #[default]
+    Default,
+    U8,
+    U16,
+    U32,
+}
+
+impl IndexSize {
+    fn for_length(len: usize) -> Self {
+        if len <= u8::MAX as usize {
+            Self::U8
+        } else if len <= u16::MAX as usize {
+            Self::U16
+        } else {
+            Self::U32
+        }
+    }
+}
+
+#[derive(Default)]
+struct SerializedIndexSizes {
+    pub default: IndexSize,
+    pub type_index: IndexSize,
+    pub type_definition_index: IndexSize,
+    pub generic_container_index: IndexSize,
+    pub parameter_index: IndexSize,
+}
 
 macro_rules! range_helper {
     ($name:ident, $table:ident, $start:ident, $count:ident, $ty:ty) => {
@@ -83,8 +111,8 @@ impl EncodedMethodIndex {
                 1 => InvalidMethodIndex::AmbiguousMethod,
                 _ => panic!("Unknown invalid method index type: {}", invalid),
             }),
-            1 => DecodedMethodIndex::TypeInfo(idx),
-            2 => DecodedMethodIndex::Il2CppType(idx),
+            1 => DecodedMethodIndex::TypeInfo(TypeIndex::new(idx)),
+            2 => DecodedMethodIndex::Il2CppType(TypeIndex::new(idx)),
             3 => DecodedMethodIndex::MethodDef(MethodIndex::new(idx)),
             4 => DecodedMethodIndex::FieldInfo(FieldRefIndex::new(idx)),
             5 => DecodedMethodIndex::StringLiteral(StringLiteralIndex::new(idx)),
@@ -95,14 +123,16 @@ impl EncodedMethodIndex {
     }
 }
 
-impl BinaryDeserialize for EncodedMethodIndex {
-    const SIZE: usize = u32::SIZE;
-    fn deserialize<E, R>(reader: R) -> std::io::Result<Self>
+impl MetadataDeserialize for EncodedMethodIndex {
+    fn deserialize<E, R>(reader: R, index_sizes: &SerializedIndexSizes) -> std::io::Result<Self>
     where
-        E: binde::ByteOrder,
+        E: deserialize::ByteOrder,
         R: std::io::Read,
     {
-        Ok(Self(binde::deserialize::<E, _, _>(reader)?))
+        Ok(Self(deserialize::deserialize::<E, _, _>(
+            reader,
+            index_sizes,
+        )?))
     }
 }
 
@@ -120,14 +150,16 @@ impl Token {
     }
 }
 
-impl BinaryDeserialize for Token {
-    const SIZE: usize = u32::SIZE;
-    fn deserialize<E, R>(reader: R) -> std::io::Result<Self>
+impl MetadataDeserialize for Token {
+    fn deserialize<E, R>(reader: R, index_sizes: &SerializedIndexSizes) -> std::io::Result<Self>
     where
-        E: binde::ByteOrder,
+        E: deserialize::ByteOrder,
         R: std::io::Read,
     {
-        Ok(Self(binde::deserialize::<E, _, _>(reader)?))
+        Ok(Self(deserialize::deserialize::<E, _, _>(
+            reader,
+            index_sizes,
+        )?))
     }
 }
 
@@ -137,9 +169,8 @@ impl BinaryDeserialize for Token {
 /// runtime.
 ///
 /// Defined at `vm/GlobalMetadataFileInternals.h:187`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug, MetadataDeserialize)]
 pub struct Il2CppStringLiteral {
-    pub length: u32,
     pub data_index: StringLiteralDataIndex,
 }
 
@@ -148,7 +179,7 @@ impl Il2CppStringLiteral {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:168`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug, MetadataDeserialize)]
 pub struct Il2CppEventDefinition {
     pub name_index: StringIndex,
     pub type_index: TypeIndex,
@@ -166,7 +197,7 @@ impl Il2CppEventDefinition {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:154`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug, MetadataDeserialize)]
 pub struct Il2CppMethodDefinition {
     pub name_index: StringIndex,
     pub declaring_type: TypeDefinitionIndex,
@@ -210,7 +241,7 @@ impl Il2CppMethodDefinition {
     pub fn full_name(&self, metadata: &Metadata) -> String {
         let mr = &metadata.runtime_metadata.metadata_registration;
         let mut full_name = String::new();
-        full_name.push_str(&mr.types[self.return_type as usize].full_name(metadata));
+        full_name.push_str(&mr.types[self.return_type.as_usize()].full_name(metadata));
         full_name.push(' ');
         full_name.push_str(&self.declaring_type(metadata).full_name(metadata, true));
         full_name.push_str("::");
@@ -223,7 +254,7 @@ impl Il2CppMethodDefinition {
             if i > 0 {
                 full_name.push_str(", ");
             }
-            full_name.push_str(&mr.types[param.type_index as usize].full_name(metadata));
+            full_name.push_str(&mr.types[param.type_index.as_usize()].full_name(metadata));
             full_name.push(' ');
             full_name.push_str(param.name(metadata));
         }
@@ -233,7 +264,7 @@ impl Il2CppMethodDefinition {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:140`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug, MetadataDeserialize)]
 pub struct Il2CppParameterDefinition {
     pub name_index: StringIndex,
     pub token: Token,
@@ -245,7 +276,7 @@ impl Il2CppParameterDefinition {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:66`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug, MetadataDeserialize)]
 pub struct Il2CppTypeDefinition {
     pub name_index: StringIndex,
     pub namespace_index: StringIndex,
@@ -253,9 +284,6 @@ pub struct Il2CppTypeDefinition {
 
     pub declaring_type_index: TypeIndex,
     pub parent_index: TypeIndex,
-
-    /// Only used for enums
-    pub element_type_index: TypeIndex,
 
     pub generic_container_index: GenericContainerIndex,
 
@@ -345,10 +373,10 @@ impl Il2CppTypeDefinition {
             full_name.push('.');
         }
 
-        if self.declaring_type_index != u32::MAX {
+        if self.declaring_type_index.is_valid() {
             let s = metadata.runtime_metadata.metadata_registration.types
-                [self.declaring_type_index as usize]
-                .full_name(metadata)
+                [self.declaring_type_index.as_usize()]
+            .full_name(metadata)
                 + "::";
             full_name.push_str(s.as_str());
         }
@@ -363,7 +391,7 @@ impl Il2CppTypeDefinition {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:208`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug, MetadataDeserialize)]
 pub struct Il2CppImageDefinition {
     pub name_index: StringIndex,
     pub assembly_index: AssemblyIndex,
@@ -419,7 +447,7 @@ impl Il2CppImageDefinition {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:113`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug, MetadataDeserialize)]
 pub struct Il2CppFieldDefinition {
     pub name_index: StringIndex,
     pub type_index: TypeIndex,
@@ -431,7 +459,7 @@ impl Il2CppFieldDefinition {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:178`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug, MetadataDeserialize)]
 pub struct Il2CppPropertyDefinition {
     pub name_index: StringIndex,
     /// Index into declaring type's method list
@@ -474,7 +502,7 @@ impl Il2CppPropertyDefinition {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:147`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug, MetadataDeserialize)]
 pub struct Il2CppParameterDefaultValue {
     pub parameter_index: ParameterIndex,
     pub type_index: TypeIndex,
@@ -493,7 +521,7 @@ impl Il2CppParameterDefaultValue {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:120`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug, MetadataDeserialize)]
 pub struct Il2CppFieldDefaultValue {
     pub field_index: FieldIndex,
     pub type_index: TypeIndex,
@@ -507,7 +535,7 @@ impl Il2CppFieldDefaultValue {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:127`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug, MetadataDeserialize)]
 pub struct Il2CppFieldMarshaledSize {
     pub field_index: FieldIndex,
     pub type_index: TypeIndex,
@@ -519,7 +547,7 @@ impl Il2CppFieldMarshaledSize {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:258`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug, MetadataDeserialize)]
 pub struct Il2CppGenericParameter {
     /// Type or method this parameter was defined in.
     pub owner_index: GenericContainerIndex,
@@ -551,7 +579,7 @@ impl Il2CppGenericParameter {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:247`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug, MetadataDeserialize)]
 pub struct Il2CppGenericContainer {
     /// The index of the generic type definition or the generic method definition
     /// corresponding to this container. Either index into Il2CppClass metadata
@@ -588,14 +616,14 @@ impl Il2CppGenericContainer {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:60`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug, MetadataDeserialize)]
 pub struct Il2CppInterfaceOffsetPair {
     pub interface_type_index: TypeIndex,
     pub offset: u32,
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:193`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug, MetadataDeserialize)]
 pub struct Il2CppAssemblyNameDefinition {
     /// The name of the assembly.
     ///
@@ -618,10 +646,11 @@ impl Il2CppAssemblyNameDefinition {
     // TODO: are culture and public_key valid utf-8?
 }
 /// Defined at `vm/GlobalMetadataFileInternals.h:226`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug, MetadataDeserialize)]
 pub struct Il2CppAssemblyDefinition {
     pub image_index: ImageIndex,
     pub token: Token,
+    pub module_token: Token,
     pub referenced_assembly_start: ReferencedAssemblyIndex,
     pub referenced_assembly_count: u32,
     pub aname: Il2CppAssemblyNameDefinition,
@@ -638,28 +667,28 @@ impl Il2CppAssemblyDefinition {
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:235`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug, MetadataDeserialize)]
 pub struct Il2CppCustomAttributeDataRange {
     pub token: Token,
     pub start_offset: u32,
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:241`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug, MetadataDeserialize)]
 pub struct Il2CppMetadataRange {
     pub start: u32,
     pub length: u32,
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:269`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug, MetadataDeserialize)]
 pub struct Il2CppWindowsRuntimeTypeNamePair {
     pub name_index: StringIndex,
     pub type_index: TypeIndex,
 }
 
 /// Defined at `vm/GlobalMetadataFileInternals.h:134`
-#[derive(Debug, BinaryDeserialize)]
+#[derive(Debug, MetadataDeserialize)]
 pub struct Il2CppFieldRef {
     pub type_index: TypeIndex,
     /// local offset into type fields
@@ -669,7 +698,7 @@ pub struct Il2CppFieldRef {
 impl Il2CppFieldRef {
     pub fn resolve_field(&self, metadata: &Metadata) -> FieldIndex {
         let ty_data =
-            &metadata.runtime_metadata.metadata_registration.types[self.type_index as usize].data;
+            &metadata.runtime_metadata.metadata_registration.types[self.type_index.as_usize()].data;
         let TypeData::TypeDefinitionIndex(ty_def_idx) = ty_data else {
             panic!("Bad Il2CppFieldRef type data type: {:?}", ty_data);
         };
@@ -678,27 +707,33 @@ impl Il2CppFieldRef {
     }
 }
 
-#[derive(Debug, BinaryDeserialize)]
-struct OffsetLen {
+#[derive(Debug, MetadataDeserialize)]
+struct Il2CppSectionMetadata {
     offset: u32,
-    len: u32,
+    size: u32,
+    count: u32,
 }
 
 trait ReadMetadataTable<'a>
 where
     Self: std::marker::Sized,
 {
-    fn read(cursor: &mut Cursor<&'a [u8]>, size: usize) -> std::io::Result<Self>;
+    fn read(
+        cursor: &mut Cursor<&'a [u8]>,
+        size: usize,
+        count: usize,
+        index_sizes: &SerializedIndexSizes,
+    ) -> std::io::Result<Self>;
 }
 
 macro_rules! metadata {
     ($($(#[$($attrss:tt)*])* $name:ident: $ty:ty,)*) => {
-        #[derive(Debug, BinaryDeserialize)]
+        #[derive(Debug, MetadataDeserialize)]
         struct Il2CppGlobalMetadataHeader {
             sanity: u32,
             version: u32,
             $(
-                $name: OffsetLen,
+                $name: Il2CppSectionMetadata,
             )*
         }
 
@@ -714,15 +749,17 @@ macro_rules! metadata {
             fn deserialize(
                 data: &'a [u8],
                 header: Il2CppGlobalMetadataHeader,
+                index_sizes: &SerializedIndexSizes,
             ) -> Result<GlobalMetadata<'a>, MetadataDeserializeError> {
                 let mut cursor = Cursor::new(data);
                 Ok(GlobalMetadata {
                     $(
                         $name: {
-                            let size = header.$name.len as usize;
+                            let size = header.$name.size as usize;
+                            let count = header.$name.count as usize;
                             if size > 0 {
                                 cursor.set_position(header.$name.offset as u64);
-                                ReadMetadataTable::read(&mut cursor, size)?
+                                ReadMetadataTable::read(&mut cursor, size, count, index_sizes)?
                             } else {
                                 Default::default()
                             }
@@ -735,7 +772,7 @@ macro_rules! metadata {
 }
 
 macro_rules! index_type {
-    ($name:ident, $ty:ty, $for:ident) => {
+    ($name:ident, $ty:ty, $for:ident, $idx_size:ident) => {
 #[rustfmt::skip]
         #[doc = concat!(
             "Index type for [`",
@@ -767,14 +804,28 @@ macro_rules! index_type {
             }
         }
 
-        impl BinaryDeserialize for $name {
-            const SIZE: usize = <$ty>::SIZE;
-            fn deserialize<E, R>(reader: R) -> std::io::Result<Self>
+        impl MetadataDeserialize for $name {
+            fn deserialize<E, R>(
+                reader: R,
+                index_sizes: &SerializedIndexSizes,
+            ) -> std::io::Result<Self>
             where
-                E: binde::ByteOrder,
+                E: deserialize::ByteOrder,
                 R: std::io::Read,
             {
-                Ok(Self(binde::deserialize::<E, _, _>(reader)?))
+                let idx = match index_sizes.$idx_size {
+                    IndexSize::Default => deserialize::deserialize::<E, _, _>(reader, index_sizes)?,
+                    IndexSize::U8 => {
+                        deserialize::deserialize::<E, i8, _>(reader, index_sizes)? as i32 as _
+                    }
+                    IndexSize::U16 => {
+                        deserialize::deserialize::<E, i16, _>(reader, index_sizes)? as i32 as _
+                    }
+                    IndexSize::U32 => {
+                        deserialize::deserialize::<E, i32, _>(reader, index_sizes)? as i32 as _
+                    }
+                };
+                Ok(Self(idx))
             }
         }
     };
@@ -782,6 +833,15 @@ macro_rules! index_type {
 
 macro_rules! basic_table {
     ($name:ident: $ty:ty, $idx_name:ident: $idx_ty:ty) => {
+        basic_table!($name: $ty, $idx_name: $idx_ty, default);
+    };
+    ($name:ident: $ty:ty, $idx_name:ident) => {
+        basic_table!($name: $ty, $idx_name: u32);
+    };
+    ($name:ident: $ty:ty, $idx_name:ident, $idx_size:ident) => {
+        basic_table!($name: $ty, $idx_name: u32, $idx_size);
+    };
+    ($name:ident: $ty:ty, $idx_name:ident: $idx_ty:ty, $idx_size:ident) => {
         #[doc =
             concat!(
                 "A metadata table of [`",
@@ -803,17 +863,16 @@ macro_rules! basic_table {
         }
 
         impl ReadMetadataTable<'_> for $name {
-            fn read(cursor: &mut Cursor<&[u8]>, size: usize) -> std::io::Result<Self> {
-                let count = size / <$ty>::SIZE;
+            fn read(cursor: &mut Cursor<&[u8]>, size: usize, count: usize, index_sizes: &SerializedIndexSizes) -> std::io::Result<Self> {
                 let mut vec = Vec::new();
                 for _ in 0..count {
-                    vec.push(<$ty>::deserialize::<LittleEndian, _>(&mut *cursor)?);
+                    vec.push(<$ty>::deserialize::<LittleEndian, _>(&mut *cursor, index_sizes)?);
                 }
                 Ok($name { table: vec })
             }
         }
 
-        index_type!($idx_name, $idx_ty, $name);
+        index_type!($idx_name, $idx_ty, $name, $idx_size);
 
         impl Index<$idx_name> for $name {
             type Output = $ty;
@@ -844,9 +903,6 @@ macro_rules! basic_table {
             }
         }
     };
-    ($name:ident: $ty:ty, $idx_name:ident) => {
-        basic_table!($name: $ty, $idx_name: u32);
-    }
 }
 
 macro_rules! string_data_table {
@@ -870,7 +926,7 @@ macro_rules! string_data_table {
             }
         }
 
-        index_type!($idx_name, u32, $name);
+        index_type!($idx_name, u32, $name, default);
 
         impl<'data> Index<$idx_name> for $name<'data> {
             type Output = str;
@@ -888,7 +944,12 @@ macro_rules! string_data_table {
         }
 
         impl<'data> ReadMetadataTable<'data> for $name<'data> {
-            fn read(cursor: &mut Cursor<&'data [u8]>, size: usize) -> std::io::Result<Self> {
+            fn read(
+                cursor: &mut Cursor<&'data [u8]>,
+                size: usize,
+                _count: usize,
+                _index_sizes: &SerializedIndexSizes,
+            ) -> std::io::Result<Self> {
                 let start = cursor.position() as usize;
                 Ok($name {
                     data: &cursor.get_ref()[start..start + size],
@@ -896,6 +957,14 @@ macro_rules! string_data_table {
             }
         }
     };
+}
+
+index_type!(TypeIndex, u32, Il2CppMetadataRegistration, type_index);
+
+impl TypeIndex {
+    fn as_usize(self) -> usize {
+        self.0 as usize
+    }
 }
 
 basic_table!(StringLiteralTable: Il2CppStringLiteral, StringLiteralIndex);
@@ -909,16 +978,16 @@ basic_table!(FieldDefaultValueTable: Il2CppFieldDefaultValue, FieldDefaultValueI
 // TODO: Read default value data
 basic_table!(FieldAndParameterDefaultValueTable: u8, FieldAndParameterDefaultValueIndex);
 basic_table!(FieldMarshaledSizeTable: Il2CppFieldMarshaledSize, FieldMarshaledSizeIndex);
-basic_table!(ParameterTable: Il2CppParameterDefinition, ParameterIndex);
+basic_table!(ParameterTable: Il2CppParameterDefinition, ParameterIndex, parameter_index);
 basic_table!(FieldTable: Il2CppFieldDefinition, FieldIndex);
 basic_table!(GenericParameterTable: Il2CppGenericParameter, GenericParameterIndex);
 basic_table!(GenericParameterConstraintTable: TypeIndex, GenericParameterConstraintIndex: u16);
-basic_table!(GenericContainerTable: Il2CppGenericContainer, GenericContainerIndex);
+basic_table!(GenericContainerTable: Il2CppGenericContainer, GenericContainerIndex, generic_container_index);
 basic_table!(NestedTypeTable: TypeDefinitionIndex, NestedTypeIndex);
 basic_table!(InterfaceTable: TypeIndex, InterfaceIndex);
 basic_table!(VTableMethodTable: EncodedMethodIndex, VTableMethodIndex);
 basic_table!(InterfaceOffsetTable: Il2CppInterfaceOffsetPair, InterfaceOffsetIndex);
-basic_table!(TypeDefinitionTable: Il2CppTypeDefinition, TypeDefinitionIndex);
+basic_table!(TypeDefinitionTable: Il2CppTypeDefinition, TypeDefinitionIndex, type_definition_index);
 basic_table!(ImageTable: Il2CppImageDefinition, ImageIndex);
 basic_table!(AssemblyTable: Il2CppAssemblyDefinition, AssemblyIndex);
 basic_table!(FieldRefTable: Il2CppFieldRef, FieldRefIndex);
@@ -985,8 +1054,14 @@ pub enum MetadataDeserializeError {
     VersionCheck(u32),
 }
 
-pub fn deserialize(data: &[u8]) -> Result<GlobalMetadata<'_>, MetadataDeserializeError> {
-    let header = Il2CppGlobalMetadataHeader::deserialize::<LittleEndian, _>(Cursor::new(data))?;
+pub fn deserialize(
+    data: &[u8],
+    num_types: usize,
+) -> Result<GlobalMetadata<'_>, MetadataDeserializeError> {
+    let header = Il2CppGlobalMetadataHeader::deserialize::<LittleEndian, _>(
+        Cursor::new(data),
+        &Default::default(),
+    )?;
 
     if header.sanity != SANITY {
         return Err(MetadataDeserializeError::SanityCheck);
@@ -996,5 +1071,12 @@ pub fn deserialize(data: &[u8]) -> Result<GlobalMetadata<'_>, MetadataDeserializ
         return Err(MetadataDeserializeError::VersionCheck(header.version));
     }
 
-    GlobalMetadata::deserialize(data, header)
+    let index_sizes = SerializedIndexSizes {
+        default: IndexSize::Default,
+        type_index: IndexSize::for_length(num_types),
+        type_definition_index: IndexSize::for_length(header.type_definitions.count as usize),
+        generic_container_index: IndexSize::for_length(header.generic_containers.count as usize),
+        parameter_index: IndexSize::for_length(header.parameters.count as usize),
+    };
+    GlobalMetadata::deserialize(data, header, &index_sizes)
 }

@@ -1,9 +1,10 @@
 mod common;
 use anyhow::Context;
 
-const VERSION: &str = "unity-2022.3.33f1";
+const VERSION: &str = "unity-6000.3.21f1";
 // ELF tests (linux/android). Compiled only when `elf` feature is enabled.
 #[cfg(feature = "elf")]
+#[cfg(test)]
 mod elf_tests {
     use super::*;
 
@@ -24,6 +25,7 @@ mod elf_tests {
 
 // PE tests (windows). Compiled only when `pe` feature is enabled.
 #[cfg(feature = "pe")]
+#[cfg(test)]
 mod pe_tests {
     use super::*;
 

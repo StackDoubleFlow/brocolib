@@ -12,7 +12,10 @@ use global_metadata::{GlobalMetadata, MetadataDeserializeError};
 use runtime_metadata::RuntimeMetadata;
 use thiserror::Error;
 
-use crate::runtime_metadata::loader::Il2CppBinaryError;
+use crate::runtime_metadata::{
+    Il2CppCodeRegistration, Il2CppMetadataRegistration, RawIl2CppMetadataRegistration,
+    loader::{Il2CppBinaryError, arch, object_reader::ObjectReader},
+};
 
 /// A container for all of the applications metadata structures.
 ///
@@ -48,8 +51,23 @@ pub enum MetadataParseError {
 
 impl<'gmd, 'rmd> Metadata<'gmd, 'rmd> {
     pub fn parse(global_metadata: &'gmd [u8], lib: &'rmd [u8]) -> Result<Self, MetadataParseError> {
-        let global_metadata = global_metadata::deserialize(global_metadata)?;
-        let runtime_metadata = RuntimeMetadata::read_obj(lib, &global_metadata)?;
+        let obj = ObjectReader::new(lib)?;
+        let (cr_addr, mr_addr) = arch::find_registration(&obj)?;
+
+        let raw_metadata_registration = RawIl2CppMetadataRegistration::read(&obj, mr_addr)?;
+
+        let code_registration = Il2CppCodeRegistration::read(&obj, cr_addr)?;
+        let global_metadata = global_metadata::deserialize(
+            global_metadata,
+            raw_metadata_registration.type_addrs.len(),
+        )?;
+        let metadata_registration =
+            Il2CppMetadataRegistration::read(&obj, &global_metadata, raw_metadata_registration)?;
+
+        let runtime_metadata = RuntimeMetadata {
+            code_registration,
+            metadata_registration,
+        };
 
         Ok(Metadata {
             global_metadata,

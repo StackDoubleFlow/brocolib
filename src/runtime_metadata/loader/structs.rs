@@ -10,7 +10,7 @@ use crate::runtime_metadata::loader::{Il2CppBinaryError, Result};
 use crate::runtime_metadata::{
     Il2CppArrayType, Il2CppCodeGenModule, Il2CppCodeRegistration, Il2CppGenericClass,
     Il2CppGenericContext, Il2CppGenericInst, Il2CppMetadataRegistration, Il2CppType,
-    Il2CppTypeEnum, TypeData,
+    Il2CppTypeEnum, RawIl2CppMetadataRegistration, TypeData,
 };
 
 impl<'data> Il2CppCodeGenModule<'data> {
@@ -213,31 +213,41 @@ impl Il2CppArrayType {
     }
 }
 
-impl Il2CppMetadataRegistration {
-    pub fn read(reader: &ObjectReader, addr: u64, metadata: &GlobalMetadata) -> Result<Self> {
+impl RawIl2CppMetadataRegistration {
+    pub fn read(reader: &ObjectReader, addr: u64) -> Result<Self> {
         let mut cur = reader.make_cur(addr)?;
 
-        let generic_class_addrs = reader.read_len_arr(&mut cur)?;
-        let generic_inst_addrs = reader.read_len_arr(&mut cur)?;
-        let generic_method_table = reader.read_len_arr(&mut cur)?;
-        let type_addrs = reader.read_len_arr(&mut cur)?;
-        let method_specs = reader.read_len_arr(&mut cur)?;
-        let field_offset_ptrs = reader.read_len_arr(&mut cur)?;
-        let type_definition_sizes_ptrs = reader.read_len_arr(&mut cur)?;
+        Ok(Self {
+            generic_class_addrs: reader.read_len_arr(&mut cur)?,
+            generic_inst_addrs: reader.read_len_arr(&mut cur)?,
+            generic_method_table: reader.read_len_arr(&mut cur)?,
+            type_addrs: reader.read_len_arr(&mut cur)?,
+            method_specs: reader.read_len_arr(&mut cur)?,
+            field_offset_ptrs: reader.read_len_arr(&mut cur)?,
+            type_definition_sizes_ptrs: reader.read_len_arr(&mut cur)?,
+        })
+    }
+}
 
+impl Il2CppMetadataRegistration {
+    pub fn read(
+        reader: &ObjectReader,
+        metadata: &GlobalMetadata,
+        raw: RawIl2CppMetadataRegistration,
+    ) -> Result<Self> {
         let mut generic_inst_map = HashMap::new();
-        for (i, &addr) in generic_inst_addrs.iter().enumerate() {
+        for (i, &addr) in raw.generic_inst_addrs.iter().enumerate() {
             generic_inst_map.insert(addr, i);
         }
 
         let mut type_map = HashMap::new();
-        for (i, &addr) in type_addrs.iter().enumerate() {
+        for (i, &addr) in raw.type_addrs.iter().enumerate() {
             type_map.insert(addr, i);
         }
 
-        let mut generic_classes = Vec::with_capacity(type_addrs.len());
+        let mut generic_classes = Vec::with_capacity(raw.generic_class_addrs.len());
         let mut generic_class_map = HashMap::new();
-        for (i, addr) in generic_class_addrs.into_iter().enumerate() {
+        for (i, addr) in raw.generic_class_addrs.into_iter().enumerate() {
             generic_classes.push(Il2CppGenericClass::read(
                 &reader,
                 addr,
@@ -247,10 +257,10 @@ impl Il2CppMetadataRegistration {
             generic_class_map.insert(addr, i);
         }
 
-        let mut types = Vec::with_capacity(type_addrs.len());
+        let mut types = Vec::with_capacity(raw.type_addrs.len());
         let mut array_types = Vec::new();
         let mut array_type_map = HashMap::new();
-        for addr in type_addrs {
+        for addr in raw.type_addrs {
             types.push(Il2CppType::read(
                 &reader,
                 addr,
@@ -261,19 +271,19 @@ impl Il2CppMetadataRegistration {
             )?);
         }
 
-        let mut generic_insts = Vec::with_capacity(generic_inst_addrs.len());
-        for addr in generic_inst_addrs {
+        let mut generic_insts = Vec::with_capacity(raw.generic_inst_addrs.len());
+        for addr in raw.generic_inst_addrs {
             generic_insts.push(Il2CppGenericInst::read(&reader, addr, &type_map)?);
         }
 
-        let mut type_definition_sizes = Vec::with_capacity(type_definition_sizes_ptrs.len());
-        for addr in type_definition_sizes_ptrs {
+        let mut type_definition_sizes = Vec::with_capacity(raw.type_definition_sizes_ptrs.len());
+        for addr in raw.type_definition_sizes_ptrs {
             let mut cur = reader.make_cur(addr)?;
             type_definition_sizes.push(cur.read_le()?);
         }
 
-        let mut field_offsets = Vec::with_capacity(field_offset_ptrs.len());
-        for (i, addr) in field_offset_ptrs.into_iter().enumerate() {
+        let mut field_offsets = Vec::with_capacity(raw.field_offset_ptrs.len());
+        for (i, addr) in raw.field_offset_ptrs.into_iter().enumerate() {
             if addr == 0 {
                 field_offsets.push(Vec::new());
                 continue;
@@ -292,10 +302,10 @@ impl Il2CppMetadataRegistration {
         Ok(Il2CppMetadataRegistration {
             generic_classes,
             generic_insts,
-            generic_method_table,
+            generic_method_table: raw.generic_method_table,
             types,
             array_types,
-            method_specs,
+            method_specs: raw.method_specs,
             field_offsets: Some(field_offsets),
             type_definition_sizes: Some(type_definition_sizes),
         })

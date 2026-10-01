@@ -1,14 +1,23 @@
-[package]
-name = "brocolib"
+[workspace]
+members = ["proc_macros"]
+
+[workspace.package]
 version = "0.1.0"
 authors = ["StackDoubleFlow <ojaslandge@gmail.com>"]
 edition = "2024"
+
+
+[package]
+name = "brocolib"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 thiserror = "2"
-binde = { git = "https://github.com/StackDoubleFlow/binde" }
+brocolib_proc_macros = { path = "./proc_macros" }
 bad64 = { version = "0.12", optional = true }
 byteorder = "1.5"
 binread = "2.2"
@@ -20,16 +29,13 @@ default-features = false
 features = ["read_core"]
 
 [features]
-default = ["elf", "pe", "aarch64", "x86_64", "il2cpp_v31"]
+default = ["elf", "pe", "aarch64", "x86_64"]
 elf = ["object/elf"]
 pe = ["object/pe"]
 
 # Target-specific features e.g xrefs
 aarch64 = ["dep:bad64"]
 x86_64 = ["dep:iced-x86"]
-
-# IL2CPP Version-specific features
-il2cpp_v31 = []
 
 [dev-dependencies]
 anyhow = "1.0"

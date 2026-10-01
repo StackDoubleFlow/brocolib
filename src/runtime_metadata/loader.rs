@@ -5,12 +5,6 @@ use bad64::DecodeError;
 use object::Architecture;
 use thiserror::Error;
 
-use crate::runtime_metadata::{loader::object_reader::ObjectReader, RuntimeMetadata};
-use crate::{
-    global_metadata::GlobalMetadata,
-    runtime_metadata::{Il2CppCodeRegistration, Il2CppMetadataRegistration},
-};
-
 pub mod arch;
 pub mod object_reader;
 pub mod structs;
@@ -46,7 +40,7 @@ pub enum Il2CppBinaryError {
     Io(#[from] io::Error),
 
     #[error(transparent)]
-    BinaryDeserialize(#[from] binread::Error),
+    MetadataDeserialize(#[from] binread::Error),
 
     #[error(transparent)]
     Utf8(#[from] str::Utf8Error),
@@ -60,19 +54,3 @@ pub type Result<T> = std::result::Result<T, Il2CppBinaryError>;
 #[derive(Error, Debug, Clone, Copy)]
 #[error("error disassembling code")]
 pub struct DisassembleError;
-
-impl<'data> RuntimeMetadata<'data> {
-    pub fn read_obj(obj_data: &'data [u8], global_metadata: &GlobalMetadata) -> Result<Self> {
-        let obj = ObjectReader::new(obj_data)?;
-
-        let (cr_addr, mr_addr) = arch::find_registration(&obj)?;
-
-        let code_registration = Il2CppCodeRegistration::read(&obj, cr_addr)?;
-        let metadata_registration =
-            Il2CppMetadataRegistration::read(&obj, mr_addr, global_metadata)?;
-        Ok(RuntimeMetadata {
-            code_registration,
-            metadata_registration,
-        })
-    }
-}
