@@ -12,9 +12,9 @@ use global_metadata::{GlobalMetadata, MetadataDeserializeError};
 use runtime_metadata::RuntimeMetadata;
 use thiserror::Error;
 
+use crate::runtime_metadata::loader::{Il2CppBinaryError, arch, object_reader::ObjectReader};
 use crate::runtime_metadata::{
     Il2CppCodeRegistration, Il2CppMetadataRegistration, RawIl2CppMetadataRegistration,
-    loader::{Il2CppBinaryError, arch, object_reader::ObjectReader},
 };
 
 /// A container for all of the applications metadata structures.
