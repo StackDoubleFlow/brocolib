@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use anyhow::{ensure, Context};
+use anyhow::{Context, ensure};
 
 fn read_fixture(path: &str) -> anyhow::Result<Vec<u8>> {
     let base = std::env::var("CARGO_MANIFEST_DIR")?;
@@ -47,6 +47,23 @@ pub fn run_checks(global_p: &str, lib_p: &str) -> Result<(), anyhow::Error> {
             .is_empty(),
         "no codegen modules found"
     );
+
+    for parent in md.global_metadata.type_definitions.as_vec() {
+        for child_index in parent.nested_types(&md) {
+            let child = md
+                .global_metadata
+                .type_definitions
+                .as_vec()
+                .get(child_index.index() as usize)
+                .context("nested type index is out of bounds")?;
+            ensure!(
+                child.declaring_type_index == parent.byval_type_index,
+                "nested type {} has the wrong declaring type (expected {})",
+                child.name(&md),
+                parent.name(&md),
+            );
+        }
+    }
 
     let mut found_gameobject = false;
     let mut found_color = false;
