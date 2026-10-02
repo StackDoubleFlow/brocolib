@@ -842,6 +842,9 @@ macro_rules! basic_table {
         basic_table!($name: $ty, $idx_name: u32, $idx_size);
     };
     ($name:ident: $ty:ty, $idx_name:ident: $idx_ty:ty, $idx_size:ident) => {
+        basic_table!($name: $ty, $idx_name: $idx_ty, $idx_size, compressed_elements = true);
+    };
+    ($name:ident: $ty:ty, $idx_name:ident: $idx_ty:ty, $idx_size:ident, compressed_elements = $compressed:literal) => {
         #[doc =
             concat!(
                 "A metadata table of [`",
@@ -864,6 +867,10 @@ macro_rules! basic_table {
 
         impl ReadMetadataTable<'_> for $name {
             fn read(cursor: &mut Cursor<&[u8]>, size: usize, count: usize, index_sizes: &SerializedIndexSizes) -> std::io::Result<Self> {
+                // Standalone index arrays retain their full width in v39, even when
+                // the same index type is compressed inside metadata records.
+                let full_width_sizes = SerializedIndexSizes::default();
+                let index_sizes = if $compressed { index_sizes } else { &full_width_sizes };
                 let mut vec = Vec::new();
                 for _ in 0..count {
                     vec.push(<$ty>::deserialize::<LittleEndian, _>(&mut *cursor, index_sizes)?);
@@ -981,10 +988,19 @@ basic_table!(FieldMarshaledSizeTable: Il2CppFieldMarshaledSize, FieldMarshaledSi
 basic_table!(ParameterTable: Il2CppParameterDefinition, ParameterIndex, parameter_index);
 basic_table!(FieldTable: Il2CppFieldDefinition, FieldIndex);
 basic_table!(GenericParameterTable: Il2CppGenericParameter, GenericParameterIndex);
-basic_table!(GenericParameterConstraintTable: TypeIndex, GenericParameterConstraintIndex: u16);
+basic_table!(
+    GenericParameterConstraintTable: TypeIndex, GenericParameterConstraintIndex: u16, default,
+    compressed_elements = false
+);
 basic_table!(GenericContainerTable: Il2CppGenericContainer, GenericContainerIndex, generic_container_index);
-basic_table!(NestedTypeTable: TypeDefinitionIndex, NestedTypeIndex);
-basic_table!(InterfaceTable: TypeIndex, InterfaceIndex);
+basic_table!(
+    NestedTypeTable: TypeDefinitionIndex, NestedTypeIndex: u32, default,
+    compressed_elements = false
+);
+basic_table!(
+    InterfaceTable: TypeIndex, InterfaceIndex: u32, default,
+    compressed_elements = false
+);
 basic_table!(VTableMethodTable: EncodedMethodIndex, VTableMethodIndex);
 basic_table!(InterfaceOffsetTable: Il2CppInterfaceOffsetPair, InterfaceOffsetIndex);
 basic_table!(TypeDefinitionTable: Il2CppTypeDefinition, TypeDefinitionIndex, type_definition_index);
@@ -996,11 +1012,17 @@ basic_table!(ReferencedAssemblyTable: u32, ReferencedAssemblyIndex);
 basic_table!(AttributeDataRangeTable: Il2CppCustomAttributeDataRange, AttributeDataRangeIndex);
 // TODO: Read custom attribute data
 basic_table!(AttributeDataTable: u8, AttributeDataIndex);
-basic_table!(UnresolvedIndirectCallParameterTypeTable: TypeIndex, UnresolvedIndirectCallParameterTypeIndex);
+basic_table!(
+    UnresolvedIndirectCallParameterTypeTable: TypeIndex, UnresolvedIndirectCallParameterTypeIndex: u32, default,
+    compressed_elements = false
+);
 basic_table!(UnresolvedIndirectCallParameterRangeTable: Il2CppMetadataRange, UnresolvedIndirectCallParameterRangeIndex);
 basic_table!(WindowsRuntimeTypeNameTable: Il2CppWindowsRuntimeTypeNamePair, WindowsRuntimeTypeNameIndex);
 string_data_table!(WindowsRuntimeStringData, WindowsRuntimeStringDataIndex);
-basic_table!(ExportedTypeDefinitionTable: TypeDefinitionIndex, ExportedTypeDefinitionIndex);
+basic_table!(
+    ExportedTypeDefinitionTable: TypeDefinitionIndex, ExportedTypeDefinitionIndex: u32, default,
+    compressed_elements = false
+);
 
 metadata! {
     string_literal: StringLiteralTable,
@@ -1079,4 +1101,68 @@ pub fn deserialize(
         parameter_index: IndexSize::for_length(header.parameters.count as usize),
     };
     GlobalMetadata::deserialize(data, header, &index_sizes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn standalone_index_tables_keep_full_width_indices() {
+        let expected = [1u32, 168, 169, 0x0102_0304, u32::MAX];
+        let bytes: Vec<u8> = expected
+            .iter()
+            .flat_map(|index| index.to_le_bytes())
+            .collect();
+
+        for count in [100, 24_522, 65_536] {
+            let sizes = SerializedIndexSizes {
+                type_index: IndexSize::for_length(count),
+                type_definition_index: IndexSize::for_length(count),
+                ..Default::default()
+            };
+            macro_rules! check_table {
+                ($table:ty) => {{
+                    let mut cursor = Cursor::new(bytes.as_slice());
+                    let table = <$table>::read(&mut cursor, bytes.len(), expected.len(), &sizes)
+                        .expect("read full-width indices");
+                    let actual: Vec<u32> =
+                        table.as_vec().iter().map(|index| index.index()).collect();
+                    assert_eq!(actual, expected, "{}", stringify!($table));
+                    assert_eq!(cursor.position() as usize, bytes.len());
+                }};
+            }
+
+            check_table!(NestedTypeTable);
+            check_table!(ExportedTypeDefinitionTable);
+            check_table!(GenericParameterConstraintTable);
+            check_table!(InterfaceTable);
+            check_table!(UnresolvedIndirectCallParameterTypeTable);
+        }
+    }
+
+    #[test]
+    fn type_definition_fields_still_use_compact_indices() {
+        let cases = [
+            (IndexSize::U8, vec![42, 0xff]),
+            (IndexSize::U16, vec![42, 0, 0xff, 0xff]),
+            (IndexSize::U32, vec![42, 0, 0, 0, 0xff, 0xff, 0xff, 0xff]),
+        ];
+
+        for (width, bytes) in cases {
+            let sizes = SerializedIndexSizes {
+                type_definition_index: width,
+                ..Default::default()
+            };
+            let mut cursor = Cursor::new(bytes.as_slice());
+            let index = TypeDefinitionIndex::deserialize::<LittleEndian, _>(&mut cursor, &sizes)
+                .expect("read type definition index");
+            let invalid = TypeDefinitionIndex::deserialize::<LittleEndian, _>(&mut cursor, &sizes)
+                .expect("read invalid type definition index");
+
+            assert_eq!(index.index(), 42);
+            assert!(!invalid.is_valid());
+            assert_eq!(cursor.position() as usize, bytes.len());
+        }
+    }
 }
